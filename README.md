@@ -20,6 +20,14 @@ An open-source CLI tool that reviews your uncommitted git changes aspect-by-aspe
 
 ## Installation
 
+### Homebrew (macOS)
+
+```bash
+brew install mr-tabata/tap/mrcr
+```
+
+### Cargo
+
 ```bash
 cargo install --path crates/mrcr
 ```

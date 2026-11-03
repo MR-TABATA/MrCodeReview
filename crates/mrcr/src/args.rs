@@ -8,6 +8,10 @@ use std::path::PathBuf;
     about = "AI が書いた変更を、コミットする前に潰す。観点特化型コードレビュー CLI"
 )]
 pub struct Cli {
+    /// シェル補完スクリプトを出力する (bash, zsh, fish)
+    #[arg(long, value_name = "SHELL")]
+    pub completions: Option<String>,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 
@@ -28,6 +32,11 @@ pub enum Commands {
         /// 表示言語 (ja | en)
         #[arg(short = 'l', long, default_value = "ja")]
         lang: String,
+    },
+    /// シェル補完スクリプトを出力する
+    Completions {
+        /// 対象シェル (bash, zsh, fish, powershell)
+        shell: String,
     },
 }
 

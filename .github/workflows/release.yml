@@ -1,0 +1,45 @@
+# タグ v* を push したら、テストを通してから universal binary を zip にして Release に付ける。
+#
+# アセットは scripts/release.sh が作るもの（mrcr）。
+# Homebrew の formula（homebrew/mrcr.rb）はこの zip の URL と sha256 を指す。
+# sha256 はジョブのログと Release の本文に出るので、そこから formula へ写す。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust ツールチェーンの準備
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: テスト
+        run: cargo test --workspace
+
+      - name: 配布物を作る
+        id: build
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          OUT=$(sh scripts/release.sh "$VERSION" | tail -2)
+          ZIP=$(echo "$OUT" | sed -n 1p)
+          SHA=$(echo "$OUT" | sed -n 2p)
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Release を作る
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.build.outputs.zip }}" \
+            --title "mrcr ${{ steps.build.outputs.version }}" \
+            --notes "sha256: \`${{ steps.build.outputs.sha }}\`"

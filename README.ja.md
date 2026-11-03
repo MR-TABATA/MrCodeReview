@@ -20,8 +20,15 @@
 
 ## インストール
 
+### Homebrew (macOS)
+
 ```bash
-# Cargo でインストール
+brew install mr-tabata/tap/mrcr
+```
+
+### Cargo でビルド
+
+```bash
 cargo install --path crates/mrcr
 ```
 

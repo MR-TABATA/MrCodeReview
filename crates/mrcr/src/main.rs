@@ -1,7 +1,8 @@
 mod args;
 
 use args::{Cli, Commands, ReviewArgs};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::{generate, Shell};
 use mrcr_core::byok;
 use mrcr_core::findings;
 use mrcr_core::format::{CliReviewReport, RecipeReviewResult};
@@ -51,7 +52,10 @@ fn resolve_api_key() -> Result<String, String> {
             return Ok(trimmed);
         }
     }
-    Err("Anthropic API キーが見つかりません。環境変数 `ANTHROPIC_API_KEY` を設定してください。".to_string())
+    Err("Anthropic API キーが見つかりません。\n\
+         環境変数 `ANTHROPIC_API_KEY` にキーを設定してください。\n\
+         例: export ANTHROPIC_API_KEY=\"sk-ant-...\"\n\
+         ※Claude.app や月額サブスク（Pro/Team）の認証とは異なり、Anthropic Console で発行した従量課金 API キーが必要です。".to_string())
 }
 
 pub fn normalize_recipe_id(id: &str) -> &str {
@@ -66,12 +70,36 @@ pub fn normalize_recipe_id(id: &str) -> &str {
 
 fn main() {
     let cli = Cli::parse();
+    if let Some(shell_str) = cli.completions {
+        print_completions(&shell_str);
+        std::process::exit(0);
+    }
     let code = match cli.command {
+        Some(Commands::Completions { shell }) => {
+            print_completions(&shell);
+            0
+        }
         Some(Commands::Recipes { repo, lang }) => run_recipes(&repo, &lang),
         Some(Commands::Review(args)) => run_review(args),
         None => run_review(cli.review),
     };
     std::process::exit(code);
+}
+
+fn print_completions(shell_str: &str) {
+    let shell = match shell_str.to_lowercase().as_str() {
+        "bash" => Shell::Bash,
+        "zsh" => Shell::Zsh,
+        "fish" => Shell::Fish,
+        "powershell" | "pwsh" => Shell::PowerShell,
+        "elvish" => Shell::Elvish,
+        other => {
+            eprintln!("未対応のシェルです: {other} (対応: bash, zsh, fish, powershell, elvish)");
+            std::process::exit(1);
+        }
+    };
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "mrcr", &mut std::io::stdout());
 }
 
 fn run_recipes(repo: &Path, lang: &str) -> i32 {
