@@ -161,6 +161,44 @@ const BASE_LABEL_ALIASES: &[(&str, &str)] = &[
     ("Entire repository (from start)", ":root"),
 ];
 
+/// CLI（`mrcr`）のレポートと進捗表示の文言。`{n}` などはプレースホルダ（`fill` で埋める）。
+pub struct CliTexts {
+    pub report_title: &'static str,
+    pub report_repo: &'static str,
+    pub report_base: &'static str,
+    pub report_changed_files: &'static str,
+    pub report_files: &'static str,
+    pub report_timestamp: &'static str,
+    pub report_summary: &'static str,
+    pub report_no_findings: &'static str,
+    pub report_total: &'static str,
+    pub report_recipe_ok: &'static str,
+    pub report_verified: &'static str,
+    pub report_unverified: &'static str,
+    pub report_location: &'static str,
+    pub report_quote: &'static str,
+    pub report_detail: &'static str,
+    pub recipes_heading: &'static str,
+    pub recipes_col_title: &'static str,
+    pub recipes_col_source: &'static str,
+    pub recipes_src_builtin: &'static str,
+    pub recipes_src_repo: &'static str,
+    pub review_start: &'static str,
+    pub review_running: &'static str,
+    pub review_done: &'static str,
+    pub review_total: &'static str,
+    pub review_history: &'static str,
+}
+
+/// `{name}` 形式のプレースホルダを順に埋める。
+pub fn fill(tpl: &str, vars: &[(&str, &str)]) -> String {
+    let mut out = tpl.to_string();
+    for (k, v) in vars {
+        out = out.replace(&format!("{{{k}}}"), v);
+    }
+    out
+}
+
 pub struct Texts {
     pub lang: Lang,
     // ── メニュー ──
@@ -299,6 +337,7 @@ pub struct Texts {
     pub xlsx_source_manual: &'static str,
     pub xlsx_sheet_history: &'static str,
     pub xlsx_history_headers: &'static [(&'static str, f64)],
+    pub cli: CliTexts,
 }
 
 impl Texts {
@@ -921,6 +960,33 @@ pub static TEXTS_JA: Texts = Texts {
         ("方法", 16.0),
         ("そのときの HEAD", 16.0),
     ],
+    cli: CliTexts {
+        report_title: "MrCodeReview レポート",
+        report_repo: "リポジトリ",
+        report_base: "比較範囲",
+        report_changed_files: "変更ファイル数",
+        report_files: "{n} ファイル",
+        report_timestamp: "実施日時",
+        report_summary: "総合サマリー",
+        report_no_findings: "✓ **全観点で指摘はありませんでした。**",
+        report_total: "**合計指摘数**: {total} 件（根拠一致: {verified} 件、根拠不一致: {unverified} 件）",
+        report_recipe_ok: "指摘はありませんでした (OK)",
+        report_verified: "根拠あり",
+        report_unverified: "⚠️ 根拠不一致（ハルシネーションの可能性あり）",
+        report_location: "場所",
+        report_quote: "引用コード",
+        report_detail: "詳細",
+        recipes_heading: "利用可能なレビュー観点一覧:",
+        recipes_col_title: "タイトル",
+        recipes_col_source: "提供元",
+        recipes_src_builtin: "組み込み",
+        recipes_src_repo: "リポジトリ自作",
+        review_start: "レビュー開始: {n} ファイルの変更 (比較元: {base})",
+        review_running: "[{i}/{n}] レビュー中: {title} ({id}) ...",
+        review_done: "✅ レビュー完了: {path}",
+        review_total: "合計指摘数: {total} 件（根拠一致: {verified} 件、根拠不一致: {unverified} 件）",
+        review_history: "履歴保存先: {path} (GUI アプリと共有)",
+    },
 };
 
 pub static TEXTS_EN: Texts = Texts {
@@ -1107,4 +1173,31 @@ pub static TEXTS_EN: Texts = Texts {
         ("Method", 16.0),
         ("HEAD at time", 16.0),
     ],
+    cli: CliTexts {
+        report_title: "MrCodeReview Report",
+        report_repo: "Repository",
+        report_base: "Compared against",
+        report_changed_files: "Changed files",
+        report_files: "{n} file(s)",
+        report_timestamp: "Run at (Unix time)",
+        report_summary: "Summary",
+        report_no_findings: "✓ **No findings in any aspect.**",
+        report_total: "**Total findings**: {total} ({verified} verified, {unverified} unverified)",
+        report_recipe_ok: "No findings (OK)",
+        report_verified: "Verified",
+        report_unverified: "⚠️ Unverified evidence (possible hallucination)",
+        report_location: "Location",
+        report_quote: "Quoted code",
+        report_detail: "Details",
+        recipes_heading: "Available review aspects:",
+        recipes_col_title: "Title",
+        recipes_col_source: "Source",
+        recipes_src_builtin: "built-in",
+        recipes_src_repo: "repository",
+        review_start: "Review started: {n} file(s) changed (base: {base})",
+        review_running: "[{i}/{n}] Reviewing: {title} ({id}) ...",
+        review_done: "✅ Review complete: {path}",
+        review_total: "Total findings: {total} ({verified} verified, {unverified} unverified)",
+        review_history: "History saved to: {path} (shared with the GUI app)",
+    },
 };

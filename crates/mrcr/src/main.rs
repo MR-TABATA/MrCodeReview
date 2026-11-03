@@ -6,6 +6,7 @@ use clap_complete::{generate, Shell};
 use mrcr_core::byok;
 use mrcr_core::findings;
 use mrcr_core::format::{CliReviewReport, RecipeReviewResult};
+use mrcr_core::i18n::{fill, Lang};
 use mrcr_core::provider::{self, AnthropicApi, Provider, ProviderInfo};
 use mrcr_core::recipe::{self, Recipe};
 use mrcr_core::related;
@@ -108,14 +109,15 @@ fn run_recipes(repo: &Path, lang: &str) -> i32 {
         Err(_) => repo.to_path_buf(),
     };
     let recipes = recipe::list_with_lang(Some(&canonical_repo), lang);
-    println!("利用可能なレビュー観点一覧:");
-    println!("{:<15} {:<20} {}", "ID", "タイトル", "提供元");
+    let c = &Lang::from_code(lang).unwrap_or_default().texts().cli;
+    println!("{}", c.recipes_heading);
+    println!("{:<15} {:<20} {}", "ID", c.recipes_col_title, c.recipes_col_source);
     println!("{}", "-".repeat(50));
     for r in recipes {
         let src_label = if r.source == "builtin" {
-            "組み込み"
+            c.recipes_src_builtin
         } else {
-            "リポジトリ自作"
+            c.recipes_src_repo
         };
         println!("{:<15} {:<20} {}", r.id, r.title, src_label);
     }
@@ -205,14 +207,25 @@ fn run_review(args: ReviewArgs) -> i32 {
     let mut results: Vec<RecipeReviewResult> = Vec::new();
     let data_dir = resolve_data_dir();
 
+    let cli_texts = &Lang::from_code(&args.lang).unwrap_or_default().texts().cli;
     eprintln!(
-        "レビュー開始: {} ファイルの変更 (比較元: {})",
-        snap.files.len(),
-        args.base
+        "{}",
+        fill(cli_texts.review_start, &[("n", &snap.files.len().to_string()), ("base", &args.base)])
     );
 
     for (i, r) in target_recipes.iter().enumerate() {
-        eprintln!("[{}/{}] レビュー中: {} ({}) ...", i + 1, target_recipes.len(), r.title, r.id);
+        eprintln!(
+            "{}",
+            fill(
+                cli_texts.review_running,
+                &[
+                    ("i", &(i + 1).to_string()),
+                    ("n", &target_recipes.len().to_string()),
+                    ("title", &r.title),
+                    ("id", &r.id),
+                ],
+            )
+        );
 
         let started = Instant::now();
 
@@ -299,7 +312,7 @@ fn run_review(args: ReviewArgs) -> i32 {
             }
         }
     } else {
-        report.to_markdown()
+        report.to_markdown_lang(Lang::from_code(&args.lang).unwrap_or_default())
     };
 
     if args.stdout {
@@ -328,13 +341,20 @@ fn run_review(args: ReviewArgs) -> i32 {
             return 2;
         }
 
-        eprintln!("\n✅ レビュー完了: {}", out_path.display());
+        eprintln!("\n{}", fill(cli_texts.review_done, &[("path", &out_path.display().to_string())]));
         eprintln!(
-            "合計指摘数: {} 件（根拠一致: {} 件、根拠不一致: {} 件）",
-            total_findings, verified, unverified
+            "{}",
+            fill(
+                cli_texts.review_total,
+                &[
+                    ("total", &total_findings.to_string()),
+                    ("verified", &verified.to_string()),
+                    ("unverified", &unverified.to_string()),
+                ],
+            )
         );
         if !args.no_save {
-            eprintln!("履歴保存先: {} (GUI アプリと共有)", data_dir.display());
+            eprintln!("{}", fill(cli_texts.review_history, &[("path", &data_dir.display().to_string())]));
         }
     }
 
