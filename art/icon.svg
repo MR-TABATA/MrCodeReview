@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 100 100">
+  <!-- MrCodeReview アイコン（大サイズ用・.icns / README のマスター）。
+       兄弟アプリと同じ design language:
+         角丸 / 上部に gloss / 中央に線画グリフ 1 つ（stroke, round cap+join）/ 白 / 落ち影。
+       グリフは **レンズの中にチェック** ＝ 「中身を見て、確かめる」。このアプリの核（中身が全部見える）。
+       色はライム（黄緑）。兄弟（violet / teal / indigo / coral / amber / magenta）と重ならない。
+       黄寄りの兄弟 MrPosts（amber）とは、冷たい黄緑であることで見分ける。
+
+       **カンバスいっぱいに描かないこと。** macOS のアプリアイコンは 1024px のうち
+       角丸本体が 824px（= 80.47%）で、周囲に余白と落ち影を持つ。 -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#C8E64C"/>
+      <stop offset="1" stop-color="#4F8A10"/>
+    </linearGradient>
+    <radialGradient id="gloss" cx="50%" cy="0%" r="80%">
+      <stop offset="0" stop-color="#fff" stop-opacity=".14"/>
+      <stop offset="55%" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1.6" stdDeviation="1.6" flood-color="#0B1020" flood-opacity="0.30"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <g transform="translate(9.765 9.765) scale(0.8047)">
+      <rect width="100" height="100" rx="23" fill="url(#g)"/>
+      <rect width="100" height="100" rx="23" fill="url(#gloss)"/>
+      <g fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="42" cy="42" r="20"/>
+        <line x1="57" y1="57" x2="74" y2="74"/>
+        <polyline points="33,42 40,49 52,35" stroke-width="7"/>
+      </g>
+    </g>
+  </g>
+</svg>

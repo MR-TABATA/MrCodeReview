@@ -6,6 +6,7 @@ use std::path::Path;
 pub enum Kind {
     #[default]
     Llm,
+    Tool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

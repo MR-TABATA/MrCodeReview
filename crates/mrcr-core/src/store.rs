@@ -370,8 +370,7 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
 }
 
 /// 試験用の、最小の記録。
-#[cfg(test)]
-pub(crate) fn sample_record(id: &str, at: u64) -> ReviewRecord {
+pub fn sample_record(id: &str, at: u64) -> ReviewRecord {
     ReviewRecord {
         id: id.into(),
         created_at: at,
