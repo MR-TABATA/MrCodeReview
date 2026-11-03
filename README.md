@@ -70,6 +70,20 @@ mrcr recipes
 
 ---
 
+## Example
+
+A demo Terraform change (hardcoded DB password, port 5432 opened to `0.0.0.0/0`, deletion protection and final snapshot turned off, DB identifier renamed) reviewed with:
+
+```bash
+mrcr review -r tf-security,tf-replace -l en
+```
+
+![Example output of mrcr review](art/review-demo.png)
+
+Every finding quotes a line from the diff. `Verified` means the quoted line really exists in the diff; otherwise the finding is flagged `Unverified evidence`. The image shows the summary and the first two of six findings. The diff is a made-up demo, not real code.
+
+---
+
 ## Recipes (review aspects)
 
 Each recipe is a prompt that looks at **one aspect only**. Pick them with `-r <id>[,<id>…]`, or run them all with `--all`.
