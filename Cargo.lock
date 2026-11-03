@@ -412,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "mrcr"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "clap_complete",
@@ -423,7 +423,7 @@ dependencies = [
 
 [[package]]
 name = "mrcr-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "regex",
  "rusqlite",
