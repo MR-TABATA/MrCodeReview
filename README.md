@@ -91,7 +91,7 @@ Recipes judge from the diff (and, for some, related code outside it) and must ci
 
 ### General
 
-| ID | Looks for |
+| ID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Looks for |
 |---|---|
 | `bugs` | Code that works now but breaks on specific input: off-by-one, null/empty handling, unit/sign/overflow, wrong conditions, missed state updates, async races, unclosed resources, encoding/timezone, copy-paste slips |
 | `errors` | Failures that are swallowed, treated as success or made untraceable: empty `catch`, fallback values on error, unchecked return codes, invisible async failures, lost root cause, `unwrap` on I/O, no timeout/retry limit |
@@ -102,7 +102,7 @@ Recipes judge from the diff (and, for some, related code outside it) and must ci
 
 ### Terraform / HCL
 
-| ID | Looks for |
+| ID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Looks for |
 |---|---|
 | `tf-state` | Address ↔ state mapping: `count`/`for_each` switches and key changes, renames without `moved`, `import`/`removed` mistakes |
 | `tf-replace` | Unintended recreation or data loss: attributes that force replacement, misused `lifecycle`, apply-order downtime, deleting data-bearing resources without protection |

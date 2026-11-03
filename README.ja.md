@@ -96,7 +96,7 @@ mrcr review -r tf-security,tf-replace -l en
 
 ### 汎用
 
-| ID | 見るもの |
+| ID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | 見るもの |
 |---|---|
 | `bugs` | 今は動くが、特定の入力で壊れるコード。1 つのずれ、null・空の扱い、単位・符号・桁あふれ、条件式の誤り、状態の更新漏れ、非同期の競合、閉じ忘れ、文字コード・タイムゾーン、コピーの直し忘れ |
 | `errors` | 失敗が握りつぶされる・成功扱いになる・追えなくなるコード。空の `catch`、エラー時の代替値、戻り値・終了コードの未確認、見えない非同期の失敗、原因情報の破棄、`unwrap`、タイムアウト・再試行の上限なし |
@@ -107,7 +107,7 @@ mrcr review -r tf-security,tf-replace -l en
 
 ### Terraform / HCL
 
-| ID | 見るもの |
+| ID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | 見るもの |
 |---|---|
 | `tf-state` | アドレスと state の対応。`count`/`for_each` の切り替え・キー変更、`moved` のない改名、`import`/`removed` の誤り |
 | `tf-replace` | 意図しない再作成・データ消失。再作成を強いる属性変更、`lifecycle` の誤用、適用順による停止、保護のないデータ保持リソースの削除 |
