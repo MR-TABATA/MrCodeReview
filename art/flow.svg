@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="220" viewBox="0 0 960 220" role="img" aria-labelledby="t d">
+  <title id="t">mrcr review flow</title>
+  <desc id="d">Uncommitted git diff, reviewed one aspect per run by the Claude API, quotes verified against the diff, written to review.md or JSON.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5a8f1a"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2d0f; }
+      .box { fill: #f3f9e6; stroke: #7cb518; stroke-width: 2; }
+      .hl { fill: #e2f2bd; }
+      .h { font-size: 17px; font-weight: 700; }
+      .s { font-size: 13px; fill: #3f5a1c; }
+    </style>
+  </defs>
+  <rect class="box" x="16" y="50" width="200" height="120" rx="14"/>
+  <text class="h" x="116" y="98" text-anchor="middle">git diff</text>
+  <text class="s" x="116" y="122" text-anchor="middle">uncommitted changes</text>
+  <text class="s" x="116" y="142" text-anchor="middle">(or -b HEAD~1)</text>
+
+  <rect class="box hl" x="272" y="50" width="220" height="120" rx="14"/>
+  <text class="h" x="382" y="98" text-anchor="middle">1 aspect = 1 run</text>
+  <text class="s" x="382" y="122" text-anchor="middle">bugs / errors / security / …</text>
+  <text class="s" x="382" y="142" text-anchor="middle">Claude API (your own key)</text>
+
+  <rect class="box" x="548" y="50" width="196" height="120" rx="14"/>
+  <text class="h" x="646" y="98" text-anchor="middle">Verify quotes</text>
+  <text class="s" x="646" y="122" text-anchor="middle">cited line ∈ real diff?</text>
+  <text class="s" x="646" y="142" text-anchor="middle">Verified / Unverified</text>
+
+  <rect class="box" x="800" y="50" width="144" height="120" rx="14"/>
+  <text class="h" x="872" y="98" text-anchor="middle">Report</text>
+  <text class="s" x="872" y="122" text-anchor="middle">review.md / JSON</text>
+  <text class="s" x="872" y="142" text-anchor="middle">→ coding agent</text>
+
+  <line x1="216" y1="110" x2="268" y2="110" stroke="#5a8f1a" stroke-width="2.5" marker-end="url(#a)"/>
+  <line x1="492" y1="110" x2="544" y2="110" stroke="#5a8f1a" stroke-width="2.5" marker-end="url(#a)"/>
+  <line x1="744" y1="110" x2="796" y2="110" stroke="#5a8f1a" stroke-width="2.5" marker-end="url(#a)"/>
+</svg>
