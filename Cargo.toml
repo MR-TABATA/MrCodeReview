@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/mrcr-core",
+    "crates/mrcr",
+]
+resolver = "2"
