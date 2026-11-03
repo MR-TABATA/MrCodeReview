@@ -1,7 +1,7 @@
 # MrCodeReview CLI (`mrcr`)
 
 **Catch AI-written bugs before you commit.**  
-An open-source CLI tool that reviews your uncommitted git changes aspect-by-aspect (bugs, errors, security, performance, tests, consistency) and verifies quotation accuracy to detect hallucinations.
+An open-source CLI tool that reviews your uncommitted git changes aspect-by-aspect (bugs, errors, security, performance, tests, consistency, Terraform ×5) and verifies quotation accuracy to detect hallucinations.
 
 [日本語](README.ja.md)
 

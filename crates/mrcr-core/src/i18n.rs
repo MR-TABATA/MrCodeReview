@@ -74,6 +74,11 @@ const BUILTIN_JA: &[(&str, &str)] = &[
     ("performance", include_str!("../../../recipes/performance.md")),
     ("tests", include_str!("../../../recipes/tests.md")),
     ("consistency", include_str!("../../../recipes/consistency.md")),
+    ("tf-state", include_str!("../../../recipes/tf-state.md")),
+    ("tf-replace", include_str!("../../../recipes/tf-replace.md")),
+    ("tf-repro", include_str!("../../../recipes/tf-repro.md")),
+    ("tf-security", include_str!("../../../recipes/tf-security.md")),
+    ("tf-refs", include_str!("../../../recipes/tf-refs.md")),
 ];
 
 const BUILTIN_EN: &[(&str, &str)] = &[
@@ -83,6 +88,11 @@ const BUILTIN_EN: &[(&str, &str)] = &[
     ("performance", include_str!("../../../recipes/en/performance.md")),
     ("tests", include_str!("../../../recipes/en/tests.md")),
     ("consistency", include_str!("../../../recipes/en/consistency.md")),
+    ("tf-state", include_str!("../../../recipes/en/tf-state.md")),
+    ("tf-replace", include_str!("../../../recipes/en/tf-replace.md")),
+    ("tf-repro", include_str!("../../../recipes/en/tf-repro.md")),
+    ("tf-security", include_str!("../../../recipes/en/tf-security.md")),
+    ("tf-refs", include_str!("../../../recipes/en/tf-refs.md")),
 ];
 
 /// macOS が自動挿入するメニュー項目の既知タイトルと、言語ごとの翻訳先。
@@ -126,6 +136,16 @@ const BUILTIN_TITLE_ALIASES: &[(&str, &str)] = &[
     ("Missing Tests", "tests"),
     ("他ファイルとの不整合", "consistency"),
     ("Cross-file Inconsistencies", "consistency"),
+    ("状態・アドレス", "tf-state"),
+    ("State & Addresses", "tf-state"),
+    ("置換・破壊的変更", "tf-replace"),
+    ("Replacement & Destruction", "tf-replace"),
+    ("再現性・バージョン", "tf-repro"),
+    ("Reproducibility & Versions", "tf-repro"),
+    ("権限・公開・秘密", "tf-security"),
+    ("Access, Exposure & Secrets", "tf-security"),
+    ("参照の整合", "tf-refs"),
+    ("Reference Consistency", "tf-refs"),
     ("リンター", "lint"),
     ("Linters", "lint"),
 ];
@@ -174,6 +194,11 @@ pub struct Texts {
     pub recipe_title_performance: &'static str,
     pub recipe_title_tests: &'static str,
     pub recipe_title_consistency: &'static str,
+    pub recipe_title_tf_state: &'static str,
+    pub recipe_title_tf_replace: &'static str,
+    pub recipe_title_tf_repro: &'static str,
+    pub recipe_title_tf_security: &'static str,
+    pub recipe_title_tf_refs: &'static str,
     pub recipe_title_lint: &'static str,
 
     // ── 比較元（snapshot） ──
@@ -389,6 +414,11 @@ impl Texts {
             "performance" => self.recipe_title_performance,
             "tests" => self.recipe_title_tests,
             "consistency" => self.recipe_title_consistency,
+            "tf-state" => self.recipe_title_tf_state,
+            "tf-replace" => self.recipe_title_tf_replace,
+            "tf-repro" => self.recipe_title_tf_repro,
+            "tf-security" => self.recipe_title_tf_security,
+            "tf-refs" => self.recipe_title_tf_refs,
             "lint" => self.recipe_title_lint,
             _ => title,
         }
@@ -738,6 +768,11 @@ pub static TEXTS_JA: Texts = Texts {
     recipe_title_performance: "パフォーマンス",
     recipe_title_tests: "テストの抜け",
     recipe_title_consistency: "他ファイルとの不整合",
+    recipe_title_tf_state: "状態・アドレス",
+    recipe_title_tf_replace: "置換・破壊的変更",
+    recipe_title_tf_repro: "再現性・バージョン",
+    recipe_title_tf_security: "権限・公開・秘密",
+    recipe_title_tf_refs: "参照の整合",
     recipe_title_lint: "リンター",
 
     base_uncommitted: "未コミットの変更",
@@ -919,6 +954,11 @@ pub static TEXTS_EN: Texts = Texts {
     recipe_title_performance: "Performance",
     recipe_title_tests: "Missing Tests",
     recipe_title_consistency: "Cross-file Inconsistencies",
+    recipe_title_tf_state: "State & Addresses",
+    recipe_title_tf_replace: "Replacement & Destruction",
+    recipe_title_tf_repro: "Reproducibility & Versions",
+    recipe_title_tf_security: "Access, Exposure & Secrets",
+    recipe_title_tf_refs: "Reference Consistency",
     recipe_title_lint: "Linters",
 
     base_uncommitted: "Uncommitted changes",
