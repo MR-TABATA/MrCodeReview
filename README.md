@@ -121,7 +121,7 @@ Terraform recipes never claim to have inspected `terraform plan`, state or provi
 
 ### Documents
 
-For design notes, specs and READMEs. Run them on a change to a Markdown or text file, for example `mrcr review -r doc-claims,doc-steps`. The same tuned prompts ship in the desktop app (MrCodeReview / MrkCodeReview), which shows them when the diff contains `.md`, `.mdx`, `.txt` or `.rst` files.
+For design notes, specs and READMEs. Run them on a change to a Markdown or text file, for example `mrcr review -r doc-claims,doc-steps`. The desktop app (MrCodeReview / MrkCodeReview) will show the same prompts from its next release, when the diff contains `.md`, `.mdx`, `.txt` or `.rst` files.
 
 | ID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Looks for |
 |---|---|

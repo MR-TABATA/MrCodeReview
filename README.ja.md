@@ -126,7 +126,7 @@ Terraform のレシピは、`terraform plan`・state・プロバイダのスキ�
 
 ### 文書
 
-設計メモ・仕様書・README 向けです。Markdown やテキストの変更に対して実行します（例: `mrcr review -r doc-claims,doc-steps`）。同じ観点が、デスクトップアプリ（MrCodeReview / MrkCodeReview）にも入っていて、差分に `.md`・`.mdx`・`.txt`・`.rst` があるときに、観点バーに出ます。
+設計メモ・仕様書・README 向けです。Markdown やテキストの変更に対して実行します（例: `mrcr review -r doc-claims,doc-steps`）。同じ観点は、デスクトップアプリ（MrCodeReview / MrkCodeReview）の次のリリースから、差分に `.md`・`.mdx`・`.txt`・`.rst` があるときに、観点バーに出ます。
 
 | ID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | 見るもの |
 |---|---|
