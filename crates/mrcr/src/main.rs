@@ -198,7 +198,7 @@ fn run_review(args: ReviewArgs) -> i32 {
                 model: model_name.clone(),
                 max_tokens: byok::DEFAULT_MAX_TOKENS,
             },
-            provider::DEFAULT_TIMEOUT,
+            std::time::Duration::from_secs(args.timeout),
             Some(api_key),
         );
         (Box::new(api), "anthropic-api".into(), "Anthropic API (CLI)".into())

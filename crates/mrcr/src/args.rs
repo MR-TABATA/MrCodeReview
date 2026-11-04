@@ -46,7 +46,7 @@ pub struct ReviewArgs {
     #[arg(short = 'r', long, default_value = "bugs")]
     pub recipe: String,
 
-    /// 組み込みの全観点を一括実行する
+    /// 全観点を一括実行する（組み込み＋リポジトリの .mrcodereview/recipes/ の独自レシピ）
     #[arg(long)]
     pub all: bool,
 
@@ -81,6 +81,10 @@ pub struct ReviewArgs {
     /// 表示・プロンプトの言語 (ja | en)
     #[arg(short = 'l', long, default_value = "ja")]
     pub lang: String,
+
+    /// LLM の返事を待つ時間の上限（秒。10〜3600）。大きな差分や、考える時間の長いモデルでは延ばす
+    #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(10..=3600))]
+    pub timeout: u64,
 
     /// 試験用: 外部 API を呼ばずにモック応答を使用する
     #[arg(long, hide = true)]
