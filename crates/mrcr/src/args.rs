@@ -90,3 +90,59 @@ pub struct ReviewArgs {
     #[arg(long, hide = true)]
     pub mock: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `mrcr review --timeout N` と、サブコマンドなしの `mrcr --timeout N` の、どちらの入口でも同じ値になる。
+    fn timeout_of(args: &[&str]) -> Result<u64, clap::Error> {
+        let mut argv = vec!["mrcr"];
+        argv.extend_from_slice(args);
+        let cli = Cli::try_parse_from(argv)?;
+        Ok(match cli.command {
+            Some(Commands::Review(r)) => r.timeout,
+            _ => cli.review.timeout,
+        })
+    }
+
+    #[test]
+    fn timeout_defaults_to_300_seconds_on_both_entry_points() {
+        assert_eq!(timeout_of(&["review"]).unwrap(), 300);
+        assert_eq!(timeout_of(&[]).unwrap(), 300);
+    }
+
+    #[test]
+    fn timeout_accepts_the_range_limits_and_values_inside() {
+        for entry in [&["review"][..], &[][..]] {
+            for n in ["10", "11", "900", "3599", "3600"] {
+                let mut a = entry.to_vec();
+                a.extend_from_slice(&["--timeout", n]);
+                assert_eq!(timeout_of(&a).unwrap(), n.parse::<u64>().unwrap(), "{n} は範囲内のはず");
+            }
+        }
+    }
+
+    #[test]
+    fn timeout_rejects_values_just_outside_the_range_and_names_the_range() {
+        for entry in [&["review"][..], &[][..]] {
+            for n in ["9", "3601", "0", "99999"] {
+                let mut a = entry.to_vec();
+                a.extend_from_slice(&["--timeout", n]);
+                let e = timeout_of(&a).expect_err(&format!("{n} は範囲外のはず"));
+                assert_eq!(e.kind(), clap::error::ErrorKind::ValueValidation, "{n}: {e}");
+                assert!(e.to_string().contains("10..=3600"), "エラーに範囲が出る: {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn timeout_rejects_non_numbers_negative_numbers_and_a_missing_value() {
+        for bad in ["abc", "", "1.5", "-5", "10s"] {
+            let e = timeout_of(&["review", &format!("--timeout={bad}")]).expect_err(&format!("{bad:?} は数ではない/負"));
+            assert_eq!(e.kind(), clap::error::ErrorKind::ValueValidation, "{bad:?}: {e}");
+        }
+        let e = timeout_of(&["review", "--timeout"]).expect_err("値が無い");
+        assert!(e.to_string().contains("--timeout"), "値が無いときも、どのオプションかを言う: {e}");
+    }
+}
