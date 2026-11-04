@@ -79,6 +79,9 @@ const BUILTIN_JA: &[(&str, &str)] = &[
     ("tf-repro", include_str!("../../../recipes/tf-repro.md")),
     ("tf-security", include_str!("../../../recipes/tf-security.md")),
     ("tf-refs", include_str!("../../../recipes/tf-refs.md")),
+    ("doc-claims", include_str!("../../../recipes/doc-claims.md")),
+    ("doc-reality", include_str!("../../../recipes/doc-reality.md")),
+    ("doc-steps", include_str!("../../../recipes/doc-steps.md")),
 ];
 
 const BUILTIN_EN: &[(&str, &str)] = &[
@@ -93,6 +96,9 @@ const BUILTIN_EN: &[(&str, &str)] = &[
     ("tf-repro", include_str!("../../../recipes/en/tf-repro.md")),
     ("tf-security", include_str!("../../../recipes/en/tf-security.md")),
     ("tf-refs", include_str!("../../../recipes/en/tf-refs.md")),
+    ("doc-claims", include_str!("../../../recipes/en/doc-claims.md")),
+    ("doc-reality", include_str!("../../../recipes/en/doc-reality.md")),
+    ("doc-steps", include_str!("../../../recipes/en/doc-steps.md")),
 ];
 
 /// macOS が自動挿入するメニュー項目の既知タイトルと、言語ごとの翻訳先。
@@ -146,6 +152,12 @@ const BUILTIN_TITLE_ALIASES: &[(&str, &str)] = &[
     ("Access, Exposure & Secrets", "tf-security"),
     ("参照の整合", "tf-refs"),
     ("Reference Consistency", "tf-refs"),
+    ("根拠のない主張・数字", "doc-claims"),
+    ("Unsupported Claims & Numbers", "doc-claims"),
+    ("実在性・最新性の要確認", "doc-reality"),
+    ("Reality & Currency Check", "doc-reality"),
+    ("手順・前提・決定の抜け", "doc-steps"),
+    ("Gaps in Steps, Assumptions & Decisions", "doc-steps"),
     ("リンター", "lint"),
     ("Linters", "lint"),
 ];
@@ -237,6 +249,9 @@ pub struct Texts {
     pub recipe_title_tf_repro: &'static str,
     pub recipe_title_tf_security: &'static str,
     pub recipe_title_tf_refs: &'static str,
+    pub recipe_title_doc_claims: &'static str,
+    pub recipe_title_doc_reality: &'static str,
+    pub recipe_title_doc_steps: &'static str,
     pub recipe_title_lint: &'static str,
 
     // ── 比較元（snapshot） ──
@@ -458,6 +473,9 @@ impl Texts {
             "tf-repro" => self.recipe_title_tf_repro,
             "tf-security" => self.recipe_title_tf_security,
             "tf-refs" => self.recipe_title_tf_refs,
+            "doc-claims" => self.recipe_title_doc_claims,
+            "doc-reality" => self.recipe_title_doc_reality,
+            "doc-steps" => self.recipe_title_doc_steps,
             "lint" => self.recipe_title_lint,
             _ => title,
         }
@@ -812,6 +830,9 @@ pub static TEXTS_JA: Texts = Texts {
     recipe_title_tf_repro: "再現性・バージョン",
     recipe_title_tf_security: "権限・公開・秘密",
     recipe_title_tf_refs: "参照の整合",
+    recipe_title_doc_claims: "根拠のない主張・数字",
+    recipe_title_doc_reality: "実在性・最新性の要確認",
+    recipe_title_doc_steps: "手順・前提・決定の抜け",
     recipe_title_lint: "リンター",
 
     base_uncommitted: "未コミットの変更",
@@ -1025,6 +1046,9 @@ pub static TEXTS_EN: Texts = Texts {
     recipe_title_tf_repro: "Reproducibility & Versions",
     recipe_title_tf_security: "Access, Exposure & Secrets",
     recipe_title_tf_refs: "Reference Consistency",
+    recipe_title_doc_claims: "Unsupported Claims & Numbers",
+    recipe_title_doc_reality: "Reality & Currency Check",
+    recipe_title_doc_steps: "Gaps in Steps, Assumptions & Decisions",
     recipe_title_lint: "Linters",
 
     base_uncommitted: "Uncommitted changes",
@@ -1201,3 +1225,26 @@ pub static TEXTS_EN: Texts = Texts {
         review_history: "History saved to: {path} (shared with the GUI app)",
     },
 };
+
+#[cfg(test)]
+mod builtin_recipe_tests {
+    use super::*;
+    use crate::recipe;
+
+    #[test]
+    fn both_languages_ship_the_same_builtin_ids_and_titles_map_across_languages() {
+        let ja = recipe::list_with_lang(None, "ja");
+        let en = recipe::list_with_lang(None, "en");
+        let ids = |v: &[recipe::Recipe]| v.iter().map(|r| r.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&ja), ids(&en), "日本語と英語で、組み込みの観点の id がそろっていない");
+        assert!(ids(&ja).iter().any(|i| i == "doc-claims") && ids(&ja).iter().any(|i| i == "tf-state"));
+        for (j, e) in ja.iter().zip(en.iter()) {
+            // 観点ファイルの見出しと、タイトルの表（i18n）が、同じ言語の中で一致する
+            assert_eq!(Lang::Ja.texts().recipe_title(&j.title), j.title, "日本語のタイトルが表と食い違う: {}", j.id);
+            assert_eq!(Lang::En.texts().recipe_title(&e.title), e.title, "英語のタイトルが表と食い違う: {}", e.id);
+            // 言語をまたいで、タイトルが対応する（履歴の表示を、言語を切り替えても読めるように）
+            assert_eq!(Lang::En.texts().recipe_title(&j.title), e.title, "日本語のタイトルが、英語に変換できない: {}", j.id);
+            assert_eq!(Lang::Ja.texts().recipe_title(&e.title), j.title, "英語のタイトルが、日本語に変換できない: {}", e.id);
+        }
+    }
+}
