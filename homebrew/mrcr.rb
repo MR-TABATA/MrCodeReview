@@ -9,9 +9,9 @@
 class Mrcr < Formula
   desc "On-demand, inspectable AI code review CLI for uncommitted changes"
   homepage "https://mrktools.app/en/codereview/"
-  url "https://github.com/MR-TABATA/MrCodeReview/releases/download/v0.2.2/mrcr-0.2.2-macos.zip"
-  sha256 "9244ac4df94a09578e6d2802362fe37a3c3655bc64b93b51414cb0208fabec39"
-  version "0.2.2"
+  url "https://github.com/MR-TABATA/MrCodeReview/releases/download/v0.3.0/mrcr-0.3.0-macos.zip"
+  sha256 "02284908d82926588ce56198a2aead1a80fe1bfccb3d530b90968951f6e7e5b1"
+  version "0.3.0"
   license "MIT"
 
   depends_on :macos => :ventura
@@ -26,7 +26,7 @@ class Mrcr < Formula
   end
 
   test do
-    assert_match "mrcr 0.2.2", shell_output("#{bin}/mrcr --version")
+    assert_match "mrcr 0.3.0", shell_output("#{bin}/mrcr --version")
     assert_match "bugs", shell_output("#{bin}/mrcr recipes")
     assert_match "compdef mrcr", (zsh_completion/"_mrcr").read
   end
