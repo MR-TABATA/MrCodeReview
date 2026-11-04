@@ -17,7 +17,7 @@ An open-source CLI tool that reviews your uncommitted git changes aspect-by-aspe
 - **Isolated Aspect Reviews**: Instead of generic code reviews, each aspect is executed independently for maximum focus and depth, then bundled into a single report.
 - **Hallucination Detection**: Strictly verifies cited lines against actual git diffs, distinguishing between `Verified` and `⚠️ Unverified evidence`.
 - **Coding Agent Handoff**: Automatically outputs review findings to `.mrcodereview/out/review.md` (or JSON). Read it directly with agents like `agy` or `Claude Code` for automated fix loops.
-- **Cross-Platform**: Pure Rust. Runs on macOS and Linux (CI/CD environments like GitHub Actions).
+- **Pure Rust**: Built, tested and released on macOS. Linux and CI environments (e.g. GitHub Actions) have not been tested yet.
 - **Shared History with Desktop App**: On macOS, reviews are recorded to the local SQLite database shared with the desktop GUI app (MrkCodeReview).
 
 ---
@@ -30,9 +30,13 @@ An open-source CLI tool that reviews your uncommitted git changes aspect-by-aspe
 brew install mr-tabata/tap/mrcr
 ```
 
-### Cargo
+### Cargo (build from source)
+
+Requires the [Rust toolchain](https://rustup.rs). Clone this repository and run the install from its root:
 
 ```bash
+git clone https://github.com/MR-TABATA/MrCodeReview.git
+cd MrCodeReview
 cargo install --path crates/mrcr
 ```
 
@@ -49,7 +53,7 @@ mrcr review
 # Multiple aspects (comma-separated)
 mrcr review -r bugs,security
 
-# Run all built-in aspects
+# Run all aspects: the built-in ones plus any custom recipes in .mrcodereview/recipes/
 mrcr review --all
 
 # Output to stdout
@@ -60,6 +64,9 @@ mrcr review -r bugs -f json --stdout
 
 # Specify diff base
 mrcr review -b HEAD~1
+
+# Wait longer for the LLM (seconds, 10-3600; default 300)
+mrcr review --all --timeout 900
 ```
 
 ### List available recipes
