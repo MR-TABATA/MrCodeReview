@@ -3,7 +3,7 @@
 # MrCodeReview CLI (`mrcr`)
 
 **Catch the bugs that slip in, before you commit.**  
-An open-source CLI tool that reviews your uncommitted git changes aspect-by-aspect (bugs, errors, security, performance, tests, consistency, Terraform ×5) and verifies quotation accuracy to detect hallucinations.
+An open-source CLI tool that reviews your uncommitted git changes aspect-by-aspect (bugs, errors, security, performance, tests, consistency, Terraform ×5, documents ×3) and verifies quotation accuracy to detect hallucinations.
 
 [日本語](README.ja.md)
 
@@ -118,6 +118,18 @@ Recipes judge from the diff (and, for some, related code outside it) and must ci
 | `tf-refs` | Variable / output / module references that no longer connect across files and environments. Uses related files outside the diff |
 
 Terraform recipes never claim to have inspected `terraform plan`, state or provider schemas. They judge from the diff only.
+
+### Documents
+
+For design notes, specs and READMEs. Run them on a change to a Markdown or text file, for example `mrcr review -r doc-claims,doc-steps`. The same tuned prompts ship in the desktop app (MrCodeReview / MrkCodeReview), which shows them when the diff contains `.md`, `.mdx`, `.txt` or `.rst` files.
+
+| ID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Looks for |
+|---|---|
+| `doc-claims` | Numbers, results or absolute statements ("always", "none", "unrelated") with no source, measurement, or account of how they were checked |
+| `doc-reality` (experimental) | External command, package, API names, versions, prices or limits stated as fact with no sign they were checked. It can only say "needs checking" |
+| `doc-steps` | Gaps a reader cannot act on: missing preconditions, "decide later" used as if decided, decisions without reasons or a way back, contradicting status lines, sections that conflict without saying how they relate |
+
+In small trials on our own design notes and README, `doc-claims` and `doc-steps` found real problems (for example an unverified "no new dependencies" claim and a README that contradicted the code), while `doc-reality` rarely fired and has not proven its value yet. Findings still quote a real line of the diff; being quoted correctly does not make a finding right, so read them.
 
 ### Customize
 
