@@ -28,7 +28,7 @@ pub const SKIPPED: &str = "skipped";
 /// （Copilot CLI のログを読む場所が増えたとき、`agent_log_consent` から名前を変えた。前の許可は引き継がず、新しい文言で、もう一度聞く。）
 const CONSENT_KEY: &str = "agent_log_consent_v2";
 /// 保存する文章の上限（文字数）。
-const TEXT_MAX: usize = 2000;
+pub const TEXT_MAX: usize = 2000;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AgentReport {
