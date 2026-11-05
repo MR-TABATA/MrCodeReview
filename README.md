@@ -93,7 +93,7 @@ Every finding quotes a line from the diff. `Verified` means the quoted line real
 
 ## Hand findings to an AI agent (`mrcr handoff`)
 
-Close the loop: review, decide what to fix, let an agent fix it, and see what it says it did.
+Handing findings to an agent by copy and paste, or by pointing it at `.mrcodereview/out/review.md`, still works as before. `mrcr handoff` is the way **without copy and paste**: the agent fetches only the findings you marked, and its report of what it did comes back to the desktop app. It closes the loop: review, decide what to fix, let an agent fix it, and see what it says it did.
 
 1. Review with `mrcr review` (or the desktop app) and, in the desktop app, mark the findings you want fixed as **対応 (fix)**. Triage is yours; the agent never decides it.
 2. The agent fetches them:
