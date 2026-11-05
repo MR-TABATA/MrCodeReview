@@ -1,4 +1,4 @@
-//! 「渡した」状態の記録と、エージェントの申告の受け取り（CLI の `mrcr handoff` と、後続の MCP の土台。設計: MrkCodeReview の `notes/MCP化設計.md`）。
+//! 「渡した」状態の記録と、エージェントの申告の受け取り（CLI の `mrcr handoff` と、後続の MCP の土台）。
 //!
 //! - **渡した状態**は、`meta` 表のキー `handoff_release:<review_id>` に、JSON で持つ。**スキーマの版は上げない**
 //!   （版を上げると、古い `mrcr` が、「新しい版のアプリが作ったデータベース」として、開けなくなるため。`db.rs`）。

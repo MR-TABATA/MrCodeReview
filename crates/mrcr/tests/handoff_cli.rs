@@ -685,7 +685,7 @@ fn the_number_of_git_diffs_follows_the_reviews_that_need_one_not_every_review() 
     assert_eq!(seen.iter().map(|s| s.2).collect::<Vec<_>>(), vec![5, 8]);
 }
 
-// ── 3d: 報告が来ないときの手当て（設計書 §6B）──
+// ── 報告が来ないときの手当て ──
 
 /// 出力の、ある見出しの節の本文（次の同じ階層以上の見出しまで）。節が無ければ空。
 fn section_of(md: &str, heading_prefix: &str) -> String {
