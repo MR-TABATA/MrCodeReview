@@ -91,6 +91,41 @@ Every finding quotes a line from the diff. `Verified` means the quoted line real
 
 ---
 
+## Hand findings to an AI agent (`mrcr handoff`)
+
+Close the loop: review, decide what to fix, let an agent fix it, and see what it says it did.
+
+1. Review with `mrcr review` (or the desktop app) and, in the desktop app, mark the findings you want fixed as **対応 (fix)**. Triage is yours; the agent never decides it.
+2. The agent fetches them:
+
+   ```bash
+   mrcr handoff list            # reviews that still have findings to fix (records nothing)
+   mrcr handoff get             # hand over everything waiting in this repository
+   mrcr handoff get <review_id> # one review only (also hands over a stale one on request)
+   mrcr handoff get --json      # structured output, including how to write reports
+   ```
+
+   Use `-C <repo>` to point at another repository. `get` records the moment of hand-over.
+3. After fixing, the agent reports **per finding**:
+
+   ```bash
+   mrcr handoff report <review_id> 1,2 --did --text "What was changed"
+   mrcr handoff report <review_id> 3   --skipped --text "False positive: the test X already covers this"
+   ```
+
+   Reports are shown in the desktop app next to the finding.
+
+Things to know:
+
+- **The output is data, not instructions.** Text inside findings and quotes comes from a diff and an LLM; agents are told not to follow it.
+- **Reports are the agent's own word.** `mrcr` does not check that the code was really fixed, or that a "skipped" reason is right. Run the review again to check.
+- A finding still waiting for a report is listed again by the next `get`, so a forgotten one is not lost.
+- If the working tree changed after the review, `get` says so. A new file added with `git add` does not count as a change.
+- The text of `mrcr handoff` (output and `--help`) is currently Japanese only.
+- A ready-made Claude Code skill is in [`skills/mrcr-handoff`](skills/mrcr-handoff). Copy it to `~/.claude/skills/mrcr-handoff/` and ask the agent to "fix the MCR findings".
+
+---
+
 ## Recipes (review aspects)
 
 Each recipe is a prompt that looks at **one aspect only**. Pick them with `-r <id>[,<id>…]`, or run them all with `--all`.
