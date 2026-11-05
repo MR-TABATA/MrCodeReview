@@ -105,8 +105,10 @@ pub struct ReportOutcome {
     /// 保存で、変わった件数（同じ内容の再提出なら 0）
     pub changed: usize,
     /// **保存されている申告そのもの**（切り詰めたあとの文章を含む）。同じ内容の再提出（`changed == 0`）では、すでに保存されていたもの。
-    /// 呼び出し側は、読み戻さず、これを表示する（読み戻しの失敗を、入力の値で埋めないため）。
+    /// 保存した直後に、**実際に入っているものを読み戻した値**（入力の値で、成功を装わない）。呼び出し側は、これを表示する。
     pub saved: AgentReport,
+    /// **より新しい申告が、すでにあったので、保存しなかった**（時刻が、いまより先の申告など）。`saved` は、その、すでにある申告。
+    pub superseded: bool,
 }
 
 /// 渡した時点の差分と、いまの差分が、同じか。
@@ -167,18 +169,74 @@ pub fn release(dir: &Path, review_id: &str, fix: &[usize], hold: &[usize], by: &
     }
     // 読めなかったこと（壊れている・DB の失敗）と、無いことを、区別する（原因を失わせない）。
     let rec = store::try_get(dir, review_id)?.ok_or_else(|| format!("レビューが見つかりません: {review_id}"))?;
-    let (fix, hold) = checked_numbers(&rec, fix, hold)?;
-    let r = Release {
-        review_id: review_id.to_string(),
-        released_at: now,
-        fix,
-        hold,
-        head: snapshot::head_of(&rec.repo),
-        diff_hash: rec.snapshot.diff_hash.clone(),
-        by: by.to_string(),
-    };
+    let (r, _) = plan_release(&rec, None, fix, hold, by, now)?;
     write_release(dir, &r)?;
     Ok(r)
+}
+
+/// 渡した記録の**計画**を立てる（**何も書かない**。`git` の HEAD を読むだけ）。
+///
+/// - `old` が無い、または、差分の識別子がレビューのものと違う → 新しい記録（`Created`。渡した時刻は `now`）。
+/// - `old` がある → 渡した時刻・渡した人は、そのまま。`fix`・`hold` が同じなら `Unchanged`、違えば、番号だけ更新（`Updated`）。
+///
+/// 呼び出し側は、**出力を作ってから**、`persist_releases` で、まとめて保存する（保存してから、出力に失敗して、
+/// 「渡し済み」なのに、エージェントは何も受け取っていない、という半端な状態を、残さない）。
+pub fn plan_release(rec: &ReviewRecord, old: Option<&Release>, fix: &[usize], hold: &[usize], by: &str, now: u64) -> Result<(Release, Ensured), String> {
+    if !valid_id(&rec.id) {
+        return Err(format!("レビューの識別子が正しくありません: {}", rec.id));
+    }
+    if !valid_name(by) {
+        return Err(format!("渡した人の名前が正しくありません: {by}"));
+    }
+    let (fix, hold) = checked_numbers(rec, fix, hold)?;
+    match old {
+        Some(old) if old.diff_hash == rec.snapshot.diff_hash => {
+            if old.fix == fix && old.hold == hold {
+                Ok((old.clone(), Ensured::Unchanged))
+            } else {
+                Ok((Release { fix, hold, ..old.clone() }, Ensured::Updated))
+            }
+        }
+        _ => {
+            let r = Release {
+                review_id: rec.id.clone(),
+                released_at: now,
+                fix,
+                hold,
+                head: snapshot::head_of(&rec.repo),
+                diff_hash: rec.snapshot.diff_hash.clone(),
+                by: by.to_string(),
+            };
+            Ok((r, Ensured::Created))
+        }
+    }
+}
+
+/// 計画した渡した記録を、**1 つの取引で**保存する（全部か、何もか）。`Unchanged` のものは、書かない。
+pub fn persist_releases(dir: &Path, plans: &[(Release, Ensured)]) -> Result<(), String> {
+    let to_write: Vec<&Release> = plans.iter().filter(|(_, how)| *how != Ensured::Unchanged).map(|(r, _)| r).collect();
+    if to_write.is_empty() {
+        return Ok(());
+    }
+    let conn = db::open(dir)?;
+    let tx = conn.unchecked_transaction().map_err(|e| format!("渡した記録を保存できません: {e}"))?;
+    for r in to_write {
+        let json = serde_json::to_string(r).map_err(|e| format!("渡した記録を作れません: {e}"))?;
+        tx.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            params![key(&r.review_id), json],
+        )
+        .map_err(|e| format!("渡した記録を保存できません: {e}"))?;
+    }
+    tx.commit().map_err(|e| format!("渡した記録を保存できません: {e}"))
+}
+
+/// 渡した記録と、読んだレビュー・申告から、**渡した指摘の見え方**を作る（**何も読み書きしない**）。
+/// `reports` は、指摘の番号（0 始まり）で引く。保存する前の（計画の）記録からも、作れる。
+pub fn handoff_view(rec: &ReviewRecord, release: &Release, reports: &[Option<AgentReport>]) -> Result<Handoff, String> {
+    let fix = released_findings(rec, &release.fix, reports, release.released_at)?;
+    let hold = released_findings(rec, &release.hold, reports, release.released_at)?;
+    Ok(Handoff { repo: rec.repo.clone(), recipe_id: rec.recipe.id.clone(), recipe_title: rec.recipe.title.clone(), release: release.clone(), fix, hold })
 }
 
 /// 渡す番号を、昇順・重複なしにして、検証する（空・範囲外・重なり）。
@@ -246,9 +304,7 @@ pub fn get(dir: &Path, review_id: &str) -> Result<Option<Handoff>, String> {
     let Some(release) = read_release(&conn, review_id)? else { return Ok(None) };
     let rec = store::try_get(dir, review_id)?.ok_or_else(|| format!("渡した記録はありますが、レビューが見つかりません: {review_id}"))?;
     let reports = agent_report::try_get_all_with_conn(&conn, review_id, rec.findings.len())?;
-    let fix = released_findings(&rec, &release.fix, &reports, release.released_at)?;
-    let hold = released_findings(&rec, &release.hold, &reports, release.released_at)?;
-    Ok(Some(Handoff { repo: rec.repo.clone(), recipe_id: rec.recipe.id.clone(), recipe_title: rec.recipe.title.clone(), release, fix, hold }))
+    handoff_view(&rec, &release, &reports).map(Some)
 }
 
 /// 渡されたレビューの一覧（渡した時刻の新しい順）。`repo` を渡すと、そのリポジトリだけ。
@@ -322,6 +378,16 @@ pub fn report(dir: &Path, review_id: &str, index: usize, verdict: &str, text: &s
 /// `report` と同じ。**どの入口から来たか**（`via`。`cli`・`mcp` など。英数字と `-_.`）を、保存元に残す（`source = "<via>:<client>"`）。
 #[allow(clippy::too_many_arguments)]
 pub fn report_via(dir: &Path, review_id: &str, index: usize, verdict: &str, text: &str, client: &str, via: &str, now: u64) -> Result<ReportOutcome, String> {
+    let mut outcomes = report_many_via(dir, review_id, &[index], verdict, text, client, via, now)?;
+    Ok(outcomes.remove(0))
+}
+
+/// 複数の指摘に、**同じ判定・同じ文章**の申告を、まとめて保存する（`indices` は 0 始まり。重複は 1 つにまとめる。指定した順に返す）。
+///
+/// **一部だけ保存しない**: 1 つでも、渡された「直す」の指摘でないものが混ざっていれば、何も保存せず、エラーにする。
+/// 保存は、1 つの取引で行う。同じ渡し分の中で、内容が同じ再提出（判定・文章・保存元が同じ）は、保存しない（`changed == 0`）。
+#[allow(clippy::too_many_arguments)]
+pub fn report_many_via(dir: &Path, review_id: &str, indices: &[usize], verdict: &str, text: &str, client: &str, via: &str, now: u64) -> Result<Vec<ReportOutcome>, String> {
     if !valid_name(via) {
         return Err(format!("入口の名前が正しくありません: {via}"));
     }
@@ -338,27 +404,60 @@ pub fn report_via(dir: &Path, review_id: &str, index: usize, verdict: &str, text
     if text.is_empty() {
         return Err("報告の文章が空です（何をしたか、なぜ直さなかったかを書いてください）".to_string());
     }
+    let mut indices_unique: Vec<usize> = Vec::new();
+    for &i in indices {
+        if !indices_unique.contains(&i) {
+            indices_unique.push(i);
+        }
+    }
+    let Some(&max_index) = indices_unique.iter().max() else {
+        return Err("報告する指摘が、指定されていません".to_string());
+    };
     let release = {
         let conn = db::open(dir)?;
         read_release(&conn, review_id)?
     }
     .ok_or_else(|| format!("このレビューは、渡されていません: {review_id}"))?;
-    if !release.fix.contains(&index) {
-        return Err(format!("渡された「直す」の指摘ではありません: {index}"));
+    if let Some(bad) = indices_unique.iter().find(|i| !release.fix.contains(i)) {
+        return Err(format!("渡された「直す」の指摘ではありません（{} 番目）: 何も保存していません", bad + 1));
     }
     let truncated = text.chars().count() > TEXT_MAX;
     let stored_text: String = text.chars().take(TEXT_MAX).collect();
     let source = format!("{via}:{client}");
     // **同じ渡し分の中で**、判定・文章・保存元が同じ再提出は、保存しない（時刻だけ動かさない）。
     // 新しい渡し分（古い申告の時刻が、渡した時刻より前）では、同じ文章でも保存する（さもないと、「前回以前の申告」に見えてしまう）。
-    if let Some(Some(old)) = agent_report::try_get_all(dir, review_id, index + 1)?.into_iter().nth(index) {
-        if old.verdict == verdict && old.text == stored_text && old.source == source && old.reported_at >= release.released_at {
-            return Ok(ReportOutcome { truncated, changed: 0, saved: old });
+    let existing = agent_report::try_get_all(dir, review_id, max_index + 1)?;
+    let mut outcomes = Vec::new();
+    let mut to_save: Vec<(usize, AgentReport)> = Vec::new();
+    let mut saved_at: Vec<usize> = Vec::new(); // `to_save` の各項目が、`outcomes` の何番目か
+    for &i in &indices_unique {
+        match existing.get(i).cloned().flatten() {
+            Some(old) if old.verdict == verdict && old.text == stored_text && old.source == source && old.reported_at >= release.released_at => {
+                outcomes.push(ReportOutcome { truncated, changed: 0, saved: old, superseded: false });
+            }
+            _ => {
+                let r = AgentReport { verdict: verdict.to_string(), text: stored_text.clone(), reported_at: now, source: source.clone() };
+                to_save.push((i, r.clone()));
+                saved_at.push(outcomes.len());
+                outcomes.push(ReportOutcome { truncated, changed: 1, saved: r, superseded: false });
+            }
         }
     }
-    let r = AgentReport { verdict: verdict.to_string(), text: stored_text, reported_at: now, source };
-    let changed = agent_report::save(dir, review_id, &[(index, r.clone())])?;
-    Ok(ReportOutcome { truncated, changed, saved: r })
+    if !to_save.is_empty() {
+        agent_report::save(dir, review_id, &to_save)?;
+        // 保存したつもりの値ではなく、**実際に入っているもの**を読み戻す。`save` は、より新しい申告があれば、置き換えない（件数にも入らない）。
+        let stored = agent_report::try_get_all(dir, review_id, max_index + 1)?;
+        for ((i, wanted), pos) in to_save.iter().zip(saved_at) {
+            let actual = stored.get(*i).cloned().flatten().ok_or_else(|| format!("保存した直後に、申告を読めません（{} 番目）", i + 1))?;
+            let o = &mut outcomes[pos];
+            if &actual != wanted {
+                o.changed = 0;
+                o.superseded = true;
+            }
+            o.saved = actual;
+        }
+    }
+    Ok(outcomes)
 }
 
 /// レビューした時点の差分と、いまの差分を比べる（`git` を読むだけ。何も書かない）。
@@ -414,13 +513,35 @@ pub fn targets_from_states(states: &[String]) -> Targets {
     Targets { fix: pick(triage::FIX), hold: pick(triage::WAIT) }
 }
 
+/// **報告待ち**: すでに渡した（`release.fix` に入っている）指摘のうち、**いまも「直す」の対象**（`current_fix`）で、
+/// **今回の渡し分の申告が、まだ無い**もの（番号は、昇順）。エージェントが、報告を忘れた、または、まだ作業中の指摘。
+/// 申告の時刻が、渡した時刻より前のもの（前回以前の渡し分の申告）は、今回の申告に数えない。
+/// `reports` は、指摘の番号（0 始まり）で引く。
+pub fn awaiting_report(release: &Release, current_fix: &[usize], reports: &[Option<AgentReport>]) -> Vec<usize> {
+    let mut out: Vec<usize> = release
+        .fix
+        .iter()
+        .copied()
+        .filter(|i| current_fix.contains(i))
+        .filter(|&i| !reports.get(i).and_then(Option::as_ref).is_some_and(|r| r.reported_at >= release.released_at))
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 /// そのレビューの、渡す番号。**読み取りに失敗したら、エラーを返す**（全部「未仕分け」に見せない）。
 pub fn targets(dir: &Path, rec: &ReviewRecord) -> Result<Targets, String> {
+    targets_with_reports(dir, rec).map(|(t, _)| t)
+}
+
+/// `targets` と同じ。**読んだ申告も、一緒に返す**（呼び出し側が、同じ申告を、もう一度読まずに済むように）。
+pub fn targets_with_reports(dir: &Path, rec: &ReviewRecord) -> Result<(Targets, Vec<Option<AgentReport>>), String> {
     let n = rec.findings.len();
     let t = triage::try_get(dir, &rec.id, n)?;
     let reports = agent_report::try_get_all(dir, &rec.id, n)?;
     let note_rows = notes::try_get_all(dir, &rec.id, n)?;
-    Ok(targets_from_states(&handoff_states(&t, &reports, &note_rows)))
+    Ok((targets_from_states(&handoff_states(&t, &reports, &note_rows)), reports))
 }
 
 /// `ensure_release` の結果。
@@ -452,22 +573,15 @@ pub fn ensure_release(dir: &Path, review_id: &str, fix: &[usize], hold: &[usize]
         return Err(format!("渡した人の名前が正しくありません: {by}"));
     }
     let rec = store::try_get(dir, review_id)?.ok_or_else(|| format!("レビューが見つかりません: {review_id}"))?;
-    let (fix, hold) = checked_numbers(&rec, fix, hold)?;
     let old = {
         let conn = db::open(dir)?;
         read_release(&conn, review_id)? // 壊れていれば、ここで Err（上書きしない）
     };
-    match old {
-        Some(old) if old.diff_hash == rec.snapshot.diff_hash => {
-            if old.fix == fix && old.hold == hold {
-                return Ok((old, Ensured::Unchanged));
-            }
-            let updated = Release { fix, hold, ..old };
-            write_release(dir, &updated)?;
-            Ok((updated, Ensured::Updated))
-        }
-        _ => release(dir, review_id, &fix, &hold, by, now).map(|r| (r, Ensured::Created)),
+    let (r, how) = plan_release(&rec, old.as_ref(), fix, hold, by, now)?;
+    if how != Ensured::Unchanged {
+        write_release(dir, &r)?;
     }
+    Ok((r, how))
 }
 
 /// 渡した記録のすべて（`meta` を 1 回読むだけ）。レビューの ID → 読めた記録、または、読めなかった理由。
@@ -742,6 +856,182 @@ mod tests {
         assert_eq!(h.fix[0].reported.as_ref().map(|r| r.reported_at), Some(400));
         assert!(h.fix[0].previous_report.is_none());
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // ── まとめ報告（3d） ──
+
+    #[test]
+    fn report_many_saves_the_same_report_for_every_listed_finding_in_the_given_order() {
+        let d = tmp("many");
+        make_review(&d, "r1", 4);
+        release(&d, "r1", &[0, 1, 2], &[3], "gui", 100).unwrap();
+        let outs = report_many_via(&d, "r1", &[2, 0, 2], DID, "同じ直し方", "claude-code", "cli", 200).unwrap();
+        assert_eq!(outs.len(), 2, "重複は 1 つにまとまる");
+        assert!(outs.iter().all(|o| o.changed == 1 && o.saved.text == "同じ直し方" && o.saved.source == "cli:claude-code"));
+        let saved = agent_report::get_all(&d, "r1", 4);
+        assert!(saved[0].is_some() && saved[2].is_some());
+        assert!(saved[1].is_none() && saved[3].is_none(), "指定していない指摘には、書かない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 1 つでも、渡された「直す」の指摘でないものが混ざっていれば、何も保存しない。
+    #[test]
+    fn report_many_saves_nothing_when_one_of_the_findings_was_not_handed_over() {
+        let d = tmp("many-bad");
+        make_review(&d, "r1", 4);
+        release(&d, "r1", &[0, 1], &[2], "gui", 100).unwrap();
+        for bad in [vec![0, 2], vec![0, 3], vec![1, 9]] {
+            let e = report_many_via(&d, "r1", &bad, DID, "x", "claude-code", "cli", 200).unwrap_err();
+            assert!(e.contains("渡された") && e.contains("何も保存していません"), "{bad:?}: {e}");
+        }
+        assert_eq!(agent_report::get_all(&d, "r1", 4), vec![None, None, None, None], "一部だけ保存されていない");
+        assert!(report_many_via(&d, "r1", &[], DID, "x", "claude-code", "cli", 200).unwrap_err().contains("指定されていません"));
+        // 番号は、1 始まりで言う（人が数えた番号）
+        let e = report_many_via(&d, "r1", &[2], DID, "x", "claude-code", "cli", 200).unwrap_err();
+        assert!(e.contains("3 番目"), "0 始まりの番号を、そのまま見せない: {e}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn report_many_skips_only_the_identical_ones_inside_the_same_hand_over() {
+        let d = tmp("many-same");
+        make_review(&d, "r1", 3);
+        release(&d, "r1", &[0, 1, 2], &[], "gui", 100).unwrap();
+        report_via(&d, "r1", 0, DID, "直した", "claude-code", "cli", 150).unwrap();
+        let outs = report_many_via(&d, "r1", &[0, 1], DID, "直した", "claude-code", "cli", 200).unwrap();
+        assert_eq!((outs[0].changed, outs[0].saved.reported_at), (0, 150), "同じ内容は、保存しない（時刻も動かさない）");
+        assert_eq!((outs[1].changed, outs[1].saved.reported_at), (1, 200), "新しく、保存する");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // ── 3d のレビュー（2026-11-05）への対応 ──
+
+    /// **レビューが見つけた不具合**: `save` は、より新しい申告があれば、置き換えない。それでも、「保存した」と報告していた。
+    #[test]
+    fn a_report_that_was_not_stored_because_a_newer_one_exists_says_so_and_returns_the_stored_one() {
+        let d = tmp("superseded");
+        make_review(&d, "r1", 2);
+        release(&d, "r1", &[0, 1], &[], "gui", 100).unwrap();
+        // 時刻が、いまより先の申告が、すでにある（時計のずれ、取り込んだログの時刻、など）
+        let future = AgentReport { verdict: DID.into(), text: "先にあった申告".into(), reported_at: 9_000_000, source: "log:x".into() };
+        agent_report::save(&d, "r1", &[(0, future.clone())]).unwrap();
+
+        let outs = report_many_via(&d, "r1", &[0, 1], DID, "新しい文章", "claude-code", "cli", 200).unwrap();
+        assert!(outs[0].superseded && outs[0].changed == 0, "保存されなかったことを、言う");
+        assert_eq!(outs[0].saved, future, "返すのは、実際に入っているもの（入力ではない）");
+        assert!(!outs[1].superseded && outs[1].changed == 1, "もう一方は、保存された");
+        assert_eq!(outs[1].saved.text, "新しい文章");
+
+        let stored = agent_report::get_all(&d, "r1", 2);
+        assert_eq!(stored[0], Some(future), "DB は、変わっていない");
+        assert_eq!(stored[1].as_ref().map(|r| r.text.as_str()), Some("新しい文章"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 通常の保存では、`saved` は、DB に入っているものと同じで、`superseded` ではない。
+    #[test]
+    fn a_normal_report_returns_exactly_what_is_stored_and_is_not_superseded() {
+        let d = tmp("stored-same");
+        make_review(&d, "r1", 1);
+        release(&d, "r1", &[0], &[], "gui", 100).unwrap();
+        let o = report_via(&d, "r1", 0, DID, "直した", "claude-code", "cli", 200).unwrap();
+        assert!(!o.superseded && o.changed == 1);
+        assert_eq!(Some(o.saved), agent_report::get_all(&d, "r1", 1)[0]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// **レビューが見つけた不具合**: 渡した記録を書いてから、出力に失敗すると、半端な状態が残る。計画は、何も書かない。
+    #[test]
+    fn planning_a_release_writes_nothing_until_it_is_persisted() {
+        let d = tmp("plan");
+        let rec = make_review(&d, "r1", 3);
+        let (r, how) = plan_release(&rec, None, &[2, 0], &[1], "cli", 100).unwrap();
+        assert_eq!((how, r.released_at, r.fix.clone(), r.hold.clone()), (Ensured::Created, 100, vec![0, 2], vec![1]));
+        assert_eq!(get(&d, "r1").unwrap(), None, "計画しただけでは、何も書かない");
+
+        persist_releases(&d, &[(r.clone(), how)]).unwrap();
+        assert_eq!(get(&d, "r1").unwrap().unwrap().release, r, "保存したら、読める");
+
+        // 同じ内容の計画は Unchanged。番号が違えば Updated（渡した時刻は、そのまま）
+        let old = get(&d, "r1").unwrap().unwrap().release;
+        assert_eq!(plan_release(&rec, Some(&old), &[0, 2], &[1], "gui", 999).unwrap().1, Ensured::Unchanged);
+        let (u, how) = plan_release(&rec, Some(&old), &[0], &[1], "gui", 999).unwrap();
+        assert_eq!((how, u.released_at, u.by.as_str(), u.fix.clone()), (Ensured::Updated, 100, "cli", vec![0]));
+        // 計画も、検証する（範囲外・空・名前）
+        assert!(plan_release(&rec, None, &[9], &[], "cli", 1).unwrap_err().contains("範囲外"));
+        assert!(plan_release(&rec, None, &[], &[1], "cli", 1).unwrap_err().contains("0 件"));
+        assert!(plan_release(&rec, None, &[0], &[], "bad name", 1).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 複数の計画を、1 つの取引で保存する。`Unchanged` は、書かない。
+    #[test]
+    fn persist_releases_saves_created_and_updated_together_and_skips_unchanged() {
+        let d = tmp("persist");
+        let a = make_review(&d, "a", 2);
+        let b = make_review(&d, "b", 2);
+        let c = make_review(&d, "c", 2);
+        let (ra, ha) = plan_release(&a, None, &[0], &[], "cli", 10).unwrap();
+        let (rb, hb) = plan_release(&b, None, &[1], &[], "cli", 10).unwrap();
+        persist_releases(&d, &[(ra.clone(), ha), (rb.clone(), hb)]).unwrap();
+        // a は同じ内容（Unchanged）、b は更新、c は新規
+        let (ra2, ha2) = plan_release(&a, Some(&ra), &[0], &[], "cli", 20).unwrap();
+        let (rb2, hb2) = plan_release(&b, Some(&rb), &[0, 1], &[], "cli", 20).unwrap();
+        let (rc, hc) = plan_release(&c, None, &[0], &[], "cli", 20).unwrap();
+        assert_eq!((ha2, hb2, hc), (Ensured::Unchanged, Ensured::Updated, Ensured::Created));
+        persist_releases(&d, &[(ra2, ha2), (rb2, hb2), (rc, hc)]).unwrap();
+        assert_eq!(get(&d, "a").unwrap().unwrap().release.released_at, 10);
+        assert_eq!(get(&d, "b").unwrap().unwrap().release.fix, vec![0, 1]);
+        assert_eq!(get(&d, "b").unwrap().unwrap().release.released_at, 10, "更新でも、渡した時刻は、そのまま");
+        assert_eq!(get(&d, "c").unwrap().unwrap().release.released_at, 20);
+        persist_releases(&d, &[]).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 見え方は、読み書きせずに作れる。保存した記録から作った `get` と、同じになる。
+    #[test]
+    fn handoff_view_built_from_data_in_memory_equals_what_get_reads() {
+        let d = tmp("view");
+        let rec = make_review(&d, "r1", 3);
+        release(&d, "r1", &[0, 1], &[2], "gui", 100).unwrap();
+        report(&d, "r1", 0, SKIPPED, "前提が違う", "claude-code", 150).unwrap();
+        let rel = get(&d, "r1").unwrap().unwrap().release;
+        let reports = agent_report::try_get_all(&d, "r1", 3).unwrap();
+        assert_eq!(handoff_view(&rec, &rel, &reports).unwrap(), get(&d, "r1").unwrap().unwrap());
+        // 範囲外の番号は、エラー（黙って落とさない）
+        let bad = Release { fix: vec![7], ..rel };
+        assert!(handoff_view(&rec, &bad, &reports).unwrap_err().contains("指摘にありません"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn targets_with_reports_returns_the_reports_it_read() {
+        let d = tmp("tr");
+        let rec = make_review(&d, "r1", 2);
+        triage::set_with(&d, "r1", 0, triage::FIX, 2, 1, None).unwrap();
+        triage::set_with(&d, "r1", 1, triage::FIX, 2, 1, None).unwrap();
+        release(&d, "r1", &[0, 1], &[], "gui", 100).unwrap();
+        report(&d, "r1", 1, SKIPPED, "前提が違う", "claude-code", 150).unwrap();
+        let (t, reports) = targets_with_reports(&d, &rec).unwrap();
+        assert_eq!(t, targets(&d, &rec).unwrap());
+        assert_eq!(t.fix, vec![0, 1], "「直さなかった」は、外れない");
+        assert_eq!(reports, agent_report::try_get_all(&d, "r1", 2).unwrap());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // ── 報告待ち（3d） ──
+
+    #[test]
+    fn awaiting_report_picks_handed_findings_still_to_fix_without_a_report_from_this_hand_over() {
+        let rel = Release { review_id: "r1".into(), released_at: 100, fix: vec![0, 1, 2, 3], hold: vec![], head: None, diff_hash: "d".into(), by: "cli".into() };
+        let rep = |t: u64, v: &str| Some(AgentReport { verdict: v.into(), text: "x".into(), reported_at: t, source: "cli:t".into() });
+        //                         0: 今回の申告      1: 無し  2: 前回以前の申告  3: 今回の申告
+        let reports = vec![rep(150, SKIPPED), None, rep(50, DID), rep(100, SKIPPED), None];
+        assert_eq!(awaiting_report(&rel, &[0, 1, 2, 3], &reports), vec![1, 2], "今回の申告が無いものだけ（前回以前の申告は、数えない）");
+        assert_eq!(awaiting_report(&rel, &[1, 3], &reports), vec![1], "いまの対象から外れたもの（対応済みなど）は、含めない");
+        assert_eq!(awaiting_report(&rel, &[0, 1, 2, 3, 4], &reports), vec![1, 2], "渡していないもの（4 番）は、含めない");
+        assert_eq!(awaiting_report(&rel, &[], &reports), Vec::<usize>::new());
+        assert_eq!(awaiting_report(&rel, &[0, 1], &[]), vec![0, 1], "申告の一覧が短くても、「無い」として扱う");
     }
 
     #[test]
