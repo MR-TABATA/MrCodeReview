@@ -297,6 +297,18 @@ pub fn get(dir: &Path, id: &str) -> Option<ReviewRecord> {
     records(&conn, "SELECT record FROM reviews WHERE id = ?1", &[&id]).into_iter().next()
 }
 
+/// 1 件のレビュー。`get` と違い、**読めなかったことと、無いことを、区別する**。
+/// 無ければ `Ok(None)`。データベースを開けない・読み取りに失敗・記録が壊れている（JSON が読めない）ときは、`Err`（原因つき）。
+/// 原因を失わせたくないとき（渡す・報告する、など）は、こちらを使う。
+pub fn try_get(dir: &Path, id: &str) -> Result<Option<ReviewRecord>, String> {
+    let conn = db::open(dir)?;
+    match conn.query_row("SELECT record FROM reviews WHERE id = ?1", [id], |r| r.get::<_, String>(0)) {
+        Ok(json) => serde_json::from_str::<ReviewRecord>(&json).map(Some).map_err(|e| format!("レビューの記録を読めません（{id}）: {e}")),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("レビューを読み取れません（{id}）: {e}")),
+    }
+}
+
 /// 同じリポジトリ・同じ観点の、成功したレビュー。新しい順に `limit` 件。引き継ぎの候補。
 pub fn recent_ok(dir: &Path, repo: &str, recipe_id: &str, limit: usize) -> Vec<ReviewRecord> {
     let Ok(conn) = db::open(dir) else { return Vec::new() };
@@ -584,6 +596,20 @@ mod tests {
         let s: SnapshotRecord = serde_json::from_value(old).unwrap();
         assert_eq!(s.base, crate::snapshot::Base::default(), "古い記録には、比較元が無い");
         assert!(s.base.hash.is_empty() && s.base.spec.is_empty());
+    }
+
+    #[test]
+    fn try_get_tells_a_missing_review_from_an_unreadable_one() {
+        let dir = scratch("try-get");
+        append(&dir, &rec("ok", 1)).unwrap();
+        assert_eq!(try_get(&dir, "ok").unwrap().map(|r| r.id), Some("ok".to_string()));
+        assert_eq!(try_get(&dir, "nope").unwrap().map(|r| r.id), None, "無いのは、エラーではない");
+
+        db::open(&dir).unwrap().execute("UPDATE reviews SET record = 'これは壊れたJSON' WHERE id = 'ok'", []).unwrap();
+        let e = try_get(&dir, "ok").unwrap_err();
+        assert!(e.contains("読めません") && e.contains("ok"), "壊れていれば、エラー（無いことにしない）: {e}");
+        assert_eq!(get(&dir, "ok").map(|r| r.id), None, "従来の get は、同じ状態を『無い』と見せる（だから、try_get がある）");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -104,6 +104,9 @@ pub struct ReportOutcome {
     pub truncated: bool,
     /// 保存で、変わった件数（同じ内容の再提出なら 0）
     pub changed: usize,
+    /// **保存されている申告そのもの**（切り詰めたあとの文章を含む）。同じ内容の再提出（`changed == 0`）では、すでに保存されていたもの。
+    /// 呼び出し側は、読み戻さず、これを表示する（読み戻しの失敗を、入力の値で埋めないため）。
+    pub saved: AgentReport,
 }
 
 /// 渡した時点の差分と、いまの差分が、同じか。
@@ -162,7 +165,24 @@ pub fn release(dir: &Path, review_id: &str, fix: &[usize], hold: &[usize], by: &
     if !valid_name(by) {
         return Err(format!("渡した人の名前が正しくありません: {by}"));
     }
-    let rec = store::get(dir, review_id).ok_or_else(|| format!("レビューが見つかりません: {review_id}"))?;
+    // 読めなかったこと（壊れている・DB の失敗）と、無いことを、区別する（原因を失わせない）。
+    let rec = store::try_get(dir, review_id)?.ok_or_else(|| format!("レビューが見つかりません: {review_id}"))?;
+    let (fix, hold) = checked_numbers(&rec, fix, hold)?;
+    let r = Release {
+        review_id: review_id.to_string(),
+        released_at: now,
+        fix,
+        hold,
+        head: snapshot::head_of(&rec.repo),
+        diff_hash: rec.snapshot.diff_hash.clone(),
+        by: by.to_string(),
+    };
+    write_release(dir, &r)?;
+    Ok(r)
+}
+
+/// 渡す番号を、昇順・重複なしにして、検証する（空・範囲外・重なり）。
+fn checked_numbers(rec: &ReviewRecord, fix: &[usize], hold: &[usize]) -> Result<(Vec<usize>, Vec<usize>), String> {
     let n = rec.findings.len();
     let fix = sorted_unique(fix);
     let hold = sorted_unique(hold);
@@ -175,23 +195,18 @@ pub fn release(dir: &Path, review_id: &str, fix: &[usize], hold: &[usize], by: &
     if let Some(dup) = fix.iter().find(|i| hold.contains(i)) {
         return Err(format!("同じ指摘が、「直す」と「直さない」の両方に入っています: {dup}"));
     }
-    let r = Release {
-        review_id: review_id.to_string(),
-        released_at: now,
-        fix,
-        hold,
-        head: snapshot::head_of(&rec.repo),
-        diff_hash: rec.snapshot.diff_hash.clone(),
-        by: by.to_string(),
-    };
-    let json = serde_json::to_string(&r).map_err(|e| format!("渡した記録を作れません: {e}"))?;
+    Ok((fix, hold))
+}
+
+fn write_release(dir: &Path, r: &Release) -> Result<(), String> {
+    let json = serde_json::to_string(r).map_err(|e| format!("渡した記録を作れません: {e}"))?;
     let conn = db::open(dir)?;
     conn.execute(
         "INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-        params![key(review_id), json],
+        params![key(&r.review_id), json],
     )
     .map_err(|e| format!("渡した記録を保存できません: {e}"))?;
-    Ok(r)
+    Ok(())
 }
 
 /// 「渡した」を取り消す。取り消したら true、もともと渡していなければ false。
@@ -229,7 +244,7 @@ pub fn get(dir: &Path, review_id: &str) -> Result<Option<Handoff>, String> {
     }
     let conn = db::open(dir)?;
     let Some(release) = read_release(&conn, review_id)? else { return Ok(None) };
-    let rec = store::get(dir, review_id).ok_or_else(|| format!("渡した記録はありますが、レビューが見つかりません: {review_id}"))?;
+    let rec = store::try_get(dir, review_id)?.ok_or_else(|| format!("渡した記録はありますが、レビューが見つかりません: {review_id}"))?;
     let reports = agent_report::try_get_all_with_conn(&conn, review_id, rec.findings.len())?;
     let fix = released_findings(&rec, &release.fix, &reports, release.released_at)?;
     let hold = released_findings(&rec, &release.hold, &reports, release.released_at)?;
@@ -338,12 +353,12 @@ pub fn report_via(dir: &Path, review_id: &str, index: usize, verdict: &str, text
     // 新しい渡し分（古い申告の時刻が、渡した時刻より前）では、同じ文章でも保存する（さもないと、「前回以前の申告」に見えてしまう）。
     if let Some(Some(old)) = agent_report::try_get_all(dir, review_id, index + 1)?.into_iter().nth(index) {
         if old.verdict == verdict && old.text == stored_text && old.source == source && old.reported_at >= release.released_at {
-            return Ok(ReportOutcome { truncated, changed: 0 });
+            return Ok(ReportOutcome { truncated, changed: 0, saved: old });
         }
     }
     let r = AgentReport { verdict: verdict.to_string(), text: stored_text, reported_at: now, source };
-    let changed = agent_report::save(dir, review_id, &[(index, r)])?;
-    Ok(ReportOutcome { truncated, changed })
+    let changed = agent_report::save(dir, review_id, &[(index, r.clone())])?;
+    Ok(ReportOutcome { truncated, changed, saved: r })
 }
 
 /// レビューした時点の差分と、いまの差分を比べる（`git` を読むだけ。何も書かない）。
@@ -408,22 +423,97 @@ pub fn targets(dir: &Path, rec: &ReviewRecord) -> Result<Targets, String> {
     Ok(targets_from_states(&handoff_states(&t, &reports, &note_rows)))
 }
 
-/// 渡した記録を作る。**同じ内容（`fix`・`hold`・レビューの差分の識別子が、前回と同じ）なら、前回の記録を、そのまま使う**
-/// （`released_at` も `by` も動かさない）。動かすと、同じセッションで 2 回 `get` したとき、1 回目に書いた申告が、「前回以前」に回ってしまう。
-/// 違うときだけ、`release` で置き換える。戻り値の `bool` は、**作り直した（新しく記録した）か**。
-pub fn ensure_release(dir: &Path, review_id: &str, fix: &[usize], hold: &[usize], by: &str, now: u64) -> Result<(Release, bool), String> {
-    if valid_id(review_id) {
-        let old = {
-            let conn = db::open(dir)?;
-            read_release(&conn, review_id)?
-        };
-        if let (Some(old), Some(rec)) = (old, store::get(dir, review_id)) {
-            if old.fix == sorted_unique(fix) && old.hold == sorted_unique(hold) && old.diff_hash == rec.snapshot.diff_hash {
-                return Ok((old, false));
-            }
-        }
+/// `ensure_release` の結果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ensured {
+    /// 新しく記録した（渡した時刻は、いま。新しい渡し分の始まり）
+    Created,
+    /// すでにある記録の、**対象の番号だけを更新した**（渡した時刻は、そのまま）
+    Updated,
+    /// 同じ内容だったので、何も書かなかった
+    Unchanged,
+}
+
+/// 渡した記録を、**無ければ作り、あれば、渡した時刻を動かさずに、対象の番号を更新する**。
+///
+/// 「渡した時刻」は、**渡し分の始まり**を表す。申告のうち、その時刻より前のものは、「前回以前」として、今回の申告とは別に見せる。
+/// - 記録が無い → `release` で作る（`Created`）。**新しい渡し分は、ここか、`revoke` のあとの、作り直しで始まる。**
+/// - 記録がある（同じレビュー・同じ差分の識別子）→ `fix`・`hold` が同じなら何もしない（`Unchanged`）。違えば、番号だけ更新（`Updated`）。
+///   対象が**減る**（エージェントが「対応した」と申告して、外れた）ときも、**増える**（あなたが、新しく「対応」にした）ときも、渡した時刻は動かさない。
+///   動かすと、同じ作業の途中で書いた申告が、「前回以前」に回ってしまう。
+/// - 記録の差分の識別子が、レビューのものと違う（別の差分に対して渡した記録）→ 作り直す（`Created`）。
+///
+/// **読めなかったことを、黙って埋めない**: レビューが読めない・渡した記録が壊れているときは、エラーを返す（記録を作り直して、原因を消さない）。
+pub fn ensure_release(dir: &Path, review_id: &str, fix: &[usize], hold: &[usize], by: &str, now: u64) -> Result<(Release, Ensured), String> {
+    if !valid_id(review_id) {
+        return Err(format!("レビューの識別子が正しくありません: {review_id}"));
     }
-    release(dir, review_id, fix, hold, by, now).map(|r| (r, true))
+    if !valid_name(by) {
+        return Err(format!("渡した人の名前が正しくありません: {by}"));
+    }
+    let rec = store::try_get(dir, review_id)?.ok_or_else(|| format!("レビューが見つかりません: {review_id}"))?;
+    let (fix, hold) = checked_numbers(&rec, fix, hold)?;
+    let old = {
+        let conn = db::open(dir)?;
+        read_release(&conn, review_id)? // 壊れていれば、ここで Err（上書きしない）
+    };
+    match old {
+        Some(old) if old.diff_hash == rec.snapshot.diff_hash => {
+            if old.fix == fix && old.hold == hold {
+                return Ok((old, Ensured::Unchanged));
+            }
+            let updated = Release { fix, hold, ..old };
+            write_release(dir, &updated)?;
+            Ok((updated, Ensured::Updated))
+        }
+        _ => release(dir, review_id, &fix, &hold, by, now).map(|r| (r, Ensured::Created)),
+    }
+}
+
+/// 渡した記録のすべて（`meta` を 1 回読むだけ）。レビューの ID → 読めた記録、または、読めなかった理由。
+/// 一覧で、「渡し済みか」を、レビューごとに DB を開き直さずに調べるため。
+pub fn releases(dir: &Path) -> Result<std::collections::HashMap<String, Result<Release, String>>, String> {
+    let conn = db::open(dir)?;
+    let w = |e: rusqlite::Error| format!("渡した記録を読み取れません: {e}");
+    let mut stmt = conn.prepare("SELECT key, value FROM meta WHERE substr(key, 1, ?1) = ?2").map_err(w)?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map(params![KEY_PREFIX.len() as i64, KEY_PREFIX], |r| Ok((r.get(0)?, r.get(1)?)))
+        .map_err(w)?
+        .collect::<Result<_, _>>()
+        .map_err(w)?;
+    Ok(rows
+        .into_iter()
+        .map(|(k, v)| {
+            let id = k[KEY_PREFIX.len()..].to_string();
+            let parsed = if valid_id(&id) { parse_release(&id, &v) } else { Err("識別子が正しくありません".to_string()) };
+            (id, parsed)
+        })
+        .collect())
+}
+
+/// そのリポジトリで、**「対応」の仕分けが 1 件でもあり**、成功して、指摘のあるレビューの ID（新しい順。最大 `limit` 件）。
+/// 1 回の SQL で絞る。仕分けのないレビューは、読み込まない（レビュー全体の JSON は、重い）。
+/// `repo_keys` は、リポジトリのパスの候補（空ならエラー）。
+pub fn pending_review_ids(dir: &Path, repo_keys: &[String], limit: usize) -> Result<Vec<String>, String> {
+    if repo_keys.is_empty() {
+        return Err("リポジトリのパスがありません".to_string());
+    }
+    let conn = db::open(dir)?;
+    let marks = repo_keys.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT r.id FROM reviews r WHERE r.repo IN ({marks}) AND r.ok = 1 AND r.findings_count > 0 \
+         AND EXISTS (SELECT 1 FROM triage t WHERE t.review_id = r.id AND t.state = 'fix') \
+         ORDER BY r.created_at DESC, r.rowid DESC LIMIT {}",
+        limit as i64
+    );
+    let w = |e: rusqlite::Error| format!("対応が残るレビューを調べられません: {e}");
+    let mut stmt = conn.prepare(&sql).map_err(w)?;
+    let ids: Vec<String> = stmt
+        .query_map(rusqlite::params_from_iter(repo_keys.iter()), |r| r.get::<_, String>(0))
+        .map_err(w)?
+        .collect::<Result<_, _>>()
+        .map_err(w)?;
+    Ok(ids)
 }
 
 #[cfg(test)]
@@ -917,54 +1007,85 @@ mod tests {
     // ── ensure_release ──
 
     #[test]
-    fn ensure_release_keeps_the_previous_record_when_nothing_changed() {
+    fn ensure_release_creates_once_and_leaves_an_identical_request_alone() {
         let d = tmp("ensure-same");
         make_review(&d, "r1", 3);
-        let (a, created) = ensure_release(&d, "r1", &[2, 0], &[1], "cli", 100).unwrap();
-        assert!(created);
+        let (a, how) = ensure_release(&d, "r1", &[2, 0], &[1], "cli", 100).unwrap();
+        assert_eq!(how, Ensured::Created);
         assert_eq!((a.released_at, a.by.as_str()), (100, "cli"));
 
-        let (b, created) = ensure_release(&d, "r1", &[0, 2], &[1], "gui", 999).unwrap();
-        assert!(!created, "同じ内容なら、作り直さない");
+        let (b, how) = ensure_release(&d, "r1", &[0, 2], &[1], "gui", 999).unwrap();
+        assert_eq!(how, Ensured::Unchanged, "同じ内容なら、何も書かない");
         assert_eq!((b.released_at, b.by.as_str()), (100, "cli"), "released_at も by も、動かさない");
         assert_eq!(get(&d, "r1").unwrap().unwrap().release.released_at, 100);
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// 同じセッションで `get` を 2 回呼んでも、1 回目に書いた申告が、「前回以前」に回らない。
+    /// **3b のレビューが見つけた不具合**: エージェントが `#1` を「対応した」と申告すると、次の `get` の対象が減る。
+    /// そのとき記録を作り直すと、`#2` の申告が、「前回以前」に回ってしまっていた。
     #[test]
-    fn a_second_get_in_the_same_session_does_not_demote_this_rounds_report() {
-        let d = tmp("ensure-session");
+    fn targets_shrinking_after_a_did_report_does_not_demote_the_other_reports() {
+        let d = tmp("ensure-shrink");
         make_review(&d, "r1", 2);
         ensure_release(&d, "r1", &[0, 1], &[], "cli", 100).unwrap();
         report(&d, "r1", 0, DID, "直した", "claude-code", 200).unwrap();
-        ensure_release(&d, "r1", &[0, 1], &[], "cli", 300).unwrap(); // 2 回目の get
+        report(&d, "r1", 1, SKIPPED, "前提が違う", "claude-code", 210).unwrap();
+
+        // 2 回目の get。「対応した」の #1 は、対象から外れて、[1] だけになる
+        let (r, how) = ensure_release(&d, "r1", &[1], &[], "cli", 300).unwrap();
+        assert_eq!(how, Ensured::Updated, "番号だけを更新する");
+        assert_eq!((r.released_at, r.fix.clone()), (100, vec![1]), "渡した時刻は、動かさない");
         let h = get(&d, "r1").unwrap().unwrap();
-        assert_eq!(h.fix[0].reported.as_ref().map(|r| r.reported_at), Some(200), "今回の申告のまま");
-        assert!(h.fix[0].previous_report.is_none());
+        assert_eq!(h.fix.len(), 1);
+        assert_eq!(h.fix[0].index, 1);
+        assert_eq!(h.fix[0].reported.as_ref().map(|r| (r.verdict.as_str(), r.reported_at)), Some(("skipped", 210)), "今回の申告のまま");
+        assert!(h.fix[0].previous_report.is_none(), "「前回以前」に降格しない");
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn ensure_release_replaces_when_the_content_differs() {
-        let d = tmp("ensure-diff");
+    fn the_hand_over_time_stays_when_targets_grow_or_the_hold_list_changes() {
+        let d = tmp("ensure-grow");
         make_review(&d, "r1", 4);
-        ensure_release(&d, "r1", &[0, 1], &[], "cli", 100).unwrap();
+        ensure_release(&d, "r1", &[0], &[1], "cli", 100).unwrap();
+        report(&d, "r1", 0, DID, "直した", "claude-code", 150).unwrap();
 
-        let (b, created) = ensure_release(&d, "r1", &[0], &[], "cli", 200).unwrap();
-        assert!(created, "直す番号が違う");
-        assert_eq!((b.released_at, b.fix.clone()), (200, vec![0]));
-        let (c, created) = ensure_release(&d, "r1", &[0], &[3], "cli", 300).unwrap();
-        assert!(created, "直さない番号が違う");
-        assert_eq!((c.released_at, c.hold.clone()), (300, vec![3]));
+        // あなたが、2 番も「対応」にした（対象が増える）
+        let (a, how) = ensure_release(&d, "r1", &[0, 2], &[1], "cli", 200).unwrap();
+        assert_eq!((how, a.released_at, a.fix.clone()), (Ensured::Updated, 100, vec![0, 2]));
+        // 「直さない」の欄が変わった
+        let (b, how) = ensure_release(&d, "r1", &[0, 2], &[3], "cli", 300).unwrap();
+        assert_eq!((how, b.released_at, b.hold.clone(), b.by.as_str()), (Ensured::Updated, 100, vec![3], "cli"));
 
-        // 差分の識別子が違う記録（別の差分に対して渡したもの）は、置き換える
-        let mut raw = raw_release("r1", vec![0], vec![3]);
+        let h = get(&d, "r1").unwrap().unwrap();
+        assert_eq!(h.fix.iter().map(|f| f.index).collect::<Vec<_>>(), vec![0, 2], "取る内容は、最新の対象");
+        assert_eq!(h.hold.iter().map(|f| f.index).collect::<Vec<_>>(), vec![3]);
+        assert_eq!(h.fix[0].reported.as_ref().map(|r| r.reported_at), Some(150), "途中で書いた申告は、今回のまま");
+        assert!(h.fix[1].reported.is_none() && h.fix[1].previous_report.is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_new_hand_over_starts_after_a_revoke_or_for_a_different_diff() {
+        let d = tmp("ensure-new");
+        make_review(&d, "r1", 2);
+        ensure_release(&d, "r1", &[0], &[], "cli", 100).unwrap();
+        report(&d, "r1", 0, SKIPPED, "前提が違う", "claude-code", 200).unwrap();
+
+        // 取り消してから、もう一度渡す → 新しい渡し分。前の申告は、「前回以前」
+        assert!(revoke(&d, "r1").unwrap());
+        let (r, how) = ensure_release(&d, "r1", &[0], &[], "cli", 300).unwrap();
+        assert_eq!((how, r.released_at), (Ensured::Created, 300));
+        let h = get(&d, "r1").unwrap().unwrap();
+        assert!(h.fix[0].reported.is_none());
+        assert_eq!(h.fix[0].previous_report.as_ref().map(|r| r.reported_at), Some(200));
+
+        // 別の差分に対して渡した記録（差分の識別子が違う）は、作り直す
+        let mut raw = raw_release("r1", vec![0], vec![]);
         raw.diff_hash = "別の差分".into();
         insert_release(&d, &raw);
-        let (e, created) = ensure_release(&d, "r1", &[0], &[3], "cli", 400).unwrap();
-        assert!(created, "diff_hash が違う");
-        assert_eq!((e.released_at, e.diff_hash.as_str()), (400, "d"));
+        let (e, how) = ensure_release(&d, "r1", &[0], &[], "cli", 400).unwrap();
+        assert_eq!((how, e.released_at, e.diff_hash.as_str()), (Ensured::Created, 400, "d"));
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -978,6 +1099,117 @@ mod tests {
         assert!(ensure_release(&d, "r1", &[], &[], "cli", 3).is_err(), "すでにある記録があっても、空では上書きしない");
         assert_eq!(get(&d, "r1").unwrap().unwrap().release.fix, vec![0]);
         assert!(ensure_release(&d, "../x", &[0], &[], "cli", 1).is_err(), "識別子の検証は、release と同じ");
+        assert!(ensure_release(&d, "r1", &[9], &[], "cli", 1).unwrap_err().contains("範囲外"), "範囲外の番号は、更新でも拒む");
+        assert_eq!(get(&d, "r1").unwrap().unwrap().release.fix, vec![0], "拒んだ呼び出しは、何も変えない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn meta_value(d: &Path, k: &str) -> Option<String> {
+        db::open(d).unwrap().query_row("SELECT value FROM meta WHERE key = ?1", [k], |r| r.get(0)).ok()
+    }
+
+    /// 読めなかったことを、「無い」に見せない。壊れた記録を、黙って作り直して、原因を消さない。
+    #[test]
+    fn unreadable_reviews_and_records_are_errors_not_silently_replaced() {
+        let d = tmp("unreadable");
+        make_review(&d, "r1", 2);
+        release(&d, "r1", &[0], &[], "gui", 1).unwrap();
+        let before = meta_value(&d, &key("r1")).expect("記録がある");
+
+        // レビューの記録が壊れている → 「見つかりません」ではなく、読めない、と言う
+        db::open(&d).unwrap().execute("UPDATE reviews SET record = 'これは壊れたJSON' WHERE id = 'r1'", []).unwrap();
+        assert!(release(&d, "r1", &[0], &[], "gui", 2).unwrap_err().contains("読めません"));
+        assert!(ensure_release(&d, "r1", &[0], &[], "cli", 2).unwrap_err().contains("読めません"));
+        assert_eq!(meta_value(&d, &key("r1")).unwrap(), before, "渡した記録は、変わらない");
+        // 本当に無いレビューは、「見つかりません」
+        assert!(release(&d, "nope", &[0], &[], "gui", 2).unwrap_err().contains("見つかりません"));
+        assert!(ensure_release(&d, "nope", &[0], &[], "cli", 2).unwrap_err().contains("見つかりません"));
+
+        // 渡した記録が壊れている → 上書きせず、エラー
+        make_review(&d, "r2", 2);
+        db::open(&d).unwrap().execute("INSERT INTO meta (key, value) VALUES (?1, 'これはJSONではない')", [key("r2")]).unwrap();
+        assert!(ensure_release(&d, "r2", &[0], &[], "cli", 3).unwrap_err().contains("読めません"));
+        assert_eq!(meta_value(&d, &key("r2")).unwrap(), "これはJSONではない", "壊れた記録を、上書きして、原因を消さない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn report_with_a_broken_release_record_fails_and_saves_nothing() {
+        let d = tmp("report-broken");
+        make_review(&d, "r1", 2);
+        db::open(&d).unwrap().execute("INSERT INTO meta (key, value) VALUES (?1, 'これはJSONではない')", [key("r1")]).unwrap();
+        let e = report(&d, "r1", 0, DID, "直した", "claude-code", 9).unwrap_err();
+        assert!(e.contains("読めません"), "「渡されていません」に見せない: {e}");
+        assert_eq!(agent_report::get_all(&d, "r1", 2), vec![None, None], "何も保存しない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 保存した申告そのものを返す（切り詰めたあとの文章を含む）。呼び出し側が、読み戻さなくてよい。
+    #[test]
+    fn report_returns_what_it_saved_including_the_truncated_text() {
+        let d = tmp("saved");
+        make_review(&d, "r1", 1);
+        release(&d, "r1", &[0], &[], "gui", 100).unwrap();
+        let long = "あ".repeat(TEXT_MAX + 5);
+        let o = report_via(&d, "r1", 0, DID, &long, "claude-code", "cli", 200).unwrap();
+        assert!(o.truncated);
+        assert_eq!(o.saved.text.chars().count(), TEXT_MAX, "返ってくるのは、保存された（切り詰めた）文章");
+        assert_eq!((o.saved.verdict.as_str(), o.saved.source.as_str(), o.saved.reported_at), ("did", "cli:claude-code", 200));
+        assert_eq!(Some(o.saved.clone()), agent_report::get_all(&d, "r1", 1)[0], "DB に入っているものと、同じ");
+
+        // 同じ内容の再提出（時刻だけ違う）は、保存せず、すでにあるものを返す
+        let again = report_via(&d, "r1", 0, DID, &long, "claude-code", "cli", 999).unwrap();
+        assert_eq!((again.changed, again.saved.reported_at), (0, 200));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn releases_reads_every_record_at_once_and_says_why_one_is_unreadable() {
+        let d = tmp("releases");
+        make_review(&d, "a", 1);
+        make_review(&d, "b", 1);
+        assert!(releases(&d).unwrap().is_empty());
+        release(&d, "a", &[0], &[], "gui", 5).unwrap();
+        release(&d, "b", &[0], &[], "cli", 6).unwrap();
+        let conn = db::open(&d).unwrap();
+        conn.execute("INSERT INTO meta (key, value) VALUES (?1, 'これはJSONではない')", [key("broken")]).unwrap();
+        conn.execute("INSERT INTO meta (key, value) VALUES ('handoff_release:a b', '{}')", []).unwrap();
+        conn.execute("INSERT INTO meta (key, value) VALUES ('agent_log_consent_v2', '1') ON CONFLICT (key) DO NOTHING", []).unwrap();
+        let all = releases(&d).unwrap();
+        assert_eq!(all.len(), 4, "無関係な meta キーは、含まない");
+        assert_eq!(all["a"].as_ref().unwrap().by, "gui");
+        assert_eq!(all["b"].as_ref().unwrap().released_at, 6);
+        assert!(all["broken"].as_ref().unwrap_err().contains("読めません"));
+        assert!(all["a b"].is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 「対応」の仕分けがあるレビューだけを、1 回の SQL で絞る。仕分けのないもの・失敗したもの・指摘のないもの・別のリポジトリは、含めない。
+    #[test]
+    fn pending_review_ids_picks_only_successful_reviews_with_a_fix_mark_in_the_repo() {
+        let d = tmp("pending");
+        let mk = |id: &str, at: u64, repo: &str, n: usize| {
+            let mut r = sample_record(id, at);
+            r.repo = repo.into();
+            r.findings = (0..n).map(finding).collect();
+            r
+        };
+        let mut failed = mk("failed", 5, "/r", 1);
+        failed.error = Some("LLM の呼び出しに失敗".into());
+        for r in [mk("old", 1, "/r", 1), mk("new", 4, "/r", 2), mk("nofix", 2, "/r", 1), mk("other", 3, "/other", 1), mk("empty", 6, "/r", 0), failed, mk("sub", 7, "/r/sub", 1)] {
+            store::append(&d, &r).unwrap();
+        }
+        for (id, n) in [("old", 1), ("new", 2), ("other", 1), ("empty", 1), ("failed", 1), ("sub", 1)] {
+            triage::set_with(&d, id, 0, triage::FIX, n, 1, None).unwrap();
+        }
+        triage::set_with(&d, "nofix", 0, triage::WAIT, 1, 1, None).unwrap();
+
+        let ids = |keys: &[&str], limit: usize| pending_review_ids(&d, &keys.iter().map(|s| s.to_string()).collect::<Vec<_>>(), limit).unwrap();
+        assert_eq!(ids(&["/r"], 10), vec!["new", "old"], "新しい順。仕分けなし・失敗・指摘なし・別のリポジトリは、除く");
+        assert_eq!(ids(&["/r", "/r/sub"], 10), vec!["sub", "new", "old"], "パスの候補が 2 つでも、1 回で引ける");
+        assert_eq!(ids(&["/r"], 1), vec!["new"], "上限");
+        assert!(ids(&["/nothing"], 10).is_empty());
+        assert!(pending_review_ids(&d, &[], 10).is_err(), "候補が空なら、エラー");
         let _ = std::fs::remove_dir_all(&d);
     }
 }
