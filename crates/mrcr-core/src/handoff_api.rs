@@ -1232,6 +1232,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// 実際に起きたこと: レビューのあとに、別のエージェントが、新しいファイルへ `git add -N` した。
+    /// コードは同じなのに、「古い」と判定され、「対応」にした指摘が、渡されなかった。
+    #[test]
+    fn registering_a_new_file_after_the_review_does_not_make_it_stale() {
+        let d = tmp("stale-add");
+        let repo = d.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-q", "-m", "init"]);
+        std::fs::write(repo.join("new.txt"), "新しいファイル\n").unwrap(); // 未登録のまま、レビューする
+
+        let repo_s = repo.to_string_lossy().to_string();
+        let snap = snapshot::take_with(&repo_s, &Limits::default()).unwrap();
+        let mut rec = sample_record("r1", 1000);
+        rec.repo = repo_s;
+        rec.snapshot.head = snap.head.clone();
+        rec.snapshot.base = snap.base.clone();
+        rec.snapshot.diff_hash = snap.diff_hash.clone();
+        let lim = Limits::default();
+        assert_eq!(staleness(&rec, &lim), Staleness::Same);
+
+        git(&repo, &["add", "-N", "new.txt"]);
+        assert_eq!(staleness(&rec, &lim), Staleness::Same, "git add -N しても、コードは同じ");
+        git(&repo, &["add", "new.txt"]);
+        assert_eq!(staleness(&rec, &lim), Staleness::Same, "git add しても、コードは同じ");
+
+        std::fs::write(repo.join("new.txt"), "書き換えた\n").unwrap();
+        assert_eq!(staleness(&rec, &lim), Staleness::Changed, "中身が変われば、古い");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     // ── 渡す対象の決め方 ──
 
     fn states(v: &[&str]) -> Vec<String> {

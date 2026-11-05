@@ -140,6 +140,26 @@ pub fn split_diff(diff: &str) -> Vec<(String, String)> {
     out
 }
 
+/// 新しいファイルの塊（`new file mode` で始まる）から、`index <旧>..<新>` の行を外す。
+/// 変更・削除・名前の変更の塊は、そのまま（過去の記録の識別子を、変えないため）。
+fn without_new_file_index_line(chunk: &str) -> String {
+    let mut lines = chunk.split_inclusive('\n');
+    let (Some(first), Some(second)) = (lines.next(), lines.next()) else { return chunk.to_string() };
+    if !first.starts_with("diff --git ") || !second.starts_with("new file mode ") {
+        return chunk.to_string();
+    }
+    let mut out = String::with_capacity(chunk.len());
+    out.push_str(first);
+    out.push_str(second);
+    if let Some(third) = lines.next() {
+        if !third.starts_with("index ") {
+            out.push_str(third);
+        }
+    }
+    out.extend(lines);
+    out
+}
+
 fn is_lockfile(path: &str, lockfiles: &[String]) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
     lockfiles.iter().any(|l| l == name)
@@ -366,6 +386,11 @@ pub fn take_with_base(repo: &str, limits: &Limits, base: Option<&str>) -> Result
         .collect();
 
     let mut chunks = split_diff(&diff);
+    // 登録した（`git add` / `git add -N`）新しいファイルは、`git diff` が `index` の行を付ける。未登録のものには付かない。
+    // 登録の有無で、差分の識別子が変わらないよう、新しいファイルの塊からは、この行を外す。
+    for (_, text) in &mut chunks {
+        *text = without_new_file_index_line(text);
+    }
     let (new_chunks, mut untracked_excluded) = untracked_chunks_with(root, &untracked, limits);
     chunks.extend(new_chunks);
     let (files, mut excluded) = select_with(chunks, limits);
@@ -524,6 +549,49 @@ mod tests {
         let mut v: Vec<&str> = s.files.iter().map(|f| f.path.as_str()).collect();
         v.sort_unstable();
         v
+    }
+
+    /// 新しいファイルを `git add -N`（や `git add`）で登録しても、差分の識別子は変わらない。
+    /// 登録の前後で変わるのは、Git が付ける `index` の行（blob のハッシュ）だけで、内容は同じ。
+    /// これが変わると、「レビューのあとに、コードが変わった」と誤って判定される。
+    #[test]
+    fn registering_a_new_file_with_git_does_not_change_the_diff_hash() {
+        let dir = base_repo("register");
+        let d = dir.to_str().unwrap();
+        let lim = Limits::default();
+        let untracked = take_with(d, &lim).unwrap();
+        let chunk = |s: &Snapshot, p: &str| s.files.iter().find(|f| f.path == p).unwrap().text.clone();
+        assert!(!chunk(&untracked, "c.txt").contains("\nindex "), "未登録の新しいファイルには、index の行が無い");
+
+        run_git(&dir, &["add", "-N", "c.txt"]);
+        let intent = take_with(d, &lim).unwrap();
+        assert_eq!(intent.diff_hash, untracked.diff_hash, "git add -N しても、識別子は同じ");
+        assert_eq!(chunk(&intent, "c.txt"), chunk(&untracked, "c.txt"), "差分の文面も、同じ");
+
+        run_git(&dir, &["add", "c.txt"]);
+        let staged = take_with(d, &lim).unwrap();
+        assert_eq!(staged.diff_hash, untracked.diff_hash, "git add しても、識別子は同じ");
+
+        // 変更されたファイル（追跡中）の差分は、いじらない。index の行は、そのまま残る（過去の記録の識別子を変えないため）
+        assert!(chunk(&staged, "a.txt").contains("\nindex "), "変更されたファイルの index の行は、残す");
+        // 内容が変われば、ちゃんと変わる
+        std::fs::write(dir.join("c.txt"), "c changed\n").unwrap();
+        assert_ne!(take_with(d, &lim).unwrap().diff_hash, untracked.diff_hash, "内容が変われば、識別子も変わる");
+    }
+
+    #[test]
+    fn the_index_line_is_dropped_only_from_new_file_chunks() {
+        let new = "diff --git a/x b/x\nnew file mode 100644\nindex 0000000..e69de29\n--- /dev/null\n+++ b/x\n@@ -0,0 +1 @@\n+index 1\n";
+        let want = "diff --git a/x b/x\nnew file mode 100644\n--- /dev/null\n+++ b/x\n@@ -0,0 +1 @@\n+index 1\n";
+        assert_eq!(without_new_file_index_line(new), want, "内容の行（+index 1）は、触らない");
+        assert_eq!(without_new_file_index_line(want), want, "もう無ければ、そのまま");
+        let modified = "diff --git a/x b/x\nindex 1..2 100644\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n";
+        assert_eq!(without_new_file_index_line(modified), modified, "変更されたファイルは、そのまま");
+        let deleted = "diff --git a/x b/x\ndeleted file mode 100644\nindex e69de29..0000000\n--- a/x\n+++ /dev/null\n";
+        assert_eq!(without_new_file_index_line(deleted), deleted, "削除されたファイルは、そのまま");
+        for short in ["", "diff --git a/x b/x\n", "diff --git a/x b/x\nnew file mode 100644\n"] {
+            assert_eq!(without_new_file_index_line(short), short, "短い塊も、壊さない: {short:?}");
+        }
     }
 
     #[test]
