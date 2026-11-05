@@ -1,4 +1,5 @@
 mod args;
+mod handoff_cmd;
 
 use args::{Cli, Commands, ReviewArgs};
 use clap::{CommandFactory, Parser};
@@ -81,6 +82,7 @@ fn main() {
             0
         }
         Some(Commands::Recipes { repo, lang }) => run_recipes(&repo, &lang),
+        Some(Commands::Handoff { action }) => handoff_cmd::run(action),
         Some(Commands::Review(args)) => run_review(args),
         None => run_review(cli.review),
     };

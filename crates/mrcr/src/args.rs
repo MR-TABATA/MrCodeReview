@@ -38,6 +38,63 @@ pub enum Commands {
         /// 対象シェル (bash, zsh, fish, powershell)
         shell: String,
     },
+    /// エージェントに渡す「対応」の指摘を取り、直した結果を報告する（デスクトップアプリで「対応」にした指摘が対象）
+    Handoff {
+        #[command(subcommand)]
+        action: HandoffAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum HandoffAction {
+    /// 対応の指摘が残っているレビューの一覧（何も渡さない。記録もしない）
+    List {
+        /// 対象リポジトリのパス
+        #[arg(short = 'C', long, default_value = ".")]
+        repo: PathBuf,
+
+        /// 構造化した JSON で出す
+        #[arg(long)]
+        json: bool,
+    },
+    /// 渡す指摘を取る。この瞬間を「渡した」として記録する。引数なしなら、このリポジトリで対応が残っているレビューを、まとめて
+    Get {
+        /// このレビューだけを取る（`list` で分かる ID）
+        review_id: Option<String>,
+
+        /// 対象リポジトリのパス
+        #[arg(short = 'C', long, default_value = ".")]
+        repo: PathBuf,
+
+        /// 構造化した JSON で出す
+        #[arg(long)]
+        json: bool,
+    },
+    /// 直した結果（申告）を保存する。渡された「直す」の指摘にだけ書ける。保存した内容を、標準出力に出す
+    #[command(group(clap::ArgGroup::new("verdict").required(true).multiple(false).args(["did", "skipped"])))]
+    Report {
+        /// レビューの ID（`get` が見せたもの）
+        review_id: String,
+
+        /// 指摘。`get` が見せた ID（`mrcr:<レビュー>#<番号>`）か、番号（1 始まり。`#2` でもよい）
+        finding: String,
+
+        /// 直した
+        #[arg(long)]
+        did: bool,
+
+        /// 直さなかった（理由を `--text` に書く）
+        #[arg(long)]
+        skipped: bool,
+
+        /// 何をしたか／なぜ直さなかったか
+        #[arg(long)]
+        text: String,
+
+        /// エージェントの名前（英数字と `-_.`、40 文字まで）
+        #[arg(long, default_value = "agent", value_name = "NAME")]
+        client: String,
+    },
 }
 
 #[derive(Args, Debug, Clone)]
@@ -144,5 +201,54 @@ mod tests {
         }
         let e = timeout_of(&["review", "--timeout"]).expect_err("値が無い");
         assert!(e.to_string().contains("--timeout"), "値が無いときも、どのオプションかを言う: {e}");
+    }
+
+    fn handoff(args: &[&str]) -> Result<HandoffAction, clap::Error> {
+        let mut argv = vec!["mrcr", "handoff"];
+        argv.extend_from_slice(args);
+        match Cli::try_parse_from(argv)?.command {
+            Some(Commands::Handoff { action }) => Ok(action),
+            other => panic!("handoff ではない: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn handoff_get_takes_an_optional_review_id_and_defaults_to_the_current_directory() {
+        match handoff(&["get"]).unwrap() {
+            HandoffAction::Get { review_id, repo, json } => assert_eq!((review_id, repo, json), (None, PathBuf::from("."), false)),
+            other => panic!("{other:?}"),
+        }
+        match handoff(&["get", "1793-ab", "-C", "/r", "--json"]).unwrap() {
+            HandoffAction::Get { review_id, repo, json } => assert_eq!((review_id.as_deref(), repo, json), (Some("1793-ab"), PathBuf::from("/r"), true)),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn handoff_report_needs_exactly_one_of_did_and_skipped() {
+        match handoff(&["report", "r1", "2", "--did", "--text", "直した"]).unwrap() {
+            HandoffAction::Report { review_id, finding, did, skipped, text, client } => {
+                assert_eq!((review_id.as_str(), finding.as_str(), did, skipped, text.as_str(), client.as_str()), ("r1", "2", true, false, "直した", "agent"));
+            }
+            other => panic!("{other:?}"),
+        }
+        match handoff(&["report", "r1", "#2", "--skipped", "--text", "前提が違う", "--client", "claude-code"]).unwrap() {
+            HandoffAction::Report { did, skipped, client, .. } => assert_eq!((did, skipped, client.as_str()), (false, true, "claude-code")),
+            other => panic!("{other:?}"),
+        }
+        let neither = handoff(&["report", "r1", "2", "--text", "x"]).expect_err("どちらも無い");
+        assert_eq!(neither.kind(), clap::error::ErrorKind::MissingRequiredArgument, "{neither}");
+        let both = handoff(&["report", "r1", "2", "--did", "--skipped", "--text", "x"]).expect_err("両方");
+        assert_eq!(both.kind(), clap::error::ErrorKind::ArgumentConflict, "{both}");
+        let no_text = handoff(&["report", "r1", "2", "--did"]).expect_err("文章が無い");
+        assert_eq!(no_text.kind(), clap::error::ErrorKind::MissingRequiredArgument, "{no_text}");
+    }
+
+    #[test]
+    fn handoff_has_no_release_or_revoke_subcommand() {
+        for name in ["release", "revoke"] {
+            let e = handoff(&[name, "r1"]).expect_err(name);
+            assert_eq!(e.kind(), clap::error::ErrorKind::InvalidSubcommand, "{name}: {e}");
+        }
     }
 }

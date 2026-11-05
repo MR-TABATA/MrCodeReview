@@ -301,6 +301,15 @@ pub fn list(dir: &Path, repo: Option<&str>) -> Result<(Vec<ReleaseSummary>, Vec<
 /// - `text`: 何をしたか・なぜ直さなかったか。空はエラー。`TEXT_MAX` 文字を超えたら、切り詰めて、`truncated` で知らせる。
 /// - `client`: エージェントの名前（英数字と `-_.`、40 文字まで）。`source` は `mcp:<client>` になる。
 pub fn report(dir: &Path, review_id: &str, index: usize, verdict: &str, text: &str, client: &str, now: u64) -> Result<ReportOutcome, String> {
+    report_via(dir, review_id, index, verdict, text, client, "mcp", now)
+}
+
+/// `report` と同じ。**どの入口から来たか**（`via`。`cli`・`mcp` など。英数字と `-_.`）を、保存元に残す（`source = "<via>:<client>"`）。
+#[allow(clippy::too_many_arguments)]
+pub fn report_via(dir: &Path, review_id: &str, index: usize, verdict: &str, text: &str, client: &str, via: &str, now: u64) -> Result<ReportOutcome, String> {
+    if !valid_name(via) {
+        return Err(format!("入口の名前が正しくありません: {via}"));
+    }
     if !valid_id(review_id) {
         return Err(format!("レビューの識別子が正しくありません: {review_id}"));
     }
@@ -323,7 +332,16 @@ pub fn report(dir: &Path, review_id: &str, index: usize, verdict: &str, text: &s
         return Err(format!("渡された「直す」の指摘ではありません: {index}"));
     }
     let truncated = text.chars().count() > TEXT_MAX;
-    let r = AgentReport { verdict: verdict.to_string(), text: text.chars().take(TEXT_MAX).collect(), reported_at: now, source: format!("mcp:{client}") };
+    let stored_text: String = text.chars().take(TEXT_MAX).collect();
+    let source = format!("{via}:{client}");
+    // **同じ渡し分の中で**、判定・文章・保存元が同じ再提出は、保存しない（時刻だけ動かさない）。
+    // 新しい渡し分（古い申告の時刻が、渡した時刻より前）では、同じ文章でも保存する（さもないと、「前回以前の申告」に見えてしまう）。
+    if let Some(Some(old)) = agent_report::try_get_all(dir, review_id, index + 1)?.into_iter().nth(index) {
+        if old.verdict == verdict && old.text == stored_text && old.source == source && old.reported_at >= release.released_at {
+            return Ok(ReportOutcome { truncated, changed: 0 });
+        }
+    }
+    let r = AgentReport { verdict: verdict.to_string(), text: stored_text, reported_at: now, source };
     let changed = agent_report::save(dir, review_id, &[(index, r)])?;
     Ok(ReportOutcome { truncated, changed })
 }
@@ -608,6 +626,46 @@ mod tests {
         let r = release(&d, "r2", &[0], &[], "gui", 1).unwrap();
         assert!(r.head.is_some());
         assert_eq!(r.head, snapshot::head_of(&repo_s));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 時刻が違っても、同じ渡し分の中で、同じ内容の再提出は、変えない。新しい渡し分では、同じ文章でも、今回の申告になる。
+    #[test]
+    fn an_identical_resubmission_changes_nothing_within_a_round_but_counts_in_a_new_round() {
+        let d = tmp("resubmit");
+        make_review(&d, "r1", 1);
+        release(&d, "r1", &[0], &[], "gui", 100).unwrap();
+        assert_eq!(report(&d, "r1", 0, DID, "直した", "claude-code", 200).unwrap().changed, 1);
+        // 時刻だけが違う、同じ内容 → 変えない（最初の時刻のまま）
+        assert_eq!(report(&d, "r1", 0, DID, "直した", "claude-code", 250).unwrap().changed, 0);
+        assert_eq!(agent_report::get_all(&d, "r1", 1)[0].clone().unwrap().reported_at, 200);
+        // 文章・判定・保存元のどれかが違えば、保存する
+        assert_eq!(report(&d, "r1", 0, DID, "直した（追記）", "claude-code", 260).unwrap().changed, 1);
+        assert_eq!(report(&d, "r1", 0, SKIPPED, "直した（追記）", "claude-code", 270).unwrap().changed, 1);
+        assert_eq!(report_via(&d, "r1", 0, SKIPPED, "直した（追記）", "claude-code", "cli", 280).unwrap().changed, 1, "保存元（mcp → cli）が違う");
+
+        // 渡し直した（新しい渡し分）あと、同じ文章を報告したら、今回の申告になる
+        release(&d, "r1", &[0], &[], "gui", 300).unwrap();
+        assert!(get(&d, "r1").unwrap().unwrap().fix[0].reported.is_none(), "渡し直した直後は、前回の申告");
+        assert_eq!(report_via(&d, "r1", 0, SKIPPED, "直した（追記）", "claude-code", "cli", 400).unwrap().changed, 1);
+        let h = get(&d, "r1").unwrap().unwrap();
+        assert_eq!(h.fix[0].reported.as_ref().map(|r| r.reported_at), Some(400));
+        assert!(h.fix[0].previous_report.is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn report_via_records_which_entrance_the_report_came_from() {
+        let d = tmp("via");
+        make_review(&d, "r1", 2);
+        release(&d, "r1", &[0, 1], &[], "gui", 1).unwrap();
+        report_via(&d, "r1", 0, DID, "直した", "claude-code", "cli", 2).unwrap();
+        report(&d, "r1", 1, DID, "直した", "claude-code", 3).unwrap();
+        let saved = agent_report::get_all(&d, "r1", 2);
+        assert_eq!(saved[0].clone().unwrap().source, "cli:claude-code");
+        assert_eq!(saved[1].clone().unwrap().source, "mcp:claude-code", "report は、これまでどおり mcp");
+        assert!(report_via(&d, "r1", 0, DID, "直した", "claude-code", "bad via", 4).unwrap_err().contains("入口"));
+        assert!(report_via(&d, "r1", 0, DID, "直した", "claude-code", "", 4).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 
