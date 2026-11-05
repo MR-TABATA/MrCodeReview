@@ -11,6 +11,7 @@
 use crate::agent_report::{self, AgentReport, DID, SKIPPED, TEXT_MAX};
 use crate::db;
 use crate::findings::Finding;
+use crate::notes::{self, Note};
 use crate::snapshot::{self, Limits};
 use crate::store::{self, ReviewRecord};
 use crate::triage;
@@ -337,6 +338,74 @@ pub fn staleness(rec: &ReviewRecord, limits: &Limits) -> Staleness {
         Ok(_) => Staleness::Changed,
         Err(e) => Staleness::Unknown(e),
     }
+}
+
+// ── 渡す対象の決め方（GUI の `handoff_triage` から移した規則。GUI と CLI が、同じものを使う） ──
+
+/// 「対応済み」「申告で済み」を表す、仕分けの値。`triage` の `fix`・`wait`・`dismiss`・`new` とは別に、渡す対象から外すために使う。
+pub const DONE: &str = "done";
+
+/// 渡す対象の仕分けを作る。**「対応」の指摘のうち、あなたが「対応済み」にしたものと、エージェントが「対応した」と申告したものは、
+/// 渡し済み・直し済みなので、`done` にして外す**（また渡さない。「今回は直さない」の欄にも、入れない）。
+/// 「直さなかった」と申告されたものは、外さない（もう一度、渡す対象になる）。「待ち」「無視」「未仕分け」は、そのまま。
+///
+/// **規則だけを持つ**（読み取りは、呼び出し側）。GUI は、読み取りに失敗しても画面を開けるよう、寛容に読む。CLI は、`targets` で、厳密に読む。
+pub fn handoff_states(triage_states: &[String], reports: &[Option<AgentReport>], note_rows: &[Note]) -> Vec<String> {
+    triage_states
+        .iter()
+        .enumerate()
+        .map(|(i, state)| {
+            let agent_did = reports.get(i).and_then(Option::as_ref).is_some_and(|r| r.verdict == DID);
+            let marked_done = note_rows.get(i).is_some_and(|n| n.done_at.is_some());
+            if state == triage::FIX && (agent_did || marked_done) {
+                DONE.to_string()
+            } else {
+                state.clone()
+            }
+        })
+        .collect()
+}
+
+/// 渡す番号（0 始まり。昇順）。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Targets {
+    /// 直す指摘
+    pub fix: Vec<usize>,
+    /// 「今回は直さない」として、伝えるだけの指摘（`待ち`）
+    pub hold: Vec<usize>,
+}
+
+/// `handoff_states` の結果から、渡す番号を取る。
+pub fn targets_from_states(states: &[String]) -> Targets {
+    let pick = |want: &str| states.iter().enumerate().filter(|(_, s)| s.as_str() == want).map(|(i, _)| i).collect::<Vec<_>>();
+    Targets { fix: pick(triage::FIX), hold: pick(triage::WAIT) }
+}
+
+/// そのレビューの、渡す番号。**読み取りに失敗したら、エラーを返す**（全部「未仕分け」に見せない）。
+pub fn targets(dir: &Path, rec: &ReviewRecord) -> Result<Targets, String> {
+    let n = rec.findings.len();
+    let t = triage::try_get(dir, &rec.id, n)?;
+    let reports = agent_report::try_get_all(dir, &rec.id, n)?;
+    let note_rows = notes::try_get_all(dir, &rec.id, n)?;
+    Ok(targets_from_states(&handoff_states(&t, &reports, &note_rows)))
+}
+
+/// 渡した記録を作る。**同じ内容（`fix`・`hold`・レビューの差分の識別子が、前回と同じ）なら、前回の記録を、そのまま使う**
+/// （`released_at` も `by` も動かさない）。動かすと、同じセッションで 2 回 `get` したとき、1 回目に書いた申告が、「前回以前」に回ってしまう。
+/// 違うときだけ、`release` で置き換える。戻り値の `bool` は、**作り直した（新しく記録した）か**。
+pub fn ensure_release(dir: &Path, review_id: &str, fix: &[usize], hold: &[usize], by: &str, now: u64) -> Result<(Release, bool), String> {
+    if valid_id(review_id) {
+        let old = {
+            let conn = db::open(dir)?;
+            read_release(&conn, review_id)?
+        };
+        if let (Some(old), Some(rec)) = (old, store::get(dir, review_id)) {
+            if old.fix == sorted_unique(fix) && old.hold == sorted_unique(hold) && old.diff_hash == rec.snapshot.diff_hash {
+                return Ok((old, false));
+            }
+        }
+    }
+    release(dir, review_id, fix, hold, by, now).map(|r| (r, true))
 }
 
 #[cfg(test)]
@@ -722,6 +791,135 @@ mod tests {
 
         rec.repo = d.join("missing").to_string_lossy().to_string();
         assert!(matches!(staleness(&rec, &lim), Staleness::Unknown(_)), "調べられないときは、同じと言わない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // ── 渡す対象の決め方 ──
+
+    fn states(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn rep(verdict: &str) -> Option<AgentReport> {
+        Some(AgentReport { verdict: verdict.into(), text: "x".into(), reported_at: 1, source: "mcp:t".into() })
+    }
+
+    fn done_note() -> Note {
+        Note { done_at: Some(5), ..Default::default() }
+    }
+
+    #[test]
+    fn handoff_states_removes_only_fix_findings_that_are_done_or_reported_as_done() {
+        //                          0      1      2      3        4      5
+        let t = states(&["fix", "fix", "fix", "wait", "dismiss", "new"]);
+        let reports = vec![rep("did"), rep("skipped"), None, rep("did"), rep("did"), rep("did")];
+        let notes = vec![Note::default(), Note::default(), done_note(), done_note(), Note::default(), done_note()];
+        let out = handoff_states(&t, &reports, &notes);
+        assert_eq!(out[0], DONE, "エージェントが「対応した」と申告 → 外す");
+        assert_eq!(out[1], "fix", "「直さなかった」の申告は、外さない（もう一度、渡す対象）");
+        assert_eq!(out[2], DONE, "あなたが対応済みにした → 外す");
+        assert_eq!(out[3], "wait", "「待ち」は、申告や済みの印があっても、そのまま");
+        assert_eq!(out[4], "dismiss");
+        assert_eq!(out[5], "new");
+    }
+
+    #[test]
+    fn handoff_states_tolerates_shorter_report_and_note_lists() {
+        let t = states(&["fix", "fix"]);
+        assert_eq!(handoff_states(&t, &[], &[]), t, "申告も印も無ければ、そのまま");
+        assert_eq!(handoff_states(&[], &[rep("did")], &[done_note()]), Vec::<String>::new());
+        assert_eq!(handoff_states(&t, &[rep("did")], &[]), states(&[DONE, "fix"]), "足りない分は、「無い」として扱う");
+    }
+
+    #[test]
+    fn targets_from_states_picks_fix_and_wait_in_order() {
+        let t = states(&["wait", "fix", DONE, "fix", "dismiss", "new", "wait"]);
+        assert_eq!(targets_from_states(&t), Targets { fix: vec![1, 3], hold: vec![0, 6] });
+        assert_eq!(targets_from_states(&[]), Targets::default());
+    }
+
+    #[test]
+    fn targets_reads_triage_reports_and_notes_from_the_database() {
+        let d = tmp("targets");
+        let rec = make_review(&d, "r1", 6);
+        for (i, s) in [(0, triage::FIX), (1, triage::FIX), (2, triage::FIX), (3, triage::WAIT), (4, triage::DISMISS)] {
+            triage::set_with(&d, "r1", i, s, 6, 1, None).unwrap();
+        }
+        // 1 番は、エージェントが「対応した」と申告。2 番は、あなたが対応済みにした
+        agent_report::save(&d, "r1", &[(1, AgentReport { verdict: DID.into(), text: "直した".into(), reported_at: 10, source: "mcp:t".into() })]).unwrap();
+        notes::set_done(&d, "r1", 2, 6, true, 11, None).unwrap();
+        assert_eq!(targets(&d, &rec).unwrap(), Targets { fix: vec![0], hold: vec![3] });
+
+        // 「直さなかった」と申告し直せば、1 番は、また渡す対象になる
+        agent_report::save(&d, "r1", &[(1, AgentReport { verdict: SKIPPED.into(), text: "前提が違う".into(), reported_at: 20, source: "mcp:t".into() })]).unwrap();
+        assert_eq!(targets(&d, &rec).unwrap().fix, vec![0, 1]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // ── ensure_release ──
+
+    #[test]
+    fn ensure_release_keeps_the_previous_record_when_nothing_changed() {
+        let d = tmp("ensure-same");
+        make_review(&d, "r1", 3);
+        let (a, created) = ensure_release(&d, "r1", &[2, 0], &[1], "cli", 100).unwrap();
+        assert!(created);
+        assert_eq!((a.released_at, a.by.as_str()), (100, "cli"));
+
+        let (b, created) = ensure_release(&d, "r1", &[0, 2], &[1], "gui", 999).unwrap();
+        assert!(!created, "同じ内容なら、作り直さない");
+        assert_eq!((b.released_at, b.by.as_str()), (100, "cli"), "released_at も by も、動かさない");
+        assert_eq!(get(&d, "r1").unwrap().unwrap().release.released_at, 100);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 同じセッションで `get` を 2 回呼んでも、1 回目に書いた申告が、「前回以前」に回らない。
+    #[test]
+    fn a_second_get_in_the_same_session_does_not_demote_this_rounds_report() {
+        let d = tmp("ensure-session");
+        make_review(&d, "r1", 2);
+        ensure_release(&d, "r1", &[0, 1], &[], "cli", 100).unwrap();
+        report(&d, "r1", 0, DID, "直した", "claude-code", 200).unwrap();
+        ensure_release(&d, "r1", &[0, 1], &[], "cli", 300).unwrap(); // 2 回目の get
+        let h = get(&d, "r1").unwrap().unwrap();
+        assert_eq!(h.fix[0].reported.as_ref().map(|r| r.reported_at), Some(200), "今回の申告のまま");
+        assert!(h.fix[0].previous_report.is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn ensure_release_replaces_when_the_content_differs() {
+        let d = tmp("ensure-diff");
+        make_review(&d, "r1", 4);
+        ensure_release(&d, "r1", &[0, 1], &[], "cli", 100).unwrap();
+
+        let (b, created) = ensure_release(&d, "r1", &[0], &[], "cli", 200).unwrap();
+        assert!(created, "直す番号が違う");
+        assert_eq!((b.released_at, b.fix.clone()), (200, vec![0]));
+        let (c, created) = ensure_release(&d, "r1", &[0], &[3], "cli", 300).unwrap();
+        assert!(created, "直さない番号が違う");
+        assert_eq!((c.released_at, c.hold.clone()), (300, vec![3]));
+
+        // 差分の識別子が違う記録（別の差分に対して渡したもの）は、置き換える
+        let mut raw = raw_release("r1", vec![0], vec![3]);
+        raw.diff_hash = "別の差分".into();
+        insert_release(&d, &raw);
+        let (e, created) = ensure_release(&d, "r1", &[0], &[3], "cli", 400).unwrap();
+        assert!(created, "diff_hash が違う");
+        assert_eq!((e.released_at, e.diff_hash.as_str()), (400, "d"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn ensure_release_with_nothing_to_fix_fails_and_changes_nothing() {
+        let d = tmp("ensure-empty");
+        make_review(&d, "r1", 2);
+        assert!(ensure_release(&d, "r1", &[], &[1], "cli", 1).unwrap_err().contains("0 件"));
+        assert_eq!(get(&d, "r1").unwrap(), None);
+        ensure_release(&d, "r1", &[0], &[], "cli", 2).unwrap();
+        assert!(ensure_release(&d, "r1", &[], &[], "cli", 3).is_err(), "すでにある記録があっても、空では上書きしない");
+        assert_eq!(get(&d, "r1").unwrap().unwrap().release.fix, vec![0]);
+        assert!(ensure_release(&d, "../x", &[0], &[], "cli", 1).is_err(), "識別子の検証は、release と同じ");
         let _ = std::fs::remove_dir_all(&d);
     }
 }
