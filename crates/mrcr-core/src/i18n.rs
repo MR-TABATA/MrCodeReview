@@ -789,6 +789,8 @@ pub const OUTPUT_FORMAT_JA: &str = r#"## 出力形式
   - 良い例: 「空の配列を渡すと 0 で割ってしまい、落ちる」
   - 悪い例: 「境界値の扱い」「エラー処理の不備」（分類名だけで、中身が分からない）
 - `detail`: 「どんなとき（入力や状況）」「どうなる（誤った結果）」「どう直す」の 3 点を、短い文で書く。1 文ごとに改行する（JSON の文字列の中では `\n`）。1 文は 40 字前後、全体で 3〜4 文まで。専門用語は、できるだけ使わない。
+  - 変数名・関数名・型名・列名・内部の用語（`i64`、`findings_count` など）は、`title` に書かない。`detail` に書くときも、短い言い換えを添える。
+  - 「ユーザーの画面や結果で、何が起きるか」を、必ず 1 文入れる（例: 「左の件数が、20 桁の数字になる」）。コードの中の話だけで終わらせない。
 
 指摘が無ければ {"findings":[]} を返してください。"#;
 
@@ -803,6 +805,8 @@ Write `title` and `detail` in plain language so the reader never has to ask "so 
   - Good: "Passing an empty array divides by zero and crashes"
   - Bad: "Boundary handling", "Error handling issue" (a category name; the content is unclear)
 - `detail`: Cover three points in short sentences: when (input or situation), what goes wrong (the wrong result), and how to fix it. Put each sentence on its own line (`\n` inside the JSON string). At most 3-4 sentences, about 20 words each. Avoid jargon where possible.
+  - Never put variable, function, type or column names or internal terms (`i64`, `findings_count`, ...) in `title`. In `detail`, add a short plain-language gloss next to any you must use.
+  - Always include one sentence on what the user sees or gets (e.g. "the count on the left becomes a 20-digit number"). Do not stop at what happens inside the code.
 
 If there are no findings, return {"findings":[]}."#;
 
@@ -1277,6 +1281,8 @@ mod builtin_recipe_tests {
                 assert!(fmt.contains(key), "{name}: {key} の書き方の指示が無い");
             }
             assert!(fmt.contains(newline_hint), "{name}: 1 文ごとの改行の指示が無い");
+            let (ident_hint, effect_hint) = if name == "ja" { ("内部の用語", "ユーザーの画面や結果") } else { ("internal terms", "what the user sees") };
+            assert!(fmt.contains(ident_hint) && fmt.contains(effect_hint), "{name}: 内部の用語を避ける・画面で起きることを書く、の指示が無い");
             assert!(fmt.contains("{\"findings\":[]}"), "{name}: 指摘が無いときの返し方が無い");
         }
     }
