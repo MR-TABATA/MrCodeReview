@@ -146,8 +146,9 @@ impl From<&ReviewRecord> for ReviewSummary {
 }
 
 /// レビューごとの (待ち, 無視, 済み) の件数。指摘の範囲の外の番号は、数えない（`triage::get` と同じ）。
+/// `repo` を渡すと、そのリポジトリのレビューだけを集計する（リポジトリごとに数えるとき、全部を集計し直さない）。
 /// 「済み」＝「対応」の指摘のうち、対応済みの印がある、または、エージェントが「対応した」と申告したもの。
-fn triage_counts(conn: &Connection) -> Result<std::collections::HashMap<String, (usize, usize, usize)>, rusqlite::Error> {
+fn triage_counts(conn: &Connection, repo: Option<&str>) -> Result<std::collections::HashMap<String, (usize, usize, usize)>, rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT t.review_id, \
            SUM(CASE WHEN t.state = 'wait' THEN 1 ELSE 0 END), \
@@ -157,9 +158,10 @@ fn triage_counts(conn: &Connection) -> Result<std::collections::HashMap<String, 
               OR EXISTS (SELECT 1 FROM agent_report a WHERE a.review_id = t.review_id AND a.idx = t.idx AND a.verdict = 'did') \
                ) THEN 1 ELSE 0 END) \
          FROM triage t JOIN reviews r ON r.id = t.review_id AND t.idx >= 0 AND t.idx < r.findings_count \
+         WHERE (?1 IS NULL OR r.repo = ?1) \
          GROUP BY t.review_id",
     )?;
-    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, (r.get::<_, i64>(1)? as usize, r.get::<_, i64>(2)? as usize, r.get::<_, i64>(3)? as usize))))?;
+    let rows = stmt.query_map([repo], |r| Ok((r.get::<_, String>(0)?, (r.get::<_, i64>(1)? as usize, r.get::<_, i64>(2)? as usize, r.get::<_, i64>(3)? as usize))))?;
     rows.collect()
 }
 
@@ -372,7 +374,7 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
     };
     let mut out: Vec<ReviewSummary> = rows.flatten().collect();
     // 仕分けの件数。読み取りに失敗したら、None のまま（0 件に見せない）
-    if let Ok(by_review) = triage_counts(&conn) {
+    if let Ok(by_review) = triage_counts(&conn, repo) {
         for s in &mut out {
             let (wait, dismiss, done) = by_review.get(&s.id).copied().unwrap_or((0, 0, 0));
             s.counts = Some(TriageCounts { open: s.findings.saturating_sub(wait + dismiss + done), done, wait, dismiss });
@@ -384,7 +386,7 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
 /// このリポジトリ（記録に残っている根のパス）の、「未」の指摘の合計。履歴の各行の「未」（`TriageCounts::open`）を足したもの
 /// （未仕分け ＋ 対応中。待ち・無視・済みは、入れない）。仕分けの読み取りに失敗したら、エラー（0 件に見せない）。
 pub fn open_count(conn: &Connection, repo: &str) -> Result<usize, String> {
-    let by_review = triage_counts(conn).map_err(|e| format!("仕分けを数えられません: {e}"))?;
+    let by_review = triage_counts(conn, Some(repo)).map_err(|e| format!("仕分けを数えられません: {e}"))?;
     let mut stmt = conn.prepare("SELECT id, findings_count FROM reviews WHERE repo = ?1").map_err(|e| format!("履歴を読めません: {e}"))?;
     let rows = stmt
         .query_map([repo], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?.max(0) as usize)))
@@ -847,6 +849,77 @@ mod tests {
         assert_eq!(by("neg-v"), (4, 0, Some(4)), "検証済みだけ負");
         assert_eq!(by("both"), (0, 0, Some(0)), "両方負");
         assert_eq!(by("ok"), (3, 3, Some(3)), "ふつうの記録は、そのまま");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn review_with_findings(d: &Path, id: &str, at: u64, n: usize) {
+        let f = |t: &str| Finding { file: "a.rs".into(), line: Some(1), severity: "high".into(), title: t.into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None };
+        let mut r = rec(id, at);
+        r.findings = (0..n).map(|i| f(&format!("f{i}"))).collect();
+        append(d, &r).unwrap();
+    }
+
+    #[test]
+    fn a_failure_in_the_middle_of_a_deletion_leaves_everything_as_it_was() {
+        let d = scratch("delete-rollback");
+        for (id, at) in [("a", 10), ("b", 20)] {
+            review_with_findings(&d, id, at, 2);
+            crate::triage::set_with(&d, id, 0, "wait", 2, 100, None).unwrap();
+            crate::notes::set_memo(&d, id, 1, 2, "メモ", 100).unwrap();
+        }
+        // b の行を消そうとすると、失敗するようにする（a は、その前に消し終わっている）
+        db::open(&d).unwrap().execute_batch("CREATE TRIGGER stop_b BEFORE DELETE ON reviews WHEN OLD.id = 'b' BEGIN SELECT RAISE(ABORT, 'stop'); END;").unwrap();
+        let before = |c: &Connection| ["reviews", "triage", "triage_log", "finding_note"].map(|t| c.query_row(&format!("SELECT COUNT(*) FROM {t}"), [], |r| r.get::<_, i64>(0)).unwrap());
+        let snapshot = before(&db::open(&d).unwrap());
+        assert!(delete_reviews(&d, &["a".into(), "b".into()]).is_err());
+        assert_eq!(before(&db::open(&d).unwrap()), snapshot, "途中で失敗したら、a の分も含めて、何も消えない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn deleting_nothing_or_the_same_id_twice_counts_each_review_once() {
+        let d = scratch("delete-edge");
+        review_with_findings(&d, "a", 10, 1);
+        review_with_findings(&d, "b", 20, 1);
+        assert_eq!(delete_reviews(&d, &[]).unwrap(), 0, "空の一覧は、0 件で、何も消さない");
+        assert_eq!(db::open(&d).unwrap().query_row("SELECT COUNT(*) FROM reviews", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
+        assert_eq!(delete_reviews(&d, &["a".into(), "a".into()]).unwrap(), 1, "同じ ID を 2 回渡しても、1 件");
+        assert_eq!(delete_reviews(&d, &["a".into()]).unwrap(), 0, "もう無いものは、数えない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn open_count_fails_instead_of_showing_zero_when_the_triage_cannot_be_read() {
+        let d = scratch("open-count-broken");
+        review_with_findings(&d, "a", 10, 3);
+        let conn = db::open(&d).unwrap();
+        assert_eq!(open_count(&conn, "/r").unwrap(), 3);
+        conn.execute_batch("DROP TABLE triage; CREATE TABLE triage (x INTEGER);").unwrap();
+        let err = open_count(&conn, "/r").unwrap_err();
+        assert!(err.contains("仕分けを数えられません"), "0 件に見せず、理由つきのエラーにする: {err}");
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn open_count_subtracts_wait_done_and_dismiss_and_never_goes_below_zero() {
+        let d = scratch("open-count-mix");
+        review_with_findings(&d, "a", 10, 3);
+        // 0: 待ち／1: 無視／2: 対応＋対応済みの印 → 3 件とも、「未」ではない
+        for (i, st) in [(0, "wait"), (1, "dismiss"), (2, "fix")] {
+            crate::triage::set_with(&d, "a", i, st, 3, 100, None).unwrap();
+        }
+        crate::notes::set_done(&d, "a", 2, 3, true, 200, None).unwrap();
+        // 別のレビュー（未仕分けが 2 件）と、別のリポジトリのレビューは、混ざらない
+        review_with_findings(&d, "b", 20, 2);
+        let conn = db::open(&d).unwrap();
+        conn.execute("UPDATE reviews SET repo = '/other' WHERE id = 'b'", []).unwrap();
+        assert_eq!(open_count(&conn, "/r").unwrap(), 0, "3 − (待ち 1 ＋ 無視 1 ＋ 済み 1) ＝ 0。別のリポジトリの分は入らない");
+        assert_eq!(open_count(&conn, "/other").unwrap(), 2);
+        // 指摘の件数を、仕分けより少なく書き換えても（範囲の外の仕分けは、数えない）、負にならず、0 で止まる
+        conn.execute("UPDATE reviews SET findings_count = 1 WHERE id = 'a'", []).unwrap();
+        assert_eq!(open_count(&conn, "/r").unwrap(), 0);
+        drop(conn);
         let _ = std::fs::remove_dir_all(&d);
     }
 }
