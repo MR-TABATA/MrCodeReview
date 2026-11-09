@@ -361,8 +361,8 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
             repo: r.get(2)?,
             recipe_title: r.get(3)?,
             provider_label: r.get(4)?,
-            findings: r.get::<_, i64>(5)? as usize,
-            verified: r.get::<_, i64>(6)? as usize,
+            findings: r.get::<_, i64>(5)?.max(0) as usize, // 壊れた記録の負の値は、0 に丸める（そのまま変換すると、巨大な数になる）
+            verified: r.get::<_, i64>(6)?.max(0) as usize,
             total_tokens: total_tokens(input.map(|n| n as u64), output.map(|n| n as u64)),
             failed: !r.get::<_, bool>(9)?,
             counts: None,
@@ -387,7 +387,7 @@ pub fn open_count(conn: &Connection, repo: &str) -> Result<usize, String> {
     let by_review = triage_counts(conn).map_err(|e| format!("仕分けを数えられません: {e}"))?;
     let mut stmt = conn.prepare("SELECT id, findings_count FROM reviews WHERE repo = ?1").map_err(|e| format!("履歴を読めません: {e}"))?;
     let rows = stmt
-        .query_map([repo], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize)))
+        .query_map([repo], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?.max(0) as usize)))
         .map_err(|e| format!("履歴を読めません: {e}"))?;
     let mut open = 0;
     for row in rows {
@@ -824,6 +824,29 @@ mod tests {
         assert_eq!(n("SELECT COUNT(*) FROM meta WHERE key LIKE 'handoff_release:%'"), 1, "渡した記録は、残すレビューの分だけ");
         assert_eq!(open_count(&conn, "/r").unwrap(), 2);
         drop(conn);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_negative_findings_count_in_a_broken_record_is_read_as_zero() {
+        let d = scratch("negative-count");
+        // 壊れた記録 3 種（指摘だけ負・検証済みだけ負・両方負）と、ふつうの記録 1 件を、同じリポジトリに入れる
+        for (id, at) in [("neg-f", 10), ("neg-v", 20), ("both", 30), ("ok", 40)] {
+            append(&d, &rec(id, at)).unwrap();
+        }
+        let conn = db::open(&d).unwrap();
+        for (id, findings, verified) in [("neg-f", -1, 2), ("neg-v", 4, -3), ("both", -1, -3), ("ok", 3, 3)] {
+            conn.execute("UPDATE reviews SET findings_count = ?2, verified_count = ?3 WHERE id = ?1", params![id, findings, verified]).unwrap();
+        }
+        // そのまま usize にすると、約 1800 京になる。壊れた記録は 0 に丸め、ほかの記録の分（4 + 3）は、そのまま足す
+        assert_eq!(open_count(&conn, "/r").unwrap(), 4 + 3);
+        drop(conn);
+        let s = summaries_in(&d, None, 10);
+        let by = |id: &str| s.iter().find(|x| x.id == id).map(|x| (x.findings, x.verified, x.counts.map(|c| c.open))).unwrap();
+        assert_eq!(by("neg-f"), (0, 2, Some(0)), "指摘だけ負");
+        assert_eq!(by("neg-v"), (4, 0, Some(4)), "検証済みだけ負");
+        assert_eq!(by("both"), (0, 0, Some(0)), "両方負");
+        assert_eq!(by("ok"), (3, 3, Some(3)), "ふつうの記録は、そのまま");
         let _ = std::fs::remove_dir_all(&d);
     }
 }
