@@ -130,7 +130,7 @@ fn valid_name(s: &str) -> bool {
     !s.is_empty() && s.len() <= NAME_MAX && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
-fn key(review_id: &str) -> String {
+pub(crate) fn key(review_id: &str) -> String {
     format!("{KEY_PREFIX}{review_id}")
 }
 

@@ -381,6 +381,40 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
     out
 }
 
+/// このリポジトリ（記録に残っている根のパス）の、「未」の指摘の合計。履歴の各行の「未」（`TriageCounts::open`）を足したもの
+/// （未仕分け ＋ 対応中。待ち・無視・済みは、入れない）。仕分けの読み取りに失敗したら、エラー（0 件に見せない）。
+pub fn open_count(conn: &Connection, repo: &str) -> Result<usize, String> {
+    let by_review = triage_counts(conn).map_err(|e| format!("仕分けを数えられません: {e}"))?;
+    let mut stmt = conn.prepare("SELECT id, findings_count FROM reviews WHERE repo = ?1").map_err(|e| format!("履歴を読めません: {e}"))?;
+    let rows = stmt
+        .query_map([repo], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize)))
+        .map_err(|e| format!("履歴を読めません: {e}"))?;
+    let mut open = 0;
+    for row in rows {
+        let (id, findings) = row.map_err(|e| format!("履歴を読めません: {e}"))?;
+        let (wait, dismiss, done) = by_review.get(&id).copied().unwrap_or((0, 0, 0));
+        open += findings.saturating_sub(wait + dismiss + done);
+    }
+    Ok(open)
+}
+
+/// 履歴のレビューを、選んだ分だけ消す。**元に戻せない。** そのレビューに紐づく、仕分け・仕分けの履歴・エージェントの申告・対応メモ・
+/// 「CLI に渡した」記録も、同じトランザクションで消す（途中で失敗したら、何も消えない）。消した件数を返す（無い ID は、数えない）。
+pub fn delete_reviews(dir: &Path, ids: &[String]) -> Result<usize, String> {
+    let conn = db::open(dir)?;
+    let tx = conn.unchecked_transaction().map_err(|e| format!("削除を始められません: {e}"))?;
+    let mut removed = 0;
+    for id in ids {
+        for table in ["triage", "triage_log", "agent_report", "finding_note"] {
+            tx.execute(&format!("DELETE FROM {table} WHERE review_id = ?1"), params![id]).map_err(|e| format!("{table} を消せません: {e}"))?;
+        }
+        tx.execute("DELETE FROM meta WHERE key = ?1", params![crate::handoff_api::key(id)]).map_err(|e| format!("渡した記録を消せません: {e}"))?;
+        removed += tx.execute("DELETE FROM reviews WHERE id = ?1", params![id]).map_err(|e| format!("履歴を消せません: {e}"))?;
+    }
+    tx.commit().map_err(|e| format!("削除を確定できません: {e}"))?;
+    Ok(removed)
+}
+
 /// 試験用の、最小の記録。
 pub fn sample_record(id: &str, at: u64) -> ReviewRecord {
     ReviewRecord {
@@ -756,5 +790,40 @@ mod tests {
         assert_eq!(load_all(&dir).len(), 2);
         assert!(dir.join("reviews.jsonl").exists() && dir.join("triage.json").exists(), "元のファイルは消さない");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn deleting_reviews_removes_their_related_rows_only_and_the_open_count_follows() {
+        let d = scratch("delete-reviews");
+        let f = |t: &str| Finding { file: "a.rs".into(), line: Some(1), severity: "high".into(), title: t.into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None };
+        for id in ["a", "b", "c"] {
+            let mut r = rec(id, 10);
+            r.findings = (0..3).map(|i| f(&format!("f{i}"))).collect();
+            append(&d, &r).unwrap();
+            crate::triage::set_with(&d, id, 0, "dismiss", 3, 100, None).unwrap();
+            crate::notes::set_memo(&d, id, 1, 3, "メモ", 100).unwrap();
+        }
+        let conn = db::open(&d).unwrap();
+        conn.execute("INSERT INTO meta (key, value) VALUES (?1, 'x')", [crate::handoff_api::key("a")]).unwrap();
+        conn.execute("INSERT INTO meta (key, value) VALUES (?1, 'x')", [crate::handoff_api::key("c")]).unwrap();
+        // 3 件 × 2（未仕分け 2 ＋ 無視 1）＝ 未は 6
+        assert_eq!(open_count(&conn, "/r").unwrap(), 6);
+        assert_eq!(open_count(&conn, "/other").unwrap(), 0);
+        drop(conn);
+
+        // 無い ID は、数えず、失敗もしない
+        assert_eq!(delete_reviews(&d, &["a".into(), "b".into(), "nope".into()]).unwrap(), 2);
+
+        let conn = db::open(&d).unwrap();
+        let n = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!(n("SELECT COUNT(*) FROM reviews"), 1);
+        for t in ["triage", "triage_log", "finding_note"] {
+            assert_eq!(n(&format!("SELECT COUNT(*) FROM {t} WHERE review_id <> 'c'")), 0, "{t}: 消したレビューの行が残っている");
+            assert!(n(&format!("SELECT COUNT(*) FROM {t} WHERE review_id = 'c'")) > 0, "{t}: 残すレビューの行まで消えた");
+        }
+        assert_eq!(n("SELECT COUNT(*) FROM meta WHERE key LIKE 'handoff_release:%'"), 1, "渡した記録は、残すレビューの分だけ");
+        assert_eq!(open_count(&conn, "/r").unwrap(), 2);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
