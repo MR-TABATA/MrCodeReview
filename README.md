@@ -18,7 +18,7 @@ An open-source CLI tool that reviews your uncommitted git changes aspect-by-aspe
 - **Hallucination Detection**: Strictly verifies cited lines against actual git diffs, distinguishing between `Verified` and `⚠️ Unverified evidence`.
 - **Coding Agent Handoff**: Automatically outputs review findings to `.mrcodereview/out/review.md` (or JSON). Read it directly with agents like `agy` or `Claude Code` for automated fix loops.
 - **Pure Rust**: Built, tested and released on macOS. Linux and CI environments (e.g. GitHub Actions) have not been tested yet.
-- **Shared History with Desktop App**: On macOS, reviews are recorded to the local SQLite database shared with the desktop GUI app (MrkCodeReview).
+- **Shared History with Desktop App**: On macOS, reviews are recorded to the local SQLite database shared with the desktop GUI app in this repository (`app/`).
 
 ---
 
@@ -156,7 +156,7 @@ Terraform recipes never claim to have inspected `terraform plan`, state or provi
 
 ### Documents
 
-For design notes, specs and READMEs. Run them on a change to a Markdown or text file, for example `mrcr review -r doc-claims,doc-steps`. The desktop app (MrCodeReview / MrkCodeReview) will show the same prompts from its next release, when the diff contains `.md`, `.mdx`, `.txt` or `.rst` files.
+For design notes, specs and READMEs. Run them on a change to a Markdown or text file, for example `mrcr review -r doc-claims,doc-steps`. The desktop app (`app/`) shows the same prompts in its recipe bar when the diff contains `.md`, `.mdx`, `.txt` or `.rst` files.
 
 | ID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Looks for |
 |---|---|
