@@ -2,7 +2,7 @@
 //!
 //! 取れなければ、案内を出して、終了する。ロックのファイルは、データの置き場の**隣**（`datadir::lock_file`）。
 
-pub use mrcr_core::applock::{acquire, AppLock, Acquired};
+pub use mrcr_core::applock::{acquire_retry, AppLock, Acquired};
 
 /// 利用者に見せる文（画面の帯にも使う）。
 pub fn unsupported_notice(reason: &str) -> String {

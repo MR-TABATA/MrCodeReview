@@ -1221,7 +1221,9 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir()?;
             // 同時起動を防ぐ。**置き場を触る前**（移しも含む）に取る。取れなければ、案内を出して終了する。
             let base = app_data_dir.parent().unwrap_or(&app_data_dir).to_path_buf();
-            let (lock, lock_notice) = match applock::acquire(&mrcr_core::datadir::lock_file(&base, explicit.as_deref())) {
+            // CLI は、置き場を決めるあいだ、一瞬だけ同じロックを持つ。その一瞬に起動しても断らないよう、短い間隔で数回取り直す（最長およそ 1 秒）
+            let lock_path = mrcr_core::datadir::lock_file(&base, explicit.as_deref());
+            let (lock, lock_notice) = match applock::acquire_retry(&lock_path, 10, std::time::Duration::from_millis(100)) {
                 applock::Acquired::Locked(l) => (Some(l), None),
                 applock::Acquired::AlreadyRunning => applock::tell_already_running_and_exit(),
                 applock::Acquired::Unsupported(why) => {
