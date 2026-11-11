@@ -29,6 +29,16 @@ fn resolve_data_dir() -> PathBuf {
     resolve_data_dir_in(std::env::var("MRCR_DATA_DIR").ok().map(PathBuf::from), mrcr_core::datadir::default_base())
 }
 
+/// 基準のフォルダが取れないときの置き場と、その警告の文。
+fn fallback_data_dir() -> (PathBuf, String) {
+    let dir = std::env::temp_dir().join(mrcr_core::datadir::DATA_ID);
+    let warning = format!(
+        "警告: データの置き場の基準（HOME など）が取れないので、一時フォルダ（{}）を使います。履歴・仕分けは、再起動や掃除で消えます。残したいときは、MRCR_DATA_DIR で置き場を指定してください。",
+        dir.display()
+    );
+    (dir, warning)
+}
+
 /// `resolve_data_dir` の本体。環境変数（`explicit`）と基準のフォルダ（`base`）を、引数で受ける（試験できるように）。
 /// `explicit` があれば、ロックも移しもせず、そこをそのまま使う（隔離したデータを、本物と混ぜない）。
 fn resolve_data_dir_in(explicit: Option<PathBuf>, base: Option<PathBuf>) -> PathBuf {
@@ -38,7 +48,11 @@ fn resolve_data_dir_in(explicit: Option<PathBuf>, base: Option<PathBuf>) -> Path
         return dir;
     }
     let Some(base) = base else {
-        return std::env::temp_dir().join(datadir::DATA_ID);
+        // 基準のフォルダが取れない（HOME が無い、など）。止めはしない（--no-save のような、記録を残さない実行もある）が、
+        // 履歴・仕分けが、掃除や再起動で消える場所に書かれることを、警告する
+        let (dir, warning) = fallback_data_dir();
+        eprintln!("{warning}");
+        return dir;
     };
     // ロックは、置き場を決めるあいだだけ持つ（関数を出ると外れる）。
     let lock = acquire(&datadir::lock_file(&base, None));
@@ -444,5 +458,15 @@ mod data_dir_tests {
         assert!(!b.join(DATA_ID).exists(), "新を作らない");
         assert!(!lock_file(&b, None).exists(), "ロックのファイルも作らない");
         let _ = fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn without_a_base_directory_the_fallback_is_a_temp_dir_and_says_what_that_means() {
+        let (dir, warning) = fallback_data_dir();
+        assert_eq!(dir, std::env::temp_dir().join(DATA_ID));
+        assert!(warning.contains("一時フォルダ") && warning.contains("消えます") && warning.contains("MRCR_DATA_DIR"), "{warning}");
+        assert!(warning.contains(&dir.display().to_string()), "どこを使うかを、書く");
+        // 基準が無くても、決定そのものは止まらずに、その置き場を返す（--no-save のような実行を、止めない）
+        assert_eq!(resolve_data_dir_in(None, None), dir);
     }
 }
