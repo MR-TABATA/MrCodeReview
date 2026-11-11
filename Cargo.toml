@@ -2,5 +2,12 @@
 members = [
     "crates/mrcr-core",
     "crates/mrcr",
+    "app/src-tauri",
 ]
 resolver = "2"
+
+# 新しいリンカ（ld-27106・macOS 27.2）と Rust 1.89 の組み合わせで、release のマクロ部品（proc-macro の dylib）が壊れて、
+# リリースのビルドが止まる（`mis-aligned LINKEDIT string pool`）。ビルド用の部品（build script・proc-macro）だけ、strip しない。
+# 最終的な配布物（アプリ本体）には影響しない。Rust を更新して直るなら、この 2 行は外してよい。
+[profile.release.build-override]
+strip = "none"

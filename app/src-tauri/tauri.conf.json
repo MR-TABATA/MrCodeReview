@@ -1,0 +1,62 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MrCodeReview",
+  "version": "1.5.0",
+  "identifier": "com.hitoshi.mrcodereview",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1430",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "MrCodeReview",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 760,
+        "minHeight": 520,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/free/32x32.png",
+      "icons/free/128x128.png",
+      "icons/free/128x128@2x.png",
+      "icons/free/icon.icns",
+      "icons/free/icon.ico"
+    ],
+    "targets": [
+      "app"
+    ],
+    "category": "DeveloperTool",
+    "copyright": "© 2026 Hitoshi TABATA",
+    "shortDescription": "コミット前の AI コードレビュー（BYOK・ローカル完結）",
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    },
+    "resources": {
+      "Resources/en.lproj/*": "Resources/en.lproj/",
+      "Resources/ja.lproj/*": "Resources/ja.lproj/",
+      "../../LICENSE": "LICENSE",
+      "../PRIVACY.md": "PRIVACY.md",
+      "../PRIVACY.ja.md": "PRIVACY.ja.md",
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDczMjNBRjM2NzhCM0MzNEQKUldSTnc3TjROcThqY3l4Q1NFWm5MM3Nad3ZMTjVIb0RWRTQ0VnVwTk42TDJ4SmRvTEtWMC93RGoK",
+      "endpoints": [
+        "https://mrktools.app/downloads/mrcodereview/update.json"
+      ]
+    }
+  }
+}

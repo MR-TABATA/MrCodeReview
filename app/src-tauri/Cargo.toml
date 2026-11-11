@@ -1,0 +1,44 @@
+[package]
+name = "mrcodereview"
+version = "1.5.0"
+description = "On-demand, inspectable AI code review"
+authors = ["hitoshi"]
+edition = "2021"
+rust-version = "1.89"
+
+[lib]
+name = "mrcodereview_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.41.0", features = ["bundled"] }
+regex = "1.13.1"
+rust_xlsxwriter = "0.101.0"
+ureq = { version = "2", features = ["json"] }
+clap = { version = "4", features = ["derive"] }
+mrcr-core = { path = "../../crates/mrcr-core" }
+
+[[bin]]
+name = "mrcodereview"
+path = "src/main.rs"
+
+
+# 実行中の Dock のアイコンを、Free / Pro で替える（dock.rs）。Tauri が使っているものと同じ版・同じ機能だけ
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSImage", "NSResponder"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSData"] }
+
+[dev-dependencies]
+calamine = "0.37.0"
+
+[features]
+default = []
