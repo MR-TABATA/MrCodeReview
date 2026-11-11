@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
+    "test:scripts": "python3 -I -m unittest discover -s scripts -p 'test_release_files.py'",
     "test": "vitest run",
     "tauri": "tauri",
     "demo-repo": "scripts/make-demo-repo.sh"
