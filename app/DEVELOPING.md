@@ -31,8 +31,7 @@ cd app && npx eslint src        # 既知の 5 件が出る（Mrk から引き継
 - データの置き場の決め方・移行・同時起動のロックは、`crates/mrcr-core/src/datadir.rs` と `applock.rs` が唯一の実装（GUI と CLI が同じものを呼ぶ）。置き場の名前は、アプリの `identifier` と同じ `com.hitoshi.mrcodereview`。
 - 旧名 `com.hitoshi.mrkcodereview` からは、ロックを取って 1 回だけ rename で移し、旧名に新へのリンクを**残す**（旧版が割れないように）。リンクは、旧版が使われなくなったら消す（`datadir::LEGACY_LINK_REMOVAL`。コードでは消さない）。
 - 別のアプリ（将来の有償版など）は、自分の置き場を持つ。OSS 版のデータは、有償版が「インポートするか」を聞いてコピーする。
-- 設定ファイルの `tool_timeout_secs`・`max_tool_files`・`max_raw_bytes` は、廃止した linter の項目。古い設定ファイルを読めるよう、受け取って無視する。書き出さない。
-- 過去の記録に残る、`kind: tool`（linter の結果）の表示は、残している。
+- **リンター**（`lint.rs`・`linters.rs`・`trust.rs`）: 「リンター」ボタンは、LLM を呼ばずに、ESLint・Ruff・Clippy・SwiftLint・ShellCheck を、差分に出ているファイルへ走らせ、**今回の差分で追加・変更した行**にかかる指摘だけを残す（トークンは 0）。実行するコマンドは、組み込みの固定の形だけで、リポジトリ側のレシピで任意のコマンドは足せない。ESLint・Clippy のように**そのリポジトリのコードを動かす**ものは、リポジトリごとの許可（`trust`）が要る。設定の `tool_timeout_secs`・`max_tool_files`・`max_raw_bytes` は、このリンター用。
 
 ## リリース（GUI・Apple Silicon・手元で署名と公証）
 

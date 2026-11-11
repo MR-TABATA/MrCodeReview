@@ -3,17 +3,43 @@
 export interface Recipe {
   id: string;
   title: string;
-  /** builtin = 組み込み / repo = このリポジトリのレシピ / user = 設定で足したもの（過去の記録に残る） */
+  /** builtin = 組み込み / repo = このリポジトリのレシピ / user = あなたの linters.json で足した linter */
   source: 'builtin' | 'repo' | 'user';
   prompt: string;
-  /** tool = LLM を使わない実行（過去の記録に残る。今のアプリでは作らない） */
+  /** tool = LLM を使わず linter を実行する */
   kind: 'llm' | 'tool';
 }
 
-/** ボタンにするレシピと、気づいてほしいこと（設定の間違いなど）。 */
+/** ボタンにするレシピと、気づいてほしいこと（設定の間違い、読まなかったファイルなど）。 */
 export interface RecipeList {
   recipes: Recipe[];
   warnings: string[];
+  /** このリポジトリで出番のある linter と、その状態。リポジトリを選ぶ前は null。 */
+  lint: LintPlan | null;
+}
+
+/** 「リンター」ボタンが、実行する（かもしれない）linter 1 つ。 */
+export interface LintItem {
+  id: string;
+  title: string;
+  /** 対象の言語 */
+  lang: string;
+  /** 見るファイルの拡張子 */
+  exts: string[];
+  /** 実行するコマンドの形（入っていないときは空） */
+  command: string;
+  /** そのリポジトリのコードを動かす（許可が要る） */
+  runs_repo_code: boolean;
+  /** ready = 実行できる / needs_trust = 入っているが、許可が要る / missing = 入っていない */
+  state: 'ready' | 'needs_trust' | 'missing';
+  /** 入っていないときの入れ方 */
+  hint: string | null;
+}
+
+export interface LintPlan {
+  items: LintItem[];
+  /** このリポジトリで、コードを動かす linter を許可しているか */
+  trusted: boolean;
 }
 
 export interface ProviderInfo {

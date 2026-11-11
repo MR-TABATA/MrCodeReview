@@ -4,6 +4,8 @@ mod applock;
 mod byok;
 mod handoff;
 mod keychain;
+mod lint;
+mod linters;
 mod provider;
 mod recipe;
 mod repodata;
@@ -11,6 +13,7 @@ mod repos;
 mod report;
 mod report_xlsx;
 mod settings;
+mod trust;
 
 use provider::ProviderInfo;
 use recipe::Recipe;
@@ -202,15 +205,22 @@ fn handling(data_dir: &Path, rec: &ReviewRecord) -> Handling {
 struct RecipeList {
     recipes: Vec<Recipe>,
     warnings: Vec<String>,
+    /// このリポジトリで出番のある linter と、その状態（実行できる・許可が要る・入っていない）。
+    lint: Option<lint::Plan>,
 }
 
 #[tauri::command]
-fn list_recipes(repo: Option<String>, lang: Option<String>) -> RecipeList {
+fn list_recipes(state: tauri::State<'_, AppState>, repo: Option<String>, lang: Option<String>) -> RecipeList {
     let lang_str = lang.as_deref().unwrap_or_else(|| i18n::Lang::default().code());
-    recipe_list_with_lang(repo.as_deref(), lang_str)
+    recipe_list_with_lang(&state.data_dir, repo.as_deref(), lang_str)
 }
 
-fn recipe_list_with_lang(repo: Option<&str>, lang: &str) -> RecipeList {
+#[cfg_attr(not(test), allow(dead_code))]
+fn recipe_list(data_dir: &Path, repo: Option<&str>) -> RecipeList {
+    recipe_list_with_lang(data_dir, repo, i18n::Lang::default().code())
+}
+
+fn recipe_list_with_lang(data_dir: &Path, repo: Option<&str>, lang: &str) -> RecipeList {
     let mut warnings = Vec::new();
     let resolved_lang = match resolve_lang_arg(Some(lang)) {
         Ok(l) => l,
@@ -219,9 +229,40 @@ fn recipe_list_with_lang(repo: Option<&str>, lang: &str) -> RecipeList {
             "ja"
         }
     };
+    // 設定で足した linter。間違っていれば、黙って無視せず、画面に理由を出す
+    let custom = linters::load(data_dir).unwrap_or_else(|e| {
+        warnings.push(e);
+        Vec::new()
+    });
     let root = repo.filter(|r| !r.is_empty()).and_then(|r| snapshot::toplevel(r).ok());
-    let recipes = recipe::list_with_lang(root.as_deref().map(Path::new), resolved_lang);
-    RecipeList { recipes, warnings }
+    let root_path = root.as_deref().map(Path::new);
+    let recipes = recipe::list_with_lang(root_path, &custom, resolved_lang);
+    let lint = root_path.map(|r| {
+        let trusted = match trust::list(data_dir) {
+            Ok(l) => l.iter().any(|t| t == &r.to_string_lossy()),
+            Err(e) => {
+                warnings.push(e);
+                false
+            }
+        };
+        lint::plan(r, &custom, trusted)
+    });
+    if let Some(n) = root_path.and_then(linters::repo_notice) {
+        warnings.push(n);
+    }
+    RecipeList { recipes, warnings, lint }
+}
+
+/// このリポジトリで、コードを動かす linter（ESLint・Clippy）を走らせてよいと、あなたが許可する。
+#[tauri::command]
+fn trust_repo(state: tauri::State<'_, AppState>, repo: String) -> Result<(), String> {
+    trust::trust(&state.data_dir, &snapshot::toplevel(&repo)?)
+}
+
+/// 許可を取り消す。
+#[tauri::command]
+fn untrust_repo(state: tauri::State<'_, AppState>, repo: String) -> Result<(), String> {
+    trust::untrust(&state.data_dir, &snapshot::toplevel(&repo)?)
 }
 
 /// トークン使用量の集計（記録した、測った値だけ）。`since_ms` 以降だけを数える。None なら、すべて。
@@ -628,27 +669,61 @@ fn run_review_with_base_and_lang(
             .code(),
     };
     let snap = snapshot::take_with_base(repo, &settings.snapshot_limits(), base)?;
-    let recipe = recipe::find_with_lang(Some(Path::new(&snap.repo)), recipe_id, resolved_lang)
-        .ok_or_else(|| format!("レシピが見つからない: {recipe_id}"))?;
+    // 設定で足した linter。壊れていても、ほかのレビューは止めない（実行しようとしたのが、その linter のときだけ止める）
+    let custom_loaded = linters::load(data_dir);
+    let custom: &[linters::Custom] = custom_loaded.as_deref().unwrap_or(&[]);
+    let recipe = match recipe::find_with_lang(Some(Path::new(&snap.repo)), recipe_id, custom, resolved_lang) {
+        Some(r) => r,
+        None => {
+            return Err(match &custom_loaded {
+                Err(e) if recipe_id.starts_with(linters::ID_PREFIX) => e.clone(),
+                _ => format!("レシピが見つからない: {recipe_id}"),
+            })
+        }
+    };
     if snap.files.is_empty() {
         return Err("送る差分がありません（HEAD からの変更が無い、または全部が対象外）".into());
     }
 
+    // ツール実行型（linter）は LLM を呼ばない。押したときの LLM の選択は使わない。
+    let is_tool = recipe.kind == recipe::Kind::Tool;
+    if is_tool {
+        lint::check_targets(&recipe.id, custom, &snap.files)?;
+    }
+    let provider_info: ProviderInfo;
     let mut related: Option<related::Related> = None;
     let started = Instant::now();
-    let byok_cfg = byok::load(&data_dir)?;
-    let provider = provider::get_with(provider_id, data_dir.to_path_buf(), settings.llm_timeout(), byok_cfg)
-        .ok_or_else(|| format!("プロバイダが見つからない: {provider_id}"))?;
-    let provider_info: ProviderInfo = provider.info();
-    // 差分に出ていない関連コードも見る観点（`<!-- related -->`）は、使用箇所を集めて、差分の前に添える
-    if recipe.needs_related {
-        let r = related::collect(Path::new(&snap.repo), &snap, &settings.related_limits());
-        related = Some(r);
-    }
-    let block = related.as_ref().map(related::render).unwrap_or_default();
-    let prompt = recipe::compose_with_lang(&recipe, &block, &snap.diff_text, resolved_lang);
-    let result = provider.run(&prompt);
-    let notes = related.as_ref().map(|r| r.notes.clone()).unwrap_or_default();
+    let (prompt, result, notes) = if is_tool {
+        provider_info = lint::provider_info();
+        let result = if recipe.id == lint::LINT_ID {
+            lint::run_all(&snap, &settings.lint_limits(), custom, trust::is_trusted(data_dir, &top))
+        } else if lint::Tool::from_id(&recipe.id).is_some_and(|t| t.runs_repo_code()) && !trust::is_trusted(data_dir, &top) {
+            // 1 つだけ指定して実行する経路でも、コードを動かす linter は、許可が要る
+            Err(format!("{} は、このリポジトリのコードを動かすので、許可が要ります（許可していません）", recipe.title))
+        } else {
+            lint::run_with(&recipe.id, &snap, &settings.lint_limits(), custom)
+        };
+        match result {
+            Ok(run) => (run.prompt, Ok(run.response), run.notes),
+            // 失敗しても、実行しようとした内容と差分は記録に残す
+            Err(e) => (format!("{}\n\n## 差分\n\n```diff\n{}```\n", recipe.prompt, snap.diff_text), Err(e), Vec::new()),
+        }
+    } else {
+        let byok_cfg = byok::load(&data_dir)?;
+        let provider = provider::get_with(provider_id, data_dir.to_path_buf(), settings.llm_timeout(), byok_cfg)
+            .ok_or_else(|| format!("プロバイダが見つからない: {provider_id}"))?;
+        provider_info = provider.info();
+        // 差分に出ていない関連コードも見る観点（`<!-- related -->`）は、使用箇所を集めて、差分の前に添える
+        if recipe.needs_related {
+            let r = related::collect(Path::new(&snap.repo), &snap, &settings.related_limits());
+            related = Some(r);
+        }
+        let block = related.as_ref().map(related::render).unwrap_or_default();
+        let prompt = recipe::compose_with_lang(&recipe, &block, &snap.diff_text, resolved_lang);
+        let result = provider.run(&prompt);
+        let notes = related.as_ref().map(|r| r.notes.clone()).unwrap_or_default();
+        (prompt, result, notes)
+    };
     let duration_ms = started.elapsed().as_millis() as u64;
 
     // リポジトリ側の設定で上書きした項目は、画面にも見せる（結果が、いつもと違う設定で出たと分かるように）
@@ -1281,6 +1356,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             find_repo_icon,
             list_recipes,
+            trust_repo,
+            untrust_repo,
             usage_summary,
             fetch_agent_reports,
             agent_log_consent,
@@ -1476,7 +1553,7 @@ mod tests {
     fn recipe_list_with_lang_returns_english_recipes_when_en() {
         let data = std::env::temp_dir().join(format!("mrcr-recipe-lang-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&data);
-        let list = recipe_list_with_lang(None, "en");
+        let list = recipe_list_with_lang(&data, None, "en");
         assert_eq!(list.recipes[0].title, "Latent Bugs");
         assert_eq!(list.recipes[1].title, "Error Handling");
         assert_eq!(list.recipes[2].title, "Security");
@@ -1485,7 +1562,7 @@ mod tests {
         assert_eq!(list.recipes[5].title, "Cross-file Inconsistencies");
         assert!(list.warnings.is_empty());
 
-        let invalid = recipe_list_with_lang(None, "fr");
+        let invalid = recipe_list_with_lang(&data, None, "fr");
         assert!(invalid.warnings.iter().any(|w| w.contains("不正な言語指定: fr")));
         let _ = std::fs::remove_dir_all(&data);
     }
@@ -2111,4 +2188,623 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// 偽の ESLint（決まった JSON を返すだけのスクリプト）を入れた、架空のリポジトリ。
+    fn eslint_repo(tag: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("mrcr-e2e-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(dir.join("node_modules/.bin")).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join(".gitignore"), "node_modules\n").unwrap();
+        std::fs::write(dir.join("package.json"), "{}\n").unwrap();
+        std::fs::write(dir.join("src/a.js"), "function a() {\n  let x = 1\n}\n").unwrap();
+        let fake = dir.join("node_modules/.bin/eslint");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\ncat <<EOF\n[{\"filePath\":\"$PWD/src/a.js\",\"messages\":[\
+             {\"ruleId\":\"no-var\",\"severity\":2,\"message\":\"Unexpected var, use let or const instead.\",\"line\":2,\"column\":3},\
+             {\"ruleId\":\"semi\",\"severity\":1,\"message\":\"Missing semicolon.\",\"line\":1,\"column\":15}]}]\nEOF\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+        // 2 行目だけを変更する（1 行目への指摘は、変更していない行）
+        std::fs::write(dir.join("src/a.js"), "function a() {\n  var x = 1\n}\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn linter_review_keeps_only_changed_lines_costs_no_tokens_and_carries_triage() {
+        let repo = eslint_repo("eslint");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-eslint-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let root = repo.to_str().unwrap();
+
+        // このリポジトリで使えるツールとして、ボタンに出る
+        let recipes = recipe::list(Some(&repo));
+        let tool = recipes.iter().find(|r| r.id == "lint").expect("「リンター」のボタンが出る");
+        assert_eq!((tool.kind, tool.title.as_str()), (recipe::Kind::Tool, "リンター"));
+        assert!(recipes.iter().all(|r| !r.id.starts_with("lint-")), "linter ごとのボタンは出ない");
+        trust::trust(&data, &snapshot::toplevel(root).unwrap()).unwrap(); // ESLint はコードを動かすので、許可が要る
+
+        // LLM の指定（存在しない id でも）は使わない
+        let r1 = run_review_blocking(&data, root, "lint", "no-such-provider").unwrap();
+        assert_eq!((r1.provider.id.as_str(), r1.model.as_str()), ("tool", "ESLint"));
+        assert_eq!((r1.usage.input_tokens, r1.usage.output_tokens), (Some(0), Some(0)));
+        assert!(r1.error.is_none() && r1.parse_error.is_none(), "{:?} {:?}", r1.error, r1.parse_error);
+        assert_eq!(r1.findings.len(), 1, "変更した 2 行目の no-var だけ。1 行目の semi は除外");
+        let f = &r1.findings[0];
+        assert_eq!((f.file.as_str(), f.line, f.rule.as_deref(), f.severity.as_str()), ("src/a.js", Some(2), Some("no-var"), "high"));
+        assert_eq!(f.evidence, "var x = 1");
+        assert!(f.verified, "引用は差分の行そのものなので、必ず根拠あり");
+        assert!(r1.notes.iter().any(|n| n.contains("変更していない行への指摘 1 件は除外")), "{:?}", r1.notes);
+        assert!(r1.prompt.contains("node_modules/.bin/eslint --format json") && r1.prompt.contains("src/a.js"));
+        assert!(r1.prompt.contains("```diff\n"), "差分タブが読めるよう、差分も記録する");
+        assert!(r1.raw.contains("\"ruleId\":\"semi\""), "linter の生の出力は、除外したものも含めて残す");
+
+        // 仕分けて押し直すと、同じ規則・同じ行の指摘に引き継がれる
+        triage::set(&data, &r1.id, 0, "dismiss", 1).unwrap();
+        let r2 = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert_eq!(view(&data, r2.clone()).triage, vec!["dismiss"]);
+        assert!(r2.carries[0].as_ref().is_some_and(|c| c.exact && c.from_review == r1.id));
+
+        // 履歴の一覧にも、LLM を使っていないことが出る
+        let s = store::summaries(&data, 10);
+        assert!(s.iter().all(|x| x.total_tokens == Some(0)));
+
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn linter_review_without_matching_files_is_refused_and_not_recorded() {
+        let repo = eslint_repo("eslint-nofile");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-eslint-nofile-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        // js の変更を戻して、README だけを変更する
+        git(&repo, &["checkout", "-q", "--", "."]);
+        std::fs::write(repo.join("README.md"), "x\n").unwrap();
+        let err = run_review_blocking(&data, repo.to_str().unwrap(), "lint", "mock").unwrap_err();
+        assert!(err.contains("linter が見るファイルがありません"), "{err}");
+        assert!(store::load_all(&data).is_empty());
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn broken_linter_output_is_recorded_as_an_error_with_what_was_run() {
+        let repo = eslint_repo("eslint-broken");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-eslint-broken-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::write(repo.join("node_modules/.bin/eslint"), "#!/bin/sh\necho 'config error' >&2\nexit 2\n").unwrap();
+        trust::trust(&data, &snapshot::toplevel(repo.to_str().unwrap()).unwrap()).unwrap();
+        let rec = run_review_blocking(&data, repo.to_str().unwrap(), "lint", "mock").unwrap();
+        let e = rec.error.as_deref().unwrap();
+        assert!(e.contains("実行できる linter がありませんでした") && e.contains("ESLint") && e.contains("JSON として読めない") && e.contains("config error"), "{e}");
+        assert!(rec.prompt.contains("node_modules/.bin/eslint") && rec.prompt.contains("```diff"));
+        assert_eq!(store::load_all(&data).len(), 1, "失敗した実行も残す");
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// 実物の Ruff（入っていなければ飛ばす）。架空の Python リポジトリだけに走らせる。
+    #[test]
+    fn real_ruff_on_a_throwaway_python_repo() {
+        if lint::on_path("ruff").is_none() {
+            eprintln!("ruff が入っていないので飛ばす");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("mrcr-e2e-ruff-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        // 1 行目の `import re` は、もともと未使用（変更していない行への指摘になる）
+        std::fs::write(dir.join("app.py"), "import re\nimport sys\n\n\ndef f():\n    return sys.argv\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("app.py"), "import re\nimport sys\nimport os\n\n\ndef f():\n    return sys.argv\n").unwrap();
+        std::fs::write(dir.join("util.py"), "import json\n\nVALUE = 1\n").unwrap(); // 未追跡の新規ファイル
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-ruff-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+
+        let recipes = recipe::list(Some(&dir));
+        assert!(recipes.iter().any(|r| r.id == "lint"), "Python のリポジトリでは「リンター」のボタンが出る");
+        let rec = run_review_blocking(&data, dir.to_str().unwrap(), "lint", "mock").unwrap();
+        assert_eq!(rec.model, "Ruff");
+        assert!(rec.error.is_none() && rec.parse_error.is_none(), "{:?} {:?}\n{}", rec.error, rec.parse_error, rec.raw);
+        let got: Vec<(String, Option<u32>, String, String)> = rec
+            .findings
+            .iter()
+            .map(|f| (f.file.clone(), f.line, f.rule.clone().unwrap(), f.evidence.clone()))
+            .collect();
+        assert!(got.contains(&("app.py".into(), Some(3), "F401".into(), "import os".into())), "{got:?}");
+        assert!(got.contains(&("util.py".into(), Some(1), "F401".into(), "import json".into())), "未追跡ファイルも見る: {got:?}");
+        assert!(!got.iter().any(|g| g.0 == "app.py" && g.1 == Some(1)), "変更していない 1 行目（import re）は除外: {got:?}");
+        assert!(rec.findings.iter().all(|f| f.verified));
+        assert!(rec.notes.iter().any(|n| n.contains("除外")), "{:?}", rec.notes);
+        assert!(!dir.join(".ruff_cache").exists(), "リポジトリに .ruff_cache を作らない");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// 実物の SwiftLint と ShellCheck（入っていなければ飛ばす）。架空のリポジトリだけに走らせる。
+    #[test]
+    fn real_swiftlint_and_shellcheck_on_throwaway_repos() {
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-sw-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let dir = std::env::temp_dir().join(format!("mrcr-e2e-sw-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        // 1 行目の `let x = 1` は、もともと識別子が短すぎる（変更していない行への指摘になる）
+        std::fs::write(dir.join("a.swift"), "let x = 1\n").unwrap();
+        std::fs::write(dir.join("run.sh"), "#!/bin/bash\necho start\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("a.swift"), "let x = 1\nlet data = try! Data(contentsOf: URL(fileURLWithPath: \"/x\"))\n").unwrap();
+        std::fs::write(dir.join("run.sh"), "#!/bin/bash\necho start\ndir=$1\ncd $dir\n").unwrap();
+
+        if lint::on_path("swiftlint").is_some() {
+            let rec = run_review_blocking(&data, dir.to_str().unwrap(), "lint-swiftlint", "mock").unwrap();
+            assert!(rec.error.is_none() && rec.parse_error.is_none(), "{:?} {:?}\n{}", rec.error, rec.parse_error, rec.raw);
+            let got: Vec<_> = rec.findings.iter().map(|f| (f.file.clone(), f.line, f.rule.clone().unwrap(), f.evidence.clone())).collect();
+            assert!(got.iter().any(|g| g.0 == "a.swift" && g.1 == Some(2) && g.2 == "force_try" && g.3.starts_with("let data = try!")), "{got:?}");
+            assert!(!got.iter().any(|g| g.1 == Some(1)), "変更していない 1 行目は除外: {got:?}");
+            assert!(rec.findings.iter().all(|f| f.verified));
+        } else {
+            eprintln!("swiftlint が入っていないので飛ばす");
+        }
+        if lint::on_path("shellcheck").is_some() {
+            let rec = run_review_blocking(&data, dir.to_str().unwrap(), "lint-shellcheck", "mock").unwrap();
+            assert!(rec.error.is_none() && rec.parse_error.is_none(), "{:?} {:?}\n{}", rec.error, rec.parse_error, rec.raw);
+            let got: Vec<_> = rec.findings.iter().map(|f| (f.file.clone(), f.line, f.rule.clone().unwrap())).collect();
+            assert!(got.contains(&("run.sh".into(), Some(4), "SC2164".into())), "{got:?}");
+            assert!(got.contains(&("run.sh".into(), Some(4), "SC2086".into())), "{got:?}");
+            assert!(rec.findings.iter().all(|f| f.verified));
+        } else {
+            eprintln!("shellcheck が入っていないので飛ばす");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// 設定で足した linter の 1 件（`chk` 拡張子。組み込みの linter が見ない拡張子なので、この Mac に何が入っていても、結果が変わらない）。
+    fn write_chk_linter(data: &Path, script: &Path, extra: &str) {
+        std::fs::create_dir_all(data).unwrap();
+        std::fs::write(
+            data.join("linters.json"),
+            format!(
+                r#"{{"linters":[{{"id":"chk","title":"ChkCheck","extensions":["chk"],"command":["{}"],"format":"regex","pattern":"{}","ok_exit_codes":[0,1]{extra}}}]}}"#,
+                script.display(),
+                SHELLCHECK_PATTERN
+            ),
+        )
+        .unwrap();
+    }
+
+    /// 偽の ESLint の JS と、`chk` ファイルの両方を変更したリポジトリ。
+    fn eslint_and_chk_repo(tag: &str) -> PathBuf {
+        let dir = eslint_repo(tag);
+        std::fs::write(dir.join("a.chk"), "one\n").unwrap();
+        git(&dir, &["add", "a.chk"]);
+        git(&dir, &["commit", "-q", "-m", "chk"]);
+        std::fs::write(dir.join("a.chk"), "one\ntwo\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_lint_button_runs_every_linter_that_fits_the_diff_and_merges_one_result() {
+        let repo = eslint_and_chk_repo("lint-all");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-lint-all-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let script = fake_linter(&data.join("bin"), "chkcheck", "a.chk:2:1: warning: second line is odd [SC9999]", 1);
+        write_chk_linter(&data, &script, "");
+        let root = repo.to_str().unwrap();
+        trust::trust(&data, &snapshot::toplevel(root).unwrap()).unwrap();
+
+        let rec = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert!(rec.error.is_none() && rec.parse_error.is_none(), "{:?} {:?}", rec.error, rec.parse_error);
+        assert_eq!(rec.model, "ESLint + ChkCheck", "走った linter が、順に並ぶ");
+        let got: Vec<_> = rec.findings.iter().map(|f| (f.file.as_str(), f.line, f.rule.as_deref().unwrap_or(""))).collect();
+        assert!(got.contains(&("src/a.js", Some(2), "no-var")) && got.contains(&("a.chk", Some(2), "SC9999")), "{got:?}");
+        assert_eq!(rec.findings.len(), 2);
+        assert!(rec.findings.iter().all(|f| f.verified), "どちらも、差分の行そのものを引用している");
+        assert!(rec.findings.iter().any(|f| f.detail.starts_with("ESLint")) && rec.findings.iter().any(|f| f.detail.starts_with("ChkCheck")), "どの linter の指摘かが残る");
+        assert_eq!((rec.usage.input_tokens, rec.usage.output_tokens), (Some(0), Some(0)));
+        // 見える: 走らせたコマンドを、linter ごとに記録し、差分は 1 回だけ
+        assert!(rec.prompt.contains("node_modules/.bin/eslint") && rec.prompt.contains("chkcheck"), "{}", rec.prompt);
+        assert_eq!(rec.prompt.matches("## 差分").count(), 1, "差分タブが、差分を最後の 1 か所から読めるように");
+        assert!(rec.raw.contains("===== ESLint =====") && rec.raw.contains("===== ChkCheck =====") && rec.raw.contains("\"ruleId\":\"semi\""));
+        assert!(rec.notes.iter().any(|n| n.starts_with("ESLint: ") && n.contains("除外")), "実行メモには、どの linter のことかが付く: {:?}", rec.notes);
+        assert_eq!(store::load_all(&data).len(), 1, "1 回のレビューとして、1 件だけ残る");
+
+        // 差分に、片方の対象しか無ければ、もう片方は走らない
+        git(&repo, &["checkout", "-q", "--", "src/a.js"]);
+        let only = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert_eq!(only.model, "ChkCheck");
+        assert!(only.notes.iter().all(|n| !n.contains("ESLint")), "走らなかった理由が要らないもの（対象外）は、何も言わない: {:?}", only.notes);
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn code_running_linters_need_the_repo_to_be_allowed_and_the_skip_is_said_out_loud() {
+        let repo = eslint_and_chk_repo("lint-trust");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-lint-trust-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let script = fake_linter(&data.join("bin"), "chkcheck", "a.chk:2:1: warning: second line is odd [SC9999]", 1);
+        write_chk_linter(&data, &script, "");
+        let root = repo.to_str().unwrap();
+        let top = snapshot::toplevel(root).unwrap();
+
+        // 許可が無い: ESLint は動かさない（偽の ESLint が動いたら、marker ができる）。ほかは走り、飛ばしたことが書かれる
+        let marker = repo.join("eslint-ran");
+        std::fs::write(
+            repo.join("node_modules/.bin/eslint"),
+            format!("#!/bin/sh\ntouch {}\necho '[]'\n", marker.display()),
+        )
+        .unwrap();
+        let l = recipe_list(&data, Some(root)).lint.unwrap();
+        assert!(!l.trusted);
+        assert_eq!(l.items.iter().find(|i| i.id == "lint-eslint").unwrap().state, "needs_trust");
+        let rec = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert!(!marker.exists(), "許可が無いのに、ESLint が動いた");
+        assert_eq!(rec.model, "ChkCheck");
+        assert!(rec.notes.iter().any(|n| n.contains("ESLint") && n.contains("許可が無く")), "{:?}", rec.notes);
+
+        // 1 つだけ指定する経路でも、同じ。許可が要る
+        let e = run_review_blocking(&data, root, "lint-eslint", "mock").unwrap().error.expect("実行できなかったと記録する");
+        assert!(e.contains("許可") && !marker.exists(), "{e}");
+
+        // 許可すると、走る。許可は、そのリポジトリだけ
+        trust::trust(&data, &top).unwrap();
+        assert!(recipe_list(&data, Some(root)).lint.unwrap().trusted);
+        let rec2 = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert!(marker.exists() && rec2.model == "ESLint + ChkCheck", "{}", rec2.model);
+        let other = eslint_repo("lint-trust-other");
+        assert!(!recipe_list(&data, other.to_str()).lint.unwrap().trusted, "別のリポジトリは、許可していない");
+
+        // 取り消すと、また走らない
+        trust::untrust(&data, &top).unwrap();
+        std::fs::remove_file(&marker).unwrap();
+        let rec3 = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert!(!marker.exists() && rec3.model == "ChkCheck");
+
+        // 許可が要るものしか対象が無いときは、エラー（理由つき）。記録は残らない
+        git(&repo, &["checkout", "-q", "--", "a.chk"]);
+        let n = store::load_all(&data).len();
+        let e = run_review_blocking(&data, root, "lint", "mock").unwrap().error.expect("実行できなかったと記録する");
+        assert!(e.contains("実行できる linter がありませんでした") && e.contains("許可が無く"), "{e}");
+        assert_eq!(store::load_all(&data).len(), n + 1, "失敗も、送った内容ごと残す");
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&other);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn a_linter_that_is_wanted_but_not_installed_is_said_out_loud_not_skipped_silently() {
+        let repo = eslint_and_chk_repo("lint-missing");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-lint-missing-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        // 設定で足した linter。目印（Makefile）はあるのに、実行ファイルが無い
+        std::fs::write(repo.join("Makefile"), "").unwrap();
+        write_chk_linter(&data, Path::new("/definitely/not/installed/chkcheck"), r#","detect":["Makefile"]"#);
+        let root = repo.to_str().unwrap();
+        trust::trust(&data, &snapshot::toplevel(root).unwrap()).unwrap();
+
+        let l = recipe_list(&data, Some(root)).lint.unwrap();
+        let item = l.items.iter().find(|i| i.id == "lint-chk").expect("一覧に出る");
+        assert_eq!(item.state, "missing");
+        assert!(item.hint.as_deref().unwrap().contains("/definitely/not/installed/chkcheck"));
+        // ESLint だけは動く。入っていない ChkCheck のことは、実行メモに書かれる
+        let rec = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert_eq!(rec.model, "ESLint");
+        assert!(rec.notes.iter().any(|n| n.contains("ChkCheck") && n.contains("入っていない")), "{:?}", rec.notes);
+
+        // 「入っていない」ものだけが対象のとき: ボタンは出ない（押しても何も走らない）
+        let only_missing = eslint_repo("lint-missing-only");
+        std::fs::remove_file(only_missing.join("node_modules/.bin/eslint")).unwrap();
+        std::fs::write(only_missing.join("package.json"), r#"{"devDependencies":{"eslint":"^9"}}"#).unwrap();
+        let data2 = std::env::temp_dir().join(format!("mrcr-e2e-lint-missing-data2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data2);
+        std::fs::create_dir_all(&data2).unwrap();
+        let ol = recipe_list(&data2, only_missing.to_str().map(|s| s));
+        assert!(ol.recipes.iter().all(|r| r.id != "lint"), "実行できるものが無ければ、ボタンは出さない");
+        let e = ol.lint.unwrap().items.into_iter().find(|i| i.id == "lint-eslint").unwrap();
+        assert_eq!(e.state, "missing");
+        assert!(e.hint.unwrap().contains("npm install"));
+        assert!(recipe_list(&data2, None).lint.is_none(), "リポジトリを選ぶ前は、何も言わない");
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&only_missing);
+        let _ = std::fs::remove_dir_all(&data);
+        let _ = std::fs::remove_dir_all(&data2);
+    }
+
+    /// 実物の Clippy（入っていなければ飛ばす）。依存の無い、架空の Rust プロジェクトだけに走らせる。
+    #[test]
+    fn real_clippy_through_the_lint_button_needs_trust_and_keeps_only_changed_lines() {
+        let clippy_ok = Command::new(lint::on_path("cargo").unwrap_or_else(|| "cargo".into()))
+            .args(["clippy", "--version"])
+            .env("PATH", proc::augmented_path())
+            .output()
+            .is_ok_and(|o| o.status.success());
+        if !clippy_ok {
+            eprintln!("clippy が入っていないので飛ばす");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("mrcr-e2e-clippy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join(".gitignore"), "target\n").unwrap();
+        std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"demo-rust\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+        // 1 行目の `&Vec` は、もともと Clippy に指摘される（変更していない行への指摘になる）
+        std::fs::write(dir.join("src/main.rs"), "fn total(v: &Vec<i32>) -> i32 {\n    v.iter().sum()\n}\n\nfn main() {\n    println!(\"{}\", total(&vec![1]));\n}\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(
+            dir.join("src/main.rs"),
+            "fn total(v: &Vec<i32>) -> i32 {\n    v.iter().sum()\n}\n\nfn first(v: &[i32]) -> i32 {\n    let mut x = 0;\n    for i in 0..v.len() {\n        x = v[i];\n        break;\n    }\n    x\n}\n\nfn main() {\n    println!(\"{}\", total(&vec![1]));\n    println!(\"{}\", first(&[1]));\n}\n",
+        )
+        .unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-clippy-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let root = dir.to_str().unwrap();
+
+        // 許可が無ければ、ビルドを走らせない（target/ もできない）
+        let denied = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert!(denied.error.as_deref().is_some_and(|e| e.contains("許可が無く")), "{:?}", denied.error);
+        assert!(!dir.join("target").exists(), "許可が無いのに、Clippy がビルドした");
+
+        trust::trust(&data, &snapshot::toplevel(root).unwrap()).unwrap();
+        let rec = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert!(rec.error.is_none() && rec.parse_error.is_none(), "{:?} {:?}\n{}", rec.error, rec.parse_error, rec.raw);
+        assert_eq!(rec.model, "Clippy");
+        let got: Vec<(String, Option<u32>, String)> = rec.findings.iter().map(|f| (f.file.clone(), f.line, f.rule.clone().unwrap())).collect();
+        assert!(got.contains(&("src/main.rs".into(), Some(7), "clippy::needless_range_loop".into())), "{got:?}");
+        assert!(got.contains(&("src/main.rs".into(), Some(7), "clippy::never_loop".into())), "{got:?}");
+        assert!(!got.iter().any(|g| g.1 == Some(1)), "変更していない 1 行目（&Vec）は除外: {got:?}");
+        assert!(rec.findings.iter().all(|f| f.verified));
+        assert!(rec.findings.iter().any(|f| f.severity == "high"), "never_loop は error");
+        assert!(rec.notes.iter().any(|n| n.contains("除外")), "{:?}", rec.notes);
+        assert!(dir.join("target").exists(), "Clippy はビルドの成果物を target/ に書く（画面の注意書きのとおり）");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// 実物の Clippy を、Tauri のように `Cargo.toml` が `src-tauri/` にあるリポジトリで（入っていなければ飛ばす）。
+    #[test]
+    fn real_clippy_in_a_tauri_style_repo_where_cargo_toml_is_in_a_subdirectory() {
+        let clippy_ok = Command::new(lint::on_path("cargo").unwrap_or_else(|| "cargo".into()))
+            .args(["clippy", "--version"])
+            .env("PATH", proc::augmented_path())
+            .output()
+            .is_ok_and(|o| o.status.success());
+        if !clippy_ok {
+            eprintln!("clippy が入っていないので飛ばす");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("mrcr-e2e-clippy-nested-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src-tauri/src")).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join(".gitignore"), "target\n").unwrap();
+        std::fs::write(dir.join("src-tauri/Cargo.toml"), "[package]\nname = \"demo-tauri\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+        std::fs::write(dir.join("src-tauri/src/main.rs"), "fn main() {\n    println!(\"hi\");\n}\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(
+            dir.join("src-tauri/src/main.rs"),
+            "fn first(v: &[i32]) -> i32 {\n    let mut x = 0;\n    for i in 0..v.len() {\n        x = v[i];\n        break;\n    }\n    x\n}\n\nfn main() {\n    println!(\"{}\", first(&[1]));\n}\n",
+        )
+        .unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-clippy-nested-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let root = dir.to_str().unwrap();
+
+        let l = recipe_list(&data, Some(root)).lint.unwrap();
+        let item = l.items.iter().find(|i| i.id == "lint-clippy").expect("src-tauri/ にだけ Cargo.toml があっても、Clippy が一覧に出る");
+        assert_eq!(item.state, "needs_trust");
+        trust::trust(&data, &snapshot::toplevel(root).unwrap()).unwrap();
+        let rec = run_review_blocking(&data, root, "lint", "mock").unwrap();
+        assert!(rec.error.is_none() && rec.parse_error.is_none(), "{:?} {:?}\n{}", rec.error, rec.parse_error, rec.raw);
+        let got: Vec<(String, Option<u32>, String)> = rec.findings.iter().map(|f| (f.file.clone(), f.line, f.rule.clone().unwrap())).collect();
+        assert!(got.contains(&("src-tauri/src/main.rs".into(), Some(3), "clippy::needless_range_loop".into())), "{got:?}");
+        assert!(rec.findings.iter().all(|f| f.verified), "パスがリポジトリの根からのものになり、差分と一致する");
+        assert!(rec.prompt.contains("src-tauri") && rec.prompt.contains("cargo"), "{}", rec.prompt);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// 決まった出力を返すだけの、偽の linter（スクリプト）を作る。`exit_code` で終わる。
+    fn fake_linter(dir: &Path, name: &str, output: &str, exit_code: i32) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::create_dir_all(dir).unwrap();
+        let p = dir.join(name);
+        std::fs::write(&p, format!("#!/bin/sh\ncat <<'EOF'\n{output}\nEOF\nexit {exit_code}\n")).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    }
+
+    #[test]
+    fn a_linter_added_in_linters_json_runs_through_the_same_pipeline() {
+        let repo = shell_repo("custom-linter");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-custom-linter-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let script = fake_linter(
+            &data.join("bin"),
+            "fakecheck",
+            "run.sh:2:6: warning: Double quote to prevent globbing [SC2086]\nrun.sh:1:1: error: unchanged line problem [SC1008]\nsummary: 2 issues",
+            1,
+        );
+        write_linters(&data, &script, "");
+        let root = repo.to_str().unwrap();
+
+        // ボタンに出る（押す前に、実行するコマンドが見える）
+        let list = recipe_list(&data, Some(root));
+        let r = list.recipes.iter().find(|r| r.id == "lint").expect("設定で足した linter も、「リンター」のボタンに入る");
+        assert_eq!((r.title.as_str(), r.kind, r.source.as_str()), ("リンター", recipe::Kind::Tool, "builtin"));
+        assert!(r.prompt.contains(&format!("FakeCheck（sh）: {} --strict <差分のファイル>", script.display())), "{}", r.prompt);
+        assert!(list.lint.as_ref().unwrap().items.iter().any(|i| i.id == "lint-fake" && i.state == "ready"));
+        assert!(list.warnings.is_empty(), "{:?}", list.warnings);
+
+        // 実行: 変更した行への指摘だけが残る（1 行目は除外）。LLM は使わない
+        // （1 つだけを実行する内部の経路。「リンター」で全部まとめて走らせると、この Mac に入っている ShellCheck も走り、結果が環境で変わるため）
+        let r1 = run_review_blocking(&data, root, "lint-fake", "no-such-provider").unwrap();
+        assert!(r1.error.is_none() && r1.parse_error.is_none(), "{:?} {:?}", r1.error, r1.parse_error);
+        assert_eq!(r1.findings.len(), 1);
+        let f = &r1.findings[0];
+        assert_eq!((f.file.as_str(), f.line, f.rule.as_deref(), f.severity.as_str()), ("run.sh", Some(2), Some("SC2086"), "medium"));
+        assert_eq!(f.evidence, "echo $1 $2");
+        assert!(f.verified && f.detail == "FakeCheck SC2086");
+        assert_eq!((r1.provider.id.as_str(), r1.model.as_str(), r1.usage.input_tokens), ("tool", "FakeCheck", Some(0)));
+        assert!(r1.notes.iter().any(|n| n.contains("変更していない行への指摘 1 件は除外")), "{:?}", r1.notes);
+        assert!(r1.prompt.contains("--strict run.sh") && r1.prompt.contains("```diff"), "{}", r1.prompt);
+        assert!(r1.raw.contains("SC1008"), "生の出力は、除外したものも残す");
+
+        // 仕分けが、押し直しで引き継がれる
+        triage::set(&data, &r1.id, 0, "dismiss", 1).unwrap();
+        let r2 = run_review_blocking(&data, root, "lint-fake", "mock").unwrap();
+        assert_eq!(view(&data, r2).triage, vec!["dismiss"]);
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn a_custom_linter_that_fails_or_does_not_match_is_never_a_silent_no_findings() {
+        let repo = shell_repo("custom-linter-bad");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-custom-linter-bad-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let root = repo.to_str().unwrap();
+
+        // 終了コードが、ok_exit_codes に無い → 失敗として記録（理由と、実行したコマンドつき）
+        let script = fake_linter(&data.join("bin"), "fakecheck", "config error: missing rule file", 3);
+        write_linters(&data, &script, "");
+        let rec = run_review_blocking(&data, root, "lint-fake", "mock").unwrap();
+        let e = rec.error.as_deref().expect("失敗として記録する");
+        assert!(e.contains("終了コード 3") && e.contains("ok_exit_codes"), "{e}");
+        assert!(rec.prompt.contains("--strict") && rec.prompt.contains("```diff"));
+
+        // 出力はあるのに、パターンに 1 行も一致しない → 警告（「指摘なし」にしない）
+        let script2 = fake_linter(&data.join("bin"), "fakecheck", "Checking run.sh ...\nall good?", 0);
+        write_linters(&data, &script2, "");
+        let rec2 = run_review_blocking(&data, root, "lint-fake", "mock").unwrap();
+        assert!(rec2.error.is_none() && rec2.findings.is_empty());
+        assert!(rec2.notes.iter().any(|n| n.contains("pattern") && n.contains("Checking run.sh")), "{:?}", rec2.notes);
+
+        // linters.json が壊れていても、ほかのレビューは動く。その linter を実行しようとしたときだけ、理由で止まる
+        std::fs::write(data.join("linters.json"), "{broken").unwrap();
+        assert!(run_review_blocking(&data, root, "bugs", "mock").unwrap().error.is_none());
+        // 壊れた設定の linter は実行できないので、「リンター」を押しても、同じ理由で止まる（黙って、ほかだけ走らせない）
+        let e3 = run_review_blocking(&data, root, "lint-fake", "mock").unwrap_err();
+        assert!(e3.contains("linters.json") && e3.contains("正しくありません"), "{e3}");
+        // ボタンの一覧には、理由が警告として出る
+        let list = recipe_list(&data, Some(root));
+        assert!(list.warnings.iter().any(|w| w.contains("linters.json")), "{:?}", list.warnings);
+        assert!(list.recipes.iter().all(|r| !r.id.starts_with("lint-")), "linter ごとのボタンは無い");
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn a_linters_file_inside_the_repo_is_not_read_and_the_user_is_told() {
+        let repo = shell_repo("repo-linters");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-repo-linters-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let marker = std::env::temp_dir().join(format!("mrcr-evil-ran-{}", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        // リポジトリ側に、コマンドを実行する定義を置く（読まれたら、marker を作る）
+        std::fs::create_dir_all(repo.join(".mrcodereview")).unwrap();
+        let evil = fake_linter(&repo.join(".mrcodereview"), "evil.sh", &format!("touch {}", marker.display()), 0);
+        std::fs::write(
+            repo.join(".mrcodereview/linters.json"),
+            format!(r#"{{"linters":[{{"id":"evil","title":"Evil","extensions":["sh"],"command":["{}"],"format":"sarif"}}]}}"#, evil.display()),
+        )
+        .unwrap();
+        let root = repo.to_str().unwrap();
+        let list = recipe_list(&data, Some(root));
+        assert!(list.recipes.iter().all(|r| r.id != "lint-evil"), "ボタンにならない");
+        assert!(list.warnings.iter().any(|w| w.contains("読みません") && w.contains("あなた個人の")), "{:?}", list.warnings);
+        let e = run_review_blocking(&data, root, "lint-evil", "mock").unwrap_err();
+        assert!(e.contains("レシピが見つからない"), "{e}");
+        assert!(!marker.exists(), "リポジトリ側の定義は、実行されない");
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// 実物の Ruff を、設定（正規表現）で足した linter として動かす（入っていなければ飛ばす）。
+    #[test]
+    fn real_ruff_as_a_custom_regex_linter() {
+        let Some(ruff) = lint::on_path("ruff") else {
+            eprintln!("ruff が入っていないので飛ばす");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("mrcr-e2e-ruff-regex-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("app.py"), "import re\nimport sys\n\n\ndef f():\n    return sys.argv\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("app.py"), "import re\nimport sys\nimport os\n\n\ndef f():\n    return sys.argv\n").unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-ruff-regex-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(
+            data.join("linters.json"),
+            format!(
+                r#"{{"linters":[{{"id":"ruff-concise","title":"Ruff（設定）","extensions":["py"],
+                "command":["{}","check","--output-format","concise","--no-cache","--"],
+                "format":"regex","pattern":"^(?P<file>.+?):(?P<line>\\d+):\\d+: (?P<rule>[A-Z]+\\d+) (?P<message>.*)$",
+                "ok_exit_codes":[0,1],"default_severity":"low"}}]}}"#,
+                ruff.display()
+            ),
+        )
+        .unwrap();
+        // 組み込みの Ruff も入っていれば、「リンター」では 2 つ走るので、設定で足したほうだけを実行する経路で確かめる
+        let rec = run_review_blocking(&data, dir.to_str().unwrap(), "lint-ruff-concise", "mock").unwrap();
+        assert_eq!(rec.model, "Ruff（設定）");
+        assert!(rec.error.is_none(), "{:?}\n{}", rec.error, rec.raw);
+        let got: Vec<(String, Option<u32>, String, String, String)> = rec
+            .findings
+            .iter()
+            .map(|f| (f.file.clone(), f.line, f.rule.clone().unwrap(), f.severity.clone(), f.evidence.clone()))
+            .collect();
+        assert_eq!(got, vec![("app.py".to_string(), Some(3), "F401".to_string(), "low".to_string(), "import os".to_string())], "{}", rec.raw);
+        assert!(rec.notes.iter().any(|n| n.contains("除外")), "変更していない `import re` は除外: {:?}", rec.notes);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// `run.sh` の 2 行目だけを変更したリポジトリ（1 行目は変更していない）。
+    fn shell_repo(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mrcr-e2e-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("run.sh"), "#!/bin/sh\necho $1\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("run.sh"), "#!/bin/sh\necho $1 $2\n").unwrap();
+        dir
+    }
+
+    fn write_linters(data: &Path, script: &Path, extra: &str) {
+        std::fs::create_dir_all(data).unwrap();
+        std::fs::write(
+            data.join("linters.json"),
+            format!(
+                r#"{{"linters":[{{"id":"fake","title":"FakeCheck","extensions":["sh"],"command":["{}","--strict"],"format":"regex","pattern":"{}","ok_exit_codes":[0,1]{extra}}}]}}"#,
+                script.display(),
+                SHELLCHECK_PATTERN
+            ),
+        )
+        .unwrap();
+    }
+
+    const SHELLCHECK_PATTERN: &str = r"^(?P<file>.+?):(?P<line>\\d+):\\d+: (?P<severity>\\w+): (?P<message>.*?)(?: \\[(?P<rule>SC\\d+)\\])?$";
 }

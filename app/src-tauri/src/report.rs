@@ -1531,8 +1531,8 @@ mod tests {
 
     #[test]
     fn recipe_title_lang_and_base_label_match_builtin_recipes_in_both_directions() {
-        let ja_recipes = crate::recipe::list_with_lang(None, "ja");
-        let en_recipes = crate::recipe::list_with_lang(None, "en");
+        let ja_recipes = crate::recipe::list_with_lang(None, &[], "ja");
+        let en_recipes = crate::recipe::list_with_lang(None, &[], "en");
         assert_eq!(ja_recipes.len(), 14);
         assert_eq!(en_recipes.len(), 14);
         for (ja, en) in ja_recipes.iter().zip(en_recipes.iter()) {

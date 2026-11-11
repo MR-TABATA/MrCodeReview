@@ -3,7 +3,7 @@
 // 2. `MESSAGES` に同じ型のエントリを足す（TypeScript が不足キーをすべて検出する）
 // これだけで UI コンポーネント側のコードには一切手を触れずに言語を増やせる。
 
-import type { SettingMeta, TriageState } from './types';
+import type { LintItem, SettingMeta, TriageState } from './types';
 
 export const SUPPORTED_LANGS = [
   { code: 'ja', nativeName: '日本語', englishName: 'Japanese', bcp47: 'ja-JP' },
@@ -320,6 +320,22 @@ export interface Messages {
     recipeInfoToolTitle: (title: string) => string;
     recipeInfoRepoSource: string;
     recipeInfoSummary: (count: number) => string;
+    lintStateText: Record<LintItem['state'], string>;
+    lintItemTitle: (title: string, lang: string) => string;
+    lintTargetInDiff: string;
+    lintNoTargetInDiff: string;
+    lintInstallHint: (hint: string) => string;
+    lintConfirmBody: (items: { title: string; lang: string }[]) => string;
+    lintConfirmRemember: string;
+    lintAllowAndRunBtn: string;
+    lintRunOthersBtn: string;
+    lintRunningNote: string;
+    lintAllowedNote: string;
+    lintRevokeBtn: string;
+    lintNotAllowedNote: string;
+    lintAllowRepoBtn: string;
+    lintNoneFound: string;
+    lintSelectRepo: string;
     sendBoxTitleTool: string;
     sendBoxTitleLlm: string;
     sendBoxCannotRead: string;
@@ -355,6 +371,7 @@ export interface Messages {
     recordSubSent: string;
     recordSubResponse: string;
     execFailed: (err: string) => string;
+    allowAndRerunBtn: string;
     parseFailed: (err: string) => string;
     noFindings: string;
     expandAllBtn: string;
@@ -712,6 +729,27 @@ export const MESSAGES: Record<Lang, Messages> = {
       recipeInfoToolTitle: (title) => `${title}（リンターの状態）`,
       recipeInfoRepoSource: '（設定）',
       recipeInfoSummary: (count) => `観点の中身を見る（${count} 件。LLM へ送る文章）`,
+      lintStateText: {
+        ready: '実行できます',
+        needs_trust: '許可が要ります（このリポジトリのコードを動かします）',
+        missing: '入っていません',
+      },
+      lintItemTitle: (title, lang) => `${title}（${lang}）`,
+      lintTargetInDiff: '今回の差分に、対象のファイルがあります',
+      lintNoTargetInDiff: '今回の差分に、対象のファイルはありません',
+      lintInstallHint: (hint) => `入れると、ここで使えます: ${hint}`,
+      lintConfirmBody: (items) =>
+        `${items.map((i) => `${i.title}（${i.lang}）`).join('・')} は、このリポジトリのコードを動かします（ESLint は設定ファイル、Clippy は build.rs）。信頼できるリポジトリでだけ、許可してください。`,
+      lintConfirmRemember: '許可すると、このリポジトリでは覚えておきます（あとで取り消せます）。',
+      lintAllowAndRunBtn: '許可して実行',
+      lintRunOthersBtn: '許可せず、ほかだけ実行',
+      lintRunningNote: '実行すると、今回の差分に合う linter を、全部実行します。',
+      lintAllowedNote: 'このリポジトリでは、コードを動かす linter（ESLint・Clippy）を許可しています。',
+      lintRevokeBtn: '許可を取り消す',
+      lintNotAllowedNote: 'このリポジトリでは、コードを動かす linter（ESLint・Clippy）をまだ許可していません。',
+      lintAllowRepoBtn: 'このリポジトリで許可する',
+      lintNoneFound: 'このリポジトリで使える linter は見つかりませんでした（ESLint・Ruff・Clippy・SwiftLint・ShellCheck のほか、linters.json で足せます）。',
+      lintSelectRepo: 'リポジトリを選ぶと、使える linter が出ます。',
       sendBoxTitleTool: '対象の差分',
       sendBoxTitleLlm: '送る内容',
       sendBoxCannotRead: '読めません',
@@ -752,6 +790,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       recordSubSent: '送った内容',
       recordSubResponse: '応答',
       execFailed: (err) => `実行に失敗: ${err}`,
+      allowAndRerunBtn: '許可して再実行',
       parseFailed: (err) => `応答から指摘を読めませんでした: ${err}（「応答」タブに生の応答があります）`,
       noFindings: '指摘はありませんでした。',
       expandAllBtn: 'すべて開く',
@@ -1292,6 +1331,28 @@ export const MESSAGES: Record<Lang, Messages> = {
       recipeInfoToolTitle: (title) => `${title} (Linter status)`,
       recipeInfoRepoSource: ' (repo setting)',
       recipeInfoSummary: (count) => `View angle prompts (${count} prompt${count > 1 ? 's' : ''} to LLM)`,
+      lintStateText: {
+        ready: 'Ready',
+        needs_trust: 'Needs permission (runs code in this repository)',
+        missing: 'Not installed',
+      },
+      lintItemTitle: (title, lang) => `${title} (${lang})`,
+      lintTargetInDiff: 'Target files exist in current diff',
+      lintNoTargetInDiff: 'No target files in current diff',
+      lintInstallHint: (hint) => `Install to use here: ${hint}`,
+      lintConfirmBody: (items) =>
+        `${items.map((i) => `${i.title} (${i.lang})`).join(', ')} will execute code in this repository (ESLint config files, Clippy build.rs). Allow only for trusted repositories.`,
+      lintConfirmRemember: 'Once allowed, this repository will be remembered (you can revoke it later).',
+      lintAllowAndRunBtn: 'Allow and Run',
+      lintRunOthersBtn: 'Run others without allowing',
+      lintRunningNote: 'Running will execute all linters matching the current diff.',
+      lintAllowedNote: 'Linters that execute repository code (ESLint, Clippy) are allowed for this repository.',
+      lintRevokeBtn: 'Revoke permission',
+      lintNotAllowedNote: 'Linters that execute repository code (ESLint, Clippy) are not yet allowed for this repository.',
+      lintAllowRepoBtn: 'Allow for this repository',
+      lintNoneFound:
+        'No usable linters found for this repository (ESLint, Ruff, Clippy, SwiftLint, ShellCheck, or custom linters in linters.json).',
+      lintSelectRepo: 'Select a repository to see available linters.',
       sendBoxTitleTool: 'Target Diff',
       sendBoxTitleLlm: 'Diff to send',
       sendBoxCannotRead: 'Cannot read',
@@ -1333,6 +1394,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       recordSubSent: 'Prompt',
       recordSubResponse: 'Response',
       execFailed: (err) => `Execution failed: ${err}`,
+      allowAndRerunBtn: 'Allow and Rerun',
       parseFailed: (err) => `Failed to parse findings from response: ${err} (Raw response available in "Response" tab)`,
       noFindings: 'No findings.',
       expandAllBtn: 'Expand all',

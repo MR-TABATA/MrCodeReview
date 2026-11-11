@@ -43,8 +43,8 @@ else is sent, and nothing is sent in the background.
 - **Your API key:** in the macOS Keychain, never in a file.
 - **Hand-off files:** `.mrcodereview/out/` inside the repository you chose. The
   folder ignores itself (`.gitignore`), so it is not committed.
-- **Your repositories:** the Software reads them with `git`. It does not upload them
-  anywhere except as described in (1).
+- **Your repositories:** the Software reads them with `git` and with linters you
+  allow. It does not upload them anywhere except as described in (1).
 
 ## Reading agent conversation logs (optional)
 

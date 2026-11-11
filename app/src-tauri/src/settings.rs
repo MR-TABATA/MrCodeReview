@@ -8,7 +8,7 @@
 //! - 設定ファイルは、あなた個人のもの（アプリのデータ領域の `settings.json`）だけを読む。
 //!   リポジトリ側の設定は、まだ読まない（リポジトリ側から、実行するコマンドを差し込ませないため）。
 
-use crate::{carry, provider, related, snapshot};
+use crate::{carry, lint, provider, related, snapshot};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -30,12 +30,8 @@ pub struct Settings {
     pub fuzzy_min_tokens: usize,
     // 実行
     pub llm_timeout_secs: u64,
-    /// 廃止（linter を外した）。既存の設定ファイルを読めなくしないために、受け取って無視する（書き出さない）。
-    #[serde(skip_serializing)]
     pub tool_timeout_secs: u64,
-    #[serde(skip_serializing)]
     pub max_tool_files: usize,
-    #[serde(skip_serializing)]
     pub max_raw_bytes: usize,
     // 関連コード（「他ファイルとの不整合」のように、差分に出ていないコードも見る観点で使う）
     pub related_max_bytes: usize,
@@ -60,9 +56,9 @@ impl Default for Settings {
             fuzzy_min: carry::FUZZY_MIN,
             fuzzy_min_tokens: carry::FUZZY_MIN_TOKENS,
             llm_timeout_secs: provider::DEFAULT_TIMEOUT.as_secs(),
-            tool_timeout_secs: 900,
-            max_tool_files: 200,
-            max_raw_bytes: 1_000_000,
+            tool_timeout_secs: lint::TOOL_TIMEOUT.as_secs(),
+            max_tool_files: lint::MAX_FILES,
+            max_raw_bytes: lint::MAX_RAW,
             related_max_bytes: related::MAX_BYTES,
             related_max_names: related::MAX_NAMES,
             related_hits_per_name: related::HITS_PER_NAME,
@@ -81,6 +77,14 @@ impl Settings {
             max_total_bytes: self.max_total_bytes,
             max_untracked: self.max_untracked_files,
             lockfiles: self.ignored_lockfiles.clone(),
+        }
+    }
+
+    pub fn lint_limits(&self) -> lint::LintLimits {
+        lint::LintLimits {
+            timeout: Duration::from_secs(self.tool_timeout_secs),
+            max_files: self.max_tool_files,
+            max_raw: self.max_raw_bytes,
         }
     }
 
@@ -243,6 +247,48 @@ pub fn meta() -> Vec<Meta> {
             recommended: json!(d.llm_timeout_secs),
             min: Some(10.0),
             max: Some(3_600.0),
+            repo_scope: false,
+        },
+        Meta {
+            key: "tool_timeout_secs",
+            group: "実行",
+            label: "linter を待つ時間の上限",
+            kind: "integer",
+            unit: "秒",
+            description: "linter が、この時間を過ぎても終わらなければ、中断してエラーにします。",
+            why_recommended: "ふつうは数秒から数十秒で終わります（Tauri のアプリで、Clippy を初回から走らせても、実測で 22 秒でした）。この値は、終わるまで待つ上限で、早く終われば、早く返ります。遅いマシンや、依存がとても多いプロジェクトでも、途中で打ち切られないよう、余裕を持たせています。",
+            when_to_change: "linter が固まったときに、早く打ち切りたいなら下げます。巨大なリポジトリで、Clippy が間に合わないときは上げます。linter を複数走らせるときは、1 つごとの上限です（合計ではありません）。",
+            recommended: json!(d.tool_timeout_secs),
+            min: Some(10.0),
+            max: Some(3_600.0),
+            repo_scope: false,
+        },
+        Meta {
+            key: "max_tool_files",
+            group: "実行",
+            label: "linter に 1 回で渡すファイル数の上限",
+            kind: "integer",
+            unit: "ファイル",
+            description: "差分のファイルがこれより多いときは、先頭のものだけを linter に渡します。",
+            why_recommended: "コマンドラインが長すぎると、linter の起動に失敗します。200 ファイルなら、ほとんどの環境で安全です。",
+            when_to_change: "巨大な変更をまとめて linter にかけたいときに上げます。起動に失敗するようなら下げます。",
+            recommended: json!(d.max_tool_files),
+            min: Some(1.0),
+            max: Some(5_000.0),
+            repo_scope: false,
+        },
+        Meta {
+            key: "max_raw_bytes",
+            group: "実行",
+            label: "履歴に残す linter の生の出力の上限",
+            kind: "integer",
+            unit: "バイト",
+            description: "linter の生の出力を、履歴にこの大きさまで残します。超えた分は切ります。",
+            why_recommended: "Clippy などは、とても大きな出力を出すことがあります。1 MB なら、必要な内容は残り、履歴の容量を食いつぶしません。",
+            when_to_change: "生の出力を、完全な形で残したいときに上げます。",
+            recommended: json!(d.max_raw_bytes),
+            min: Some(10_000.0),
+            max: Some(100_000_000.0),
             repo_scope: false,
         },
         Meta {
@@ -578,6 +624,7 @@ mod tests {
         // 既定の設定から作った上限は、各モジュールの既定と同じ
         let l = d.snapshot_limits();
         assert_eq!((l.max_file_bytes, l.max_total_bytes, l.max_untracked), (60_000, 200_000, 200));
+        assert_eq!(d.lint_limits().timeout, Duration::from_secs(900));
         assert_eq!(d.llm_timeout(), Duration::from_secs(300));
     }
 
@@ -684,30 +731,6 @@ mod tests {
     }
 
     #[test]
-    fn a_settings_file_with_the_retired_linter_keys_still_loads_and_saving_drops_them() {
-        let d = scratch("retired-keys");
-        write(&d, r#"{"tool_timeout_secs": 5000, "max_tool_files": 10, "max_raw_bytes": 2000, "history_limit": 77}"#);
-        // 読める（`deny_unknown_fields` でも、廃止したキーは受け取る）。ほかの値は、そのまま生きる
-        let loaded = load(&d).expect("古い設定ファイルを読めなくしない");
-        assert_eq!(loaded.history_limit, 77);
-        // 廃止した値は、読んでも、画面に出る記録（to_record）には入らない
-        let rec = loaded.to_record();
-        for k in ["tool_timeout_secs", "max_tool_files", "max_raw_bytes"] {
-            assert!(rec.get(k).is_none(), "{k} は、記録に出さない");
-        }
-        // 保存し直すと、廃止したキーは、ファイルから消え、ほかの上書きは残る
-        save(&d, &rec).unwrap();
-        let text = std::fs::read_to_string(d.join("settings.json")).unwrap();
-        for k in ["tool_timeout_secs", "max_tool_files", "max_raw_bytes"] {
-            assert!(!text.contains(k), "{k} が、保存後のファイルに残っている: {text}");
-        }
-        assert!(text.contains("history_limit") && text.contains("77"), "{text}");
-        // 保存し直したあとも、読める
-        assert_eq!(load(&d).unwrap().history_limit, 77);
-        std::fs::remove_dir_all(&d).ok();
-    }
-
-    #[test]
     fn a_second_broken_file_does_not_overwrite_the_first_backup() {
         let d = scratch("bak-twice");
         write(&d, r#"{"max_file_byts": 5}"#);
@@ -809,7 +832,7 @@ mod tests {
     #[test]
     fn repo_files_cannot_change_machine_level_settings_or_use_unknown_keys() {
         let user = scratch("deny-user");
-        for key in ["llm_timeout_secs", "history_limit"] {
+        for key in ["llm_timeout_secs", "tool_timeout_secs", "max_tool_files", "max_raw_bytes", "history_limit"] {
             let repo = repo_with(&format!("deny-{key}"), Some(&format!(r#"{{"{key}": 60}}"#)));
             let e = load_effective(&user, Some(&repo)).unwrap_err();
             assert!(e.contains(key) && e.contains("変えられません") && e.contains("settings.json"), "{key}: {e}");
@@ -853,7 +876,7 @@ mod tests {
         let m = meta();
         let repo_ok: Vec<&str> = m.iter().filter(|x| x.repo_scope).map(|x| x.key).collect();
         let user_only: Vec<&str> = m.iter().filter(|x| !x.repo_scope).map(|x| x.key).collect();
-        assert_eq!(user_only, vec!["llm_timeout_secs", "history_limit", "language"]);
+        assert_eq!(user_only, vec!["llm_timeout_secs", "tool_timeout_secs", "max_tool_files", "max_raw_bytes", "history_limit", "language"]);
         assert!(repo_ok.contains(&"max_file_bytes") && repo_ok.contains(&"carry_window") && repo_ok.contains(&"related_max_bytes"));
         assert_eq!(repo_ok.len() + user_only.len(), m.len());
     }
