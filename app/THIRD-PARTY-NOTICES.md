@@ -11,21 +11,21 @@ This product includes the open-source software listed below. Each license text i
 
 次のライブラリは MPL-2.0 です。**MrCodeReview は、これらのソースを変更せずに、そのまま使っています。** ソースは、それぞれの公開の場所で入手できます（クレートのソースは crates.io、リポジトリは下記）。
 
-- cssparser 0.36.0（MPL-2.0） — https://github.com/servo/rust-cssparser
-- cssparser-macros 0.6.1（MPL-2.0） — https://github.com/servo/rust-cssparser
+- cssparser 0.37.0（MPL-2.0） — https://github.com/servo/rust-cssparser
+- cssparser-macros 0.7.1（MPL-2.0） — https://github.com/servo/rust-cssparser
 - dtoa-short 0.3.5（MPL-2.0） — https://github.com/upsuper/dtoa-short
 - option-ext 0.2.0（MPL-2.0） — https://github.com/soc/option-ext.git
-- selectors 0.36.1（MPL-2.0） — https://github.com/servo/stylo
+- selectors 0.38.0（MPL-2.0） — https://github.com/servo/stylo
 
-## 標準の文面で補ったもの（20 件）
+## 標準の文面で補ったもの（16 件）
 
 次のライブラリは、ソースにライセンス文のファイルを同梱していません。宣言されたライセンスの標準の文面（SPDX）に、`Cargo.toml` の作者名を添えて示します（宣言が複数のライセンスの選択のときは、MIT を選びます）。
 
-- alloc-stdlib 0.2.4
+- alloc-stdlib 0.3.0
 - block2 0.6.2
 - dispatch2 0.3.1
-- mrcr-core 0.4.0
-- objc2 0.6.4
+- mrcr-core 0.5.0
+- objc2 0.6.5
 - objc2-app-kit 0.3.2
 - objc2-core-foundation 0.3.2
 - objc2-core-graphics 0.3.2
@@ -34,69 +34,64 @@ This product includes the open-source software listed below. Each license text i
 - objc2-foundation 0.3.2
 - objc2-io-surface 0.3.2
 - objc2-osa-kit 0.3.2
+- objc2-quartz-core 0.3.2
 - objc2-web-kit 0.3.2
-- selectors 0.36.1
-- unic-char-property 0.9.0
-- unic-char-range 0.9.0
-- unic-common 0.9.0
-- unic-ucd-ident 0.9.0
-- unic-ucd-version 0.9.0
+- selectors 0.38.0
 
 ## ライセンスの文面
 
-（Rust の依存と npm の本番依存の合計 548 件。文面は 205 種類）
+（Rust の依存と npm の本番依存の合計 551 件。文面は 208 種類）
 
-### 1. 使っているライブラリ（76 件）
+### 1. 使っているライブラリ（74 件）
 
 <details><summary>ライブラリの一覧</summary>
 
 - atomic-waker 1.1.2（Apache-2.0 OR MIT）
 - base64 0.21.7（MIT OR Apache-2.0）
 - base64 0.22.1（MIT OR Apache-2.0）
-- bitflags 1.3.2（MIT/Apache-2.0）
-- bitflags 2.13.0（MIT OR Apache-2.0）
+- base64 0.23.1（MIT OR Apache-2.0）
+- bitflags 2.13.2（MIT OR Apache-2.0）
 - bs58 0.5.1（MIT/Apache-2.0）
 - bumpalo 3.20.3（MIT OR Apache-2.0）
-- camino 1.2.3（MIT OR Apache-2.0）
-- cfg-if 1.0.4（MIT OR Apache-2.0）
+- camino 1.2.6（MIT OR Apache-2.0）
+- cfg-if 1.0.5（MIT OR Apache-2.0）
 - core-foundation 0.10.1（MIT OR Apache-2.0）
 - core-foundation 0.9.4（MIT OR Apache-2.0）
 - core-foundation-sys 0.8.7（MIT OR Apache-2.0）
 - core-graphics 0.25.0（MIT OR Apache-2.0）
 - core-graphics-types 0.2.0（MIT OR Apache-2.0）
-- crossbeam-channel 0.5.15（MIT OR Apache-2.0）
-- crossbeam-utils 0.8.21（MIT OR Apache-2.0）
-- displaydoc 0.2.6（MIT OR Apache-2.0）
-- equivalent 1.0.2（Apache-2.0 OR MIT）
+- crossbeam-channel 0.5.17（MIT OR Apache-2.0）
+- crossbeam-utils 0.8.23（MIT OR Apache-2.0）
+- displaydoc 0.2.7（MIT OR Apache-2.0）
+- equivalent 1.0.3（Apache-2.0 OR MIT）
 - errno 0.3.14（MIT OR Apache-2.0）
-- fastrand 2.4.1（Apache-2.0 OR MIT）
+- fastrand 2.5.0（Apache-2.0 OR MIT）
 - filetime 0.2.29（MIT/Apache-2.0）
-- flate2 1.1.9（MIT OR Apache-2.0）
+- flate2 1.1.10（MIT OR Apache-2.0）
 - fnv 1.0.7（Apache-2.0 / MIT）
 - form_urlencoded 1.2.2（MIT OR Apache-2.0）
-- glob 0.3.3（MIT OR Apache-2.0）
+- glob 0.3.4（MIT OR Apache-2.0）
 - hashbrown 0.12.3（MIT OR Apache-2.0）
 - hashbrown 0.17.1（MIT OR Apache-2.0）
 - heck 0.5.0（MIT OR Apache-2.0）
-- html5ever 0.38.0（MIT OR Apache-2.0）
+- html5ever 0.39.0（MIT OR Apache-2.0）
 - httparse 1.10.1（MIT OR Apache-2.0）
 - hyper-rustls 0.27.10（Apache-2.0 OR ISC OR MIT）
 - idna 1.1.0（MIT OR Apache-2.0）
 - idna_adapter 1.2.2（Apache-2.0 OR MIT）
 - indexmap 1.9.3（Apache-2.0 OR MIT）
-- indexmap 2.14.0（Apache-2.0 OR MIT）
-- keyboard-types 0.7.0（MIT OR Apache-2.0）
+- indexmap 2.14.2（Apache-2.0 OR MIT）
+- keyboard-types 0.8.3（MIT OR Apache-2.0）
 - lock_api 0.4.14（MIT OR Apache-2.0）
-- log 0.4.34（MIT OR Apache-2.0）
-- markup5ever 0.38.0（MIT OR Apache-2.0）
-- mime 0.3.17（MIT OR Apache-2.0）
-- muda 0.19.3（Apache-2.0 OR MIT）
+- log 0.4.35（MIT OR Apache-2.0）
+- markup5ever 0.39.0（MIT OR Apache-2.0）
+- mime 0.3.18（MIT OR Apache-2.0）
+- muda 0.20.0（Apache-2.0 OR MIT）
 - num-traits 0.2.19（MIT OR Apache-2.0）
 - once_cell 1.21.4（MIT OR Apache-2.0）
 - parking_lot 0.12.5（MIT OR Apache-2.0）
 - parking_lot_core 0.9.12（MIT OR Apache-2.0）
 - percent-encoding 2.3.2（MIT OR Apache-2.0）
-- png 0.17.16（MIT OR Apache-2.0）
 - png 0.18.1（MIT OR Apache-2.0）
 - regex 1.13.1（MIT OR Apache-2.0）
 - regex-automata 0.4.18（MIT OR Apache-2.0）
@@ -106,25 +101,24 @@ This product includes the open-source software listed below. Each license text i
 - scopeguard 1.2.0（MIT OR Apache-2.0）
 - security-framework 3.7.0（MIT OR Apache-2.0）
 - security-framework-sys 2.17.0（MIT OR Apache-2.0）
-- serde_with 3.21.0（MIT OR Apache-2.0）
-- serde_with_macros 3.21.0（MIT OR Apache-2.0）
+- serde_with 3.24.0（MIT OR Apache-2.0）
+- serde_with_macros 3.24.0（MIT OR Apache-2.0）
 - servo_arc 0.4.3（MIT OR Apache-2.0）
-- smallvec 1.15.2（MIT OR Apache-2.0）
-- socket2 0.6.4（MIT OR Apache-2.0）
+- smallvec 1.16.4（MIT OR Apache-2.0）
+- socket2 0.6.5（MIT OR Apache-2.0）
 - stable_deref_trait 1.2.1（MIT OR Apache-2.0）
 - string_cache 0.9.0（MIT OR Apache-2.0）
 - system-configuration 0.7.0（MIT OR Apache-2.0）
 - system-configuration-sys 0.6.0（MIT OR Apache-2.0）
 - tar 0.4.46（MIT OR Apache-2.0）
 - tempfile 3.27.0（MIT OR Apache-2.0）
-- tendril 0.5.0（MIT OR Apache-2.0）
-- tray-icon 0.24.1（MIT OR Apache-2.0）
-- unicode-segmentation 1.13.3（MIT OR Apache-2.0）
+- tendril 0.5.1（MIT OR Apache-2.0）
+- tray-icon 0.25.1（MIT OR Apache-2.0）
 - url 2.5.8（MIT OR Apache-2.0）
-- uuid 1.23.3（Apache-2.0 OR MIT）
-- web_atoms 0.2.5（MIT OR Apache-2.0）
-- window-vibrancy 0.6.0（Apache-2.0 OR MIT）
-- wry 0.55.1（Apache-2.0 OR MIT）
+- uuid 1.29.2（Apache-2.0 OR MIT）
+- web_atoms 0.2.6（MIT OR Apache-2.0）
+- window-vibrancy 0.8.1（Apache-2.0 OR MIT）
+- wry 0.57.2（Apache-2.0 OR MIT）
 - xattr 1.7.0（MIT OR Apache-2.0）
 
 </details>
@@ -333,50 +327,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 2. 使っているライブラリ（40 件）
+### 2. 使っているライブラリ（37 件）
 
 <details><summary>ライブラリの一覧</summary>
 
 - adler2 2.0.1（0BSD OR MIT OR Apache-2.0）
-- anyhow 1.0.102（MIT OR Apache-2.0）
+- anyhow 1.0.104（MIT OR Apache-2.0）
 - atomic-waker 1.1.2（Apache-2.0 OR MIT）
-- camino 1.2.3（MIT OR Apache-2.0）
+- camino 1.2.6（MIT OR Apache-2.0）
 - cargo-platform 0.1.9（MIT OR Apache-2.0）
 - cargo_metadata 0.19.2（MIT）
-- displaydoc 0.2.6（MIT OR Apache-2.0）
+- displaydoc 0.2.7（MIT OR Apache-2.0）
 - dtoa 1.0.11（MIT OR Apache-2.0）
 - dyn-clone 1.0.20（MIT OR Apache-2.0）
-- erased-serde 0.4.10（MIT OR Apache-2.0）
-- fastrand 2.4.1（Apache-2.0 OR MIT）
+- erased-serde 0.4.11（MIT OR Apache-2.0）
+- fastrand 2.5.0（Apache-2.0 OR MIT）
 - itoa 1.0.18（MIT OR Apache-2.0）
 - once_cell 1.21.4（MIT OR Apache-2.0）
 - pin-project-lite 0.2.17（Apache-2.0 OR MIT）
-- proc-macro2 1.0.106（MIT OR Apache-2.0）
-- quote 1.0.45（MIT OR Apache-2.0）
-- ref-cast 1.0.25（MIT OR Apache-2.0）
-- ref-cast-impl 1.0.25（MIT OR Apache-2.0）
-- rustc-hash 2.1.2（Apache-2.0 OR MIT）
+- proc-macro2 1.0.107（MIT OR Apache-2.0）
+- quote 1.0.47（MIT OR Apache-2.0）
+- ref-cast 1.0.27（MIT OR Apache-2.0）
+- ref-cast-impl 1.0.27（MIT OR Apache-2.0）
+- rustc-hash 2.1.3（Apache-2.0 OR MIT）
 - rustix 1.1.6（Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT）
 - semver 1.0.28（MIT OR Apache-2.0）
-- serde 1.0.228（MIT OR Apache-2.0）
+- serde 1.0.229（MIT OR Apache-2.0）
 - serde-untagged 0.1.9（MIT OR Apache-2.0）
-- serde_core 1.0.228（MIT OR Apache-2.0）
-- serde_derive 1.0.228（MIT OR Apache-2.0）
+- serde_core 1.0.229（MIT OR Apache-2.0）
+- serde_derive 1.0.229（MIT OR Apache-2.0）
 - serde_derive_internals 0.29.1（MIT OR Apache-2.0）
-- serde_json 1.0.150（MIT OR Apache-2.0）
-- serde_repr 0.1.20（MIT OR Apache-2.0）
+- serde_json 1.0.154（MIT OR Apache-2.0）
+- serde_repr 0.1.21（MIT OR Apache-2.0）
 - servo_arc 0.4.3（MIT OR Apache-2.0）
-- syn 2.0.118（MIT OR Apache-2.0）
+- syn 2.0.119（MIT OR Apache-2.0）
 - syn 3.0.9（MIT OR Apache-2.0）
-- thiserror 1.0.69（MIT OR Apache-2.0）
 - thiserror 2.0.21（MIT OR Apache-2.0）
-- thiserror-impl 1.0.69（MIT OR Apache-2.0）
 - thiserror-impl 2.0.21（MIT OR Apache-2.0）
 - typed-path 0.13.0（MIT OR Apache-2.0）
 - typeid 1.0.3（MIT OR Apache-2.0）
-- unicode-ident 1.0.24（(MIT OR Apache-2.0) AND Unicode-3.0）
-- utf-8 0.7.6（MIT OR Apache-2.0）
-- zmij 1.0.21（MIT）
+- unicode-ident 1.0.27（(MIT OR Apache-2.0) AND Unicode-3.0）
+- zmij 1.0.23（MIT）
 
 </details>
 
@@ -406,40 +397,38 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 3. 使っているライブラリ（31 件）
+### 3. 使っているライブラリ（29 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- anyhow 1.0.102（MIT OR Apache-2.0）
+- anyhow 1.0.104（MIT OR Apache-2.0）
+- constant_time_eq 0.6.1（CC0-1.0 OR MIT-0 OR Apache-2.0）
 - dtoa 1.0.11（MIT OR Apache-2.0）
 - dyn-clone 1.0.20（MIT OR Apache-2.0）
-- erased-serde 0.4.10（MIT OR Apache-2.0）
+- erased-serde 0.4.11（MIT OR Apache-2.0）
 - itoa 1.0.18（MIT OR Apache-2.0）
-- libc 0.2.186（MIT OR Apache-2.0）
+- libc 0.2.191（MIT OR Apache-2.0）
 - osakit 0.3.1（MIT OR Apache-2.0）
-- proc-macro2 1.0.106（MIT OR Apache-2.0）
-- quote 1.0.45（MIT OR Apache-2.0）
-- ref-cast 1.0.25（MIT OR Apache-2.0）
-- ref-cast-impl 1.0.25（MIT OR Apache-2.0）
-- rustc-hash 2.1.2（Apache-2.0 OR MIT）
+- proc-macro2 1.0.107（MIT OR Apache-2.0）
+- quote 1.0.47（MIT OR Apache-2.0）
+- ref-cast 1.0.27（MIT OR Apache-2.0）
+- ref-cast-impl 1.0.27（MIT OR Apache-2.0）
+- rustc-hash 2.1.3（Apache-2.0 OR MIT）
 - semver 1.0.28（MIT OR Apache-2.0）
-- serde 1.0.228（MIT OR Apache-2.0）
+- serde 1.0.229（MIT OR Apache-2.0）
 - serde-untagged 0.1.9（MIT OR Apache-2.0）
-- serde_core 1.0.228（MIT OR Apache-2.0）
-- serde_derive 1.0.228（MIT OR Apache-2.0）
+- serde_core 1.0.229（MIT OR Apache-2.0）
+- serde_derive 1.0.229（MIT OR Apache-2.0）
 - serde_derive_internals 0.29.1（MIT OR Apache-2.0）
-- serde_json 1.0.150（MIT OR Apache-2.0）
-- serde_repr 0.1.20（MIT OR Apache-2.0）
-- syn 2.0.118（MIT OR Apache-2.0）
+- serde_json 1.0.154（MIT OR Apache-2.0）
+- serde_repr 0.1.21（MIT OR Apache-2.0）
+- syn 2.0.119（MIT OR Apache-2.0）
 - syn 3.0.9（MIT OR Apache-2.0）
-- thiserror 1.0.69（MIT OR Apache-2.0）
 - thiserror 2.0.21（MIT OR Apache-2.0）
-- thiserror-impl 1.0.69（MIT OR Apache-2.0）
 - thiserror-impl 2.0.21（MIT OR Apache-2.0）
 - typed-path 0.13.0（MIT OR Apache-2.0）
 - typeid 1.0.3（MIT OR Apache-2.0）
-- unicode-ident 1.0.24（(MIT OR Apache-2.0) AND Unicode-3.0）
-- utf-8 0.7.6（MIT OR Apache-2.0）
+- unicode-ident 1.0.27（(MIT OR Apache-2.0) AND Unicode-3.0）
 - utf8parse 0.2.2（Apache-2.0 OR MIT）
 
 </details>
@@ -623,29 +612,31 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 ````
 
-### 4. 使っているライブラリ（19 件）
+### 4. 使っているライブラリ（21 件）
 
 <details><summary>ライブラリの一覧</summary>
 
 - @tauri-apps/api 2.11.1（Apache-2.0 OR MIT, npm）
 - fdeflate 0.3.7（MIT OR Apache-2.0）
 - miniz_oxide 0.8.9（MIT OR Zlib OR Apache-2.0）
+- miniz_oxide 0.9.1（MIT OR Zlib OR Apache-2.0）
 - num-conv 0.2.2（MIT OR Apache-2.0）
 - pin-project-lite 0.2.17（Apache-2.0 OR MIT）
 - raw-window-handle 0.6.2（MIT OR Apache-2.0 OR Zlib）
+- simdutf8 0.1.5（MIT OR Apache-2.0）
 - sync_wrapper 1.0.2（Apache-2.0）
-- tauri 2.11.3（Apache-2.0 OR MIT）
-- tauri-codegen 2.6.3（Apache-2.0 OR MIT）
-- tauri-macros 2.6.3（Apache-2.0 OR MIT）
-- tauri-plugin-dialog 2.7.1（Apache-2.0 OR MIT）
-- tauri-plugin-fs 2.5.1（Apache-2.0 OR MIT）
-- tauri-plugin-updater 2.12.0（Apache-2.0 OR MIT）
-- tauri-runtime 2.11.3（Apache-2.0 OR MIT）
-- tauri-runtime-wry 2.11.3（Apache-2.0 OR MIT）
-- tauri-utils 2.9.3（Apache-2.0 OR MIT）
-- time 0.3.49（MIT OR Apache-2.0）
+- tauri 2.12.5（Apache-2.0 OR MIT）
+- tauri-codegen 2.7.4（Apache-2.0 OR MIT）
+- tauri-macros 2.7.4（Apache-2.0 OR MIT）
+- tauri-plugin-dialog 2.8.4（Apache-2.0 OR MIT）
+- tauri-plugin-fs 2.7.1（Apache-2.0 OR MIT）
+- tauri-plugin-updater 2.14.1（Apache-2.0 OR MIT）
+- tauri-runtime 2.12.2（Apache-2.0 OR MIT）
+- tauri-runtime-wry 2.12.3（Apache-2.0 OR MIT）
+- tauri-utils 2.10.2（Apache-2.0 OR MIT）
+- time 0.3.55（MIT OR Apache-2.0）
 - time-core 0.1.9（MIT OR Apache-2.0）
-- time-macros 0.2.29（MIT OR Apache-2.0）
+- time-macros 0.2.32（MIT OR Apache-2.0）
 
 </details>
 
@@ -828,7 +819,125 @@ END OF TERMS AND CONDITIONS
    END OF TERMS AND CONDITIONS
 ````
 
-### 5. 使っているライブラリ（19 件）
+### 5. 使っているライブラリ（18 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- icu_collections 2.4.0（Unicode-3.0）
+- icu_locale_core 2.4.0（Unicode-3.0）
+- icu_normalizer 2.4.0（Unicode-3.0）
+- icu_normalizer_data 2.4.0（Unicode-3.0）
+- icu_properties 2.4.0（Unicode-3.0）
+- icu_properties_data 2.4.0（Unicode-3.0）
+- icu_provider 2.4.0（Unicode-3.0）
+- litemap 0.8.3（Unicode-3.0）
+- potential_utf 0.1.6（Unicode-3.0）
+- tinystr 0.8.5（Unicode-3.0）
+- writeable 0.6.4（Unicode-3.0）
+- yoke 0.8.4（Unicode-3.0）
+- yoke-derive 0.8.4（Unicode-3.0）
+- zerofrom 0.1.8（Unicode-3.0）
+- zerofrom-derive 0.1.8（Unicode-3.0）
+- zerotrie 0.2.5（Unicode-3.0）
+- zerovec 0.11.9（Unicode-3.0）
+- zerovec-derive 0.11.7（Unicode-3.0）
+
+</details>
+
+````text
+UNICODE LICENSE V3
+
+COPYRIGHT AND PERMISSION NOTICE
+
+Copyright © 2020-2024 Unicode, Inc.
+
+NOTICE TO USER: Carefully read the following legal agreement. BY
+DOWNLOADING, INSTALLING, COPYING OR OTHERWISE USING DATA FILES, AND/OR
+SOFTWARE, YOU UNEQUIVOCALLY ACCEPT, AND AGREE TO BE BOUND BY, ALL OF THE
+TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT
+DOWNLOAD, INSTALL, COPY, DISTRIBUTE OR USE THE DATA FILES OR SOFTWARE.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of data files and any associated documentation (the "Data Files") or
+software and any associated documentation (the "Software") to deal in the
+Data Files or Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, and/or sell
+copies of the Data Files or Software, and to permit persons to whom the
+Data Files or Software are furnished to do so, provided that either (a)
+this copyright and permission notice appear with all copies of the Data
+Files or Software, or (b) this copyright and permission notice appear in
+associated Documentation.
+
+THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
+THIRD PARTY RIGHTS.
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS NOTICE
+BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES,
+OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE DATA
+FILES OR SOFTWARE.
+
+Except as contained in this notice, the name of a copyright holder shall
+not be used in advertising or otherwise to promote the sale, use or other
+dealings in these Data Files or Software without prior written
+authorization of the copyright holder.
+
+SPDX-License-Identifier: Unicode-3.0
+
+—
+
+Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
+ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
+````
+
+### 6. 使っているライブラリ（15 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- anstream 1.0.0（MIT OR Apache-2.0）
+- anstyle 1.0.14（MIT OR Apache-2.0）
+- anstyle-parse 1.0.0（MIT OR Apache-2.0）
+- anstyle-query 1.1.5（MIT OR Apache-2.0）
+- clap 4.6.7（MIT OR Apache-2.0）
+- clap_builder 4.6.7（MIT OR Apache-2.0）
+- clap_derive 4.6.7（MIT OR Apache-2.0）
+- clap_lex 1.1.1（MIT OR Apache-2.0）
+- colorchoice 1.0.5（MIT OR Apache-2.0）
+- is_terminal_polyfill 1.70.2（MIT OR Apache-2.0）
+- serde_spanned 1.1.3（MIT OR Apache-2.0）
+- toml 1.2.1+spec-1.1.0（MIT OR Apache-2.0）
+- toml_datetime 1.1.3+spec-1.1.0（MIT OR Apache-2.0）
+- toml_parser 1.1.5+spec-1.1.0（MIT OR Apache-2.0）
+- toml_writer 1.2.0+spec-1.1.0（MIT OR Apache-2.0）
+
+</details>
+
+````text
+Copyright (c) Individual contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+````
+
+### 7. 使っているライブラリ（14 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -837,20 +946,15 @@ END OF TERMS AND CONDITIONS
 - anstyle-parse 1.0.0（MIT OR Apache-2.0）
 - anstyle-query 1.1.5（MIT OR Apache-2.0）
 - colorchoice 1.0.5（MIT OR Apache-2.0）
-- crc32fast 1.5.3（MIT OR Apache-2.0）
+- crc32fast 1.5.4（MIT OR Apache-2.0）
 - fallible-iterator 0.3.0（MIT/Apache-2.0）
 - fallible-streaming-iterator 0.1.9（MIT/Apache-2.0）
 - foreign-types 0.5.0（MIT/Apache-2.0）
-- foreign-types-macros 0.2.3（MIT/Apache-2.0）
+- foreign-types-macros 0.2.4（MIT/Apache-2.0）
 - foreign-types-shared 0.3.1（MIT/Apache-2.0）
 - hex 0.4.3（MIT OR Apache-2.0）
 - is_terminal_polyfill 1.70.2（MIT OR Apache-2.0）
-- json-patch 3.0.1（MIT/Apache-2.0）
-- serde_spanned 1.1.1（MIT OR Apache-2.0）
-- toml 1.1.2+spec-1.1.0（MIT OR Apache-2.0）
-- toml_datetime 1.1.1+spec-1.1.0（MIT OR Apache-2.0）
-- toml_parser 1.1.2+spec-1.1.0（MIT OR Apache-2.0）
-- toml_writer 1.1.1+spec-1.1.0（MIT OR Apache-2.0）
+- json-patch 4.2.0（MIT/Apache-2.0）
 
 </details>
 
@@ -1058,220 +1162,23 @@ END OF TERMS AND CONDITIONS
    limitations under the License.
 ````
 
-### 6. 使っているライブラリ（18 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- icu_collections 2.2.0（Unicode-3.0）
-- icu_locale_core 2.2.0（Unicode-3.0）
-- icu_normalizer 2.2.0（Unicode-3.0）
-- icu_normalizer_data 2.2.0（Unicode-3.0）
-- icu_properties 2.2.0（Unicode-3.0）
-- icu_properties_data 2.2.0（Unicode-3.0）
-- icu_provider 2.2.0（Unicode-3.0）
-- litemap 0.8.2（Unicode-3.0）
-- potential_utf 0.1.5（Unicode-3.0）
-- tinystr 0.8.3（Unicode-3.0）
-- writeable 0.6.3（Unicode-3.0）
-- yoke 0.8.3（Unicode-3.0）
-- yoke-derive 0.8.2（Unicode-3.0）
-- zerofrom 0.1.8（Unicode-3.0）
-- zerofrom-derive 0.1.7（Unicode-3.0）
-- zerotrie 0.2.4（Unicode-3.0）
-- zerovec 0.11.6（Unicode-3.0）
-- zerovec-derive 0.11.3（Unicode-3.0）
-
-</details>
-
-````text
-UNICODE LICENSE V3
-
-COPYRIGHT AND PERMISSION NOTICE
-
-Copyright © 2020-2024 Unicode, Inc.
-
-NOTICE TO USER: Carefully read the following legal agreement. BY
-DOWNLOADING, INSTALLING, COPYING OR OTHERWISE USING DATA FILES, AND/OR
-SOFTWARE, YOU UNEQUIVOCALLY ACCEPT, AND AGREE TO BE BOUND BY, ALL OF THE
-TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT
-DOWNLOAD, INSTALL, COPY, DISTRIBUTE OR USE THE DATA FILES OR SOFTWARE.
-
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of data files and any associated documentation (the "Data Files") or
-software and any associated documentation (the "Software") to deal in the
-Data Files or Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, and/or sell
-copies of the Data Files or Software, and to permit persons to whom the
-Data Files or Software are furnished to do so, provided that either (a)
-this copyright and permission notice appear with all copies of the Data
-Files or Software, or (b) this copyright and permission notice appear in
-associated Documentation.
-
-THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
-KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
-THIRD PARTY RIGHTS.
-
-IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS NOTICE
-BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES,
-OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
-WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
-ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE DATA
-FILES OR SOFTWARE.
-
-Except as contained in this notice, the name of a copyright holder shall
-not be used in advertising or otherwise to promote the sale, use or other
-dealings in these Data Files or Software without prior written
-authorization of the copyright holder.
-
-SPDX-License-Identifier: Unicode-3.0
-
-—
-
-Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
-ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
-````
-
-### 7. 使っているライブラリ（15 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- anstream 1.0.0（MIT OR Apache-2.0）
-- anstyle 1.0.14（MIT OR Apache-2.0）
-- anstyle-parse 1.0.0（MIT OR Apache-2.0）
-- anstyle-query 1.1.5（MIT OR Apache-2.0）
-- clap 4.6.7（MIT OR Apache-2.0）
-- clap_builder 4.6.7（MIT OR Apache-2.0）
-- clap_derive 4.6.7（MIT OR Apache-2.0）
-- clap_lex 1.1.1（MIT OR Apache-2.0）
-- colorchoice 1.0.5（MIT OR Apache-2.0）
-- is_terminal_polyfill 1.70.2（MIT OR Apache-2.0）
-- serde_spanned 1.1.1（MIT OR Apache-2.0）
-- toml 1.1.2+spec-1.1.0（MIT OR Apache-2.0）
-- toml_datetime 1.1.1+spec-1.1.0（MIT OR Apache-2.0）
-- toml_parser 1.1.2+spec-1.1.0（MIT OR Apache-2.0）
-- toml_writer 1.1.1+spec-1.1.0（MIT OR Apache-2.0）
-
-</details>
-
-````text
-Copyright (c) Individual contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-````
-
-### 8. 使っているライブラリ（10 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- @tauri-apps/api 2.11.1（Apache-2.0 OR MIT, npm）
-- tauri 2.11.3（Apache-2.0 OR MIT）
-- tauri-codegen 2.6.3（Apache-2.0 OR MIT）
-- tauri-macros 2.6.3（Apache-2.0 OR MIT）
-- tauri-plugin-dialog 2.7.1（Apache-2.0 OR MIT）
-- tauri-plugin-fs 2.5.1（Apache-2.0 OR MIT）
-- tauri-plugin-updater 2.12.0（Apache-2.0 OR MIT）
-- tauri-runtime 2.11.3（Apache-2.0 OR MIT）
-- tauri-runtime-wry 2.11.3（Apache-2.0 OR MIT）
-- tauri-utils 2.9.3（Apache-2.0 OR MIT）
-
-</details>
-
-````text
-MIT License
-
-Copyright (c) 2017 - Present Tauri Apps Contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-````
-
-### 9. 使っているライブラリ（8 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- bitflags 1.3.2（MIT/Apache-2.0）
-- bitflags 2.13.0（MIT OR Apache-2.0）
-- glob 0.3.3（MIT OR Apache-2.0）
-- log 0.4.34（MIT OR Apache-2.0）
-- num-traits 0.2.19（MIT OR Apache-2.0）
-- regex 1.13.1（MIT OR Apache-2.0）
-- regex-automata 0.4.18（MIT OR Apache-2.0）
-- regex-syntax 0.8.11（MIT OR Apache-2.0）
-
-</details>
-
-````text
-Copyright (c) 2014 The Rust Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-````
-
-### 10. 使っているライブラリ（8 件）
+### 8. 使っているライブラリ（13 件）
 
 <details><summary>ライブラリの一覧</summary>
 
 - embed_plist 1.2.2（MIT OR Apache-2.0）
+- encoding_rs 0.8.44（(Apache-2.0 OR MIT) AND BSD-3-Clause）
+- multiversion_no_op 1.0.0（Apache-2.0 OR MIT）
 - rustls-platform-verifier 0.7.1（MIT OR Apache-2.0）
 - serialize-to-javascript 0.1.2（MIT OR Apache-2.0）
 - serialize-to-javascript-impl 0.1.2（MIT OR Apache-2.0）
-- tinyvec 1.11.0（Zlib OR Apache-2.0 OR MIT）
+- siphasher 1.0.4（MIT OR Apache-2.0）
+- tinyvec 1.13.3（Zlib OR Apache-2.0 OR MIT）
 - ureq 2.12.1（MIT OR Apache-2.0）
-- utf8_iter 1.0.4（Apache-2.0 OR MIT）
+- utf8_iter 1.1.0（Apache-2.0 OR MIT）
+- utf_types 1.0.0（Apache-2.0 OR MIT）
 - zeroize 1.9.1（Apache-2.0 OR MIT）
+- zeroize_derive 1.5.0（Apache-2.0 OR MIT）
 
 </details>
 
@@ -1479,17 +1386,340 @@ DEALINGS IN THE SOFTWARE.
    limitations under the License.
 ````
 
+### 9. 使っているライブラリ（10 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- @tauri-apps/api 2.11.1（Apache-2.0 OR MIT, npm）
+- tauri 2.12.5（Apache-2.0 OR MIT）
+- tauri-codegen 2.7.4（Apache-2.0 OR MIT）
+- tauri-macros 2.7.4（Apache-2.0 OR MIT）
+- tauri-plugin-dialog 2.8.4（Apache-2.0 OR MIT）
+- tauri-plugin-fs 2.7.1（Apache-2.0 OR MIT）
+- tauri-plugin-updater 2.14.1（Apache-2.0 OR MIT）
+- tauri-runtime 2.12.2（Apache-2.0 OR MIT）
+- tauri-runtime-wry 2.12.3（Apache-2.0 OR MIT）
+- tauri-utils 2.10.2（Apache-2.0 OR MIT）
+
+</details>
+
+````text
+MIT License
+
+Copyright (c) 2017 - Present Tauri Apps Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+````
+
+### 10. 使っているライブラリ（9 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- clap 4.6.7（MIT OR Apache-2.0）
+- clap_builder 4.6.7（MIT OR Apache-2.0）
+- clap_derive 4.6.7（MIT OR Apache-2.0）
+- clap_lex 1.1.1（MIT OR Apache-2.0）
+- serde_spanned 1.1.3（MIT OR Apache-2.0）
+- toml 1.2.1+spec-1.1.0（MIT OR Apache-2.0）
+- toml_datetime 1.1.3+spec-1.1.0（MIT OR Apache-2.0）
+- toml_parser 1.1.5+spec-1.1.0（MIT OR Apache-2.0）
+- toml_writer 1.2.0+spec-1.1.0（MIT OR Apache-2.0）
+
+</details>
+
+````text
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "{}"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright Individual contributors
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+````
+
 ### 11. 使っているライブラリ（7 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- futures-channel 0.3.32（MIT OR Apache-2.0）
-- futures-core 0.3.32（MIT OR Apache-2.0）
-- futures-io 0.3.32（MIT OR Apache-2.0）
-- futures-macro 0.3.32（MIT OR Apache-2.0）
-- futures-sink 0.3.32（MIT OR Apache-2.0）
-- futures-task 0.3.32（MIT OR Apache-2.0）
-- futures-util 0.3.32（MIT OR Apache-2.0）
+- bitflags 2.13.2（MIT OR Apache-2.0）
+- glob 0.3.4（MIT OR Apache-2.0）
+- log 0.4.35（MIT OR Apache-2.0）
+- num-traits 0.2.19（MIT OR Apache-2.0）
+- regex 1.13.1（MIT OR Apache-2.0）
+- regex-automata 0.4.18（MIT OR Apache-2.0）
+- regex-syntax 0.8.11（MIT OR Apache-2.0）
+
+</details>
+
+````text
+Copyright (c) 2014 The Rust Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+````
+
+### 12. 使っているライブラリ（7 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- aho-corasick 1.1.5（Unlicense OR MIT）
+- byteorder 1.5.0（Unlicense OR MIT）
+- jiff 0.2.42（Unlicense OR MIT）
+- jiff-core 0.1.4（Unlicense OR MIT）
+- memchr 2.8.3（Unlicense OR MIT）
+- same-file 1.0.6（Unlicense/MIT）
+- walkdir 2.5.0（Unlicense/MIT）
+
+</details>
+
+````text
+This project is dual-licensed under the Unlicense and MIT licenses.
+
+You may use this code under the terms of either license.
+````
+
+### 13. 使っているライブラリ（7 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- futures-channel 0.3.34（MIT OR Apache-2.0）
+- futures-core 0.3.34（MIT OR Apache-2.0）
+- futures-io 0.3.34（MIT OR Apache-2.0）
+- futures-macro 0.3.34（MIT OR Apache-2.0）
+- futures-sink 0.3.34（MIT OR Apache-2.0）
+- futures-task 0.3.34（MIT OR Apache-2.0）
+- futures-util 0.3.34（MIT OR Apache-2.0）
 
 </details>
 
@@ -1522,17 +1752,17 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 12. 使っているライブラリ（7 件）
+### 14. 使っているライブラリ（7 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- futures-channel 0.3.32（MIT OR Apache-2.0）
-- futures-core 0.3.32（MIT OR Apache-2.0）
-- futures-io 0.3.32（MIT OR Apache-2.0）
-- futures-macro 0.3.32（MIT OR Apache-2.0）
-- futures-sink 0.3.32（MIT OR Apache-2.0）
-- futures-task 0.3.32（MIT OR Apache-2.0）
-- futures-util 0.3.32（MIT OR Apache-2.0）
+- futures-channel 0.3.34（MIT OR Apache-2.0）
+- futures-core 0.3.34（MIT OR Apache-2.0）
+- futures-io 0.3.34（MIT OR Apache-2.0）
+- futures-macro 0.3.34（MIT OR Apache-2.0）
+- futures-sink 0.3.34（MIT OR Apache-2.0）
+- futures-task 0.3.34（MIT OR Apache-2.0）
+- futures-util 0.3.34（MIT OR Apache-2.0）
 
 </details>
 
@@ -1741,7 +1971,85 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 13. 使っているライブラリ（6 件）
+### 15. 使っているライブラリ（7 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- aho-corasick 1.1.5（Unlicense OR MIT）
+- byteorder 1.5.0（Unlicense OR MIT）
+- jiff 0.2.42（Unlicense OR MIT）
+- jiff-core 0.1.4（Unlicense OR MIT）
+- memchr 2.8.3（Unlicense OR MIT）
+- same-file 1.0.6（Unlicense/MIT）
+- walkdir 2.5.0（Unlicense/MIT）
+
+</details>
+
+````text
+This is free and unencumbered software released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any
+means.
+
+In jurisdictions that recognize copyright laws, the author or authors
+of this software dedicate any and all copyright interest in the
+software to the public domain. We make this dedication for the benefit
+of the public at large and to the detriment of our heirs and
+successors. We intend this dedication to be an overt act of
+relinquishment in perpetuity of all present and future rights to this
+software under copyright law.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+For more information, please refer to <http://unlicense.org/>
+````
+
+### 16. 使っているライブラリ（6 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- aho-corasick 1.1.5（Unlicense OR MIT）
+- byteorder 1.5.0（Unlicense OR MIT）
+- jiff 0.2.42（Unlicense OR MIT）
+- jiff-core 0.1.4（Unlicense OR MIT）
+- memchr 2.8.3（Unlicense OR MIT）
+- walkdir 2.5.0（Unlicense/MIT）
+
+</details>
+
+````text
+The MIT License (MIT)
+
+Copyright (c) 2015 Andrew Gallant
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+````
+
+### 17. 使っているライブラリ（6 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -1782,7 +2090,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 14. 使っているライブラリ（6 件）
+### 18. 使っているライブラリ（5 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -1790,7 +2098,6 @@ DEALINGS IN THE SOFTWARE.
 - cpufeatures 0.2.17（MIT OR Apache-2.0）
 - crypto-common 0.1.7（MIT OR Apache-2.0）
 - digest 0.10.7（MIT OR Apache-2.0）
-- hmac 0.12.1（MIT OR Apache-2.0）
 - sha2 0.10.9（MIT OR Apache-2.0）
 
 </details>
@@ -1999,378 +2306,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 15. 使っているライブラリ（6 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- ctor 0.8.0（Apache-2.0 OR MIT）
-- ctor-proc-macro 0.0.7（Apache-2.0 OR MIT）
-- dpi 0.1.2（Apache-2.0 AND MIT）
-- dtor 0.3.0（Apache-2.0 OR MIT）
-- dtor-proc-macro 0.0.6（Apache-2.0 OR MIT）
-- tao 0.35.3（Apache-2.0）
-
-</details>
-
-````text
-Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-   1. Definitions.
-
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
-
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
-
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
-
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
-
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
-
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
-
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
-
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
-
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
-
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
-
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
-
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
-
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
-
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
-
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
-
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
-
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
-
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
-
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
-
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
-
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
-
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
-
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
-
-   END OF TERMS AND CONDITIONS
-
-   APPENDIX: How to apply the Apache License to your work.
-
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "{}"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
-
-   Copyright {yyyy} {name of copyright owner}
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-````
-
-### 16. 使っているライブラリ（5 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- unic-char-property 0.9.0（MIT/Apache-2.0。ソースに文面のファイルが無いため、標準の文面で補った）
-- unic-char-range 0.9.0（MIT/Apache-2.0。ソースに文面のファイルが無いため、標準の文面で補った）
-- unic-common 0.9.0（MIT/Apache-2.0。ソースに文面のファイルが無いため、標準の文面で補った）
-- unic-ucd-ident 0.9.0（MIT/Apache-2.0。ソースに文面のファイルが無いため、標準の文面で補った）
-- unic-ucd-version 0.9.0（MIT/Apache-2.0。ソースに文面のファイルが無いため、標準の文面で補った）
-
-</details>
-
-````text
-MIT License
-
-Copyright (c) The UNIC Project Developers
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-````
-
-### 17. 使っているライブラリ（5 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- aho-corasick 1.1.4（Unlicense OR MIT）
-- byteorder 1.5.0（Unlicense OR MIT）
-- memchr 2.8.2（Unlicense OR MIT）
-- same-file 1.0.6（Unlicense/MIT）
-- walkdir 2.5.0（Unlicense/MIT）
-
-</details>
-
-````text
-This project is dual-licensed under the Unlicense and MIT licenses.
-
-You may use this code under the terms of either license.
-````
-
-### 18. 使っているライブラリ（5 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- ctor 0.8.0（Apache-2.0 OR MIT）
-- ctor-proc-macro 0.0.7（Apache-2.0 OR MIT）
-- dtor 0.3.0（Apache-2.0 OR MIT）
-- dtor-proc-macro 0.0.6（Apache-2.0 OR MIT）
-- tinyvec 1.11.0（Zlib OR Apache-2.0 OR MIT）
-
-</details>
-
-````text
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-````
-
-### 19. 使っているライブラリ（5 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- aho-corasick 1.1.4（Unlicense OR MIT）
-- byteorder 1.5.0（Unlicense OR MIT）
-- memchr 2.8.2（Unlicense OR MIT）
-- same-file 1.0.6（Unlicense/MIT）
-- walkdir 2.5.0（Unlicense/MIT）
-
-</details>
-
-````text
-This is free and unencumbered software released into the public domain.
-
-Anyone is free to copy, modify, publish, use, compile, sell, or
-distribute this software, either in source code form or as a compiled
-binary, for any purpose, commercial or non-commercial, and by any
-means.
-
-In jurisdictions that recognize copyright laws, the author or authors
-of this software dedicate any and all copyright interest in the
-software to the public domain. We make this dedication for the benefit
-of the public at large and to the detriment of our heirs and
-successors. We intend this dedication to be an overt act of
-relinquishment in perpetuity of all present and future rights to this
-software under copyright law.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-
-For more information, please refer to <http://unlicense.org/>
-````
-
-### 20. 使っているライブラリ（4 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- aho-corasick 1.1.4（Unlicense OR MIT）
-- byteorder 1.5.0（Unlicense OR MIT）
-- memchr 2.8.2（Unlicense OR MIT）
-- walkdir 2.5.0（Unlicense/MIT）
-
-</details>
-
-````text
-The MIT License (MIT)
-
-Copyright (c) 2015 Andrew Gallant
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-````
-
-### 21. 使っているライブラリ（4 件）
+### 19. 使っているライブラリ（4 件）
 
 <details><summary>ライブラリの一覧</summary>
 
 - schemars 0.8.22（MIT）
 - schemars 0.9.0（MIT）
-- schemars 1.2.1（MIT）
+- schemars 1.2.3（MIT）
 - schemars_derive 0.8.22（MIT）
 
 </details>
@@ -2399,12 +2341,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 22. 使っているライブラリ（4 件）
+### 20. 使っているライブラリ（4 件）
 
 <details><summary>ライブラリの一覧</summary>
 
 - block2 0.6.2（MIT。ソースに文面のファイルが無いため、標準の文面で補った）
-- objc2 0.6.4（MIT。ソースに文面のファイルが無いため、標準の文面で補った）
+- objc2 0.6.5（MIT。ソースに文面のファイルが無いため、標準の文面で補った）
 - objc2-encode 4.1.0（MIT。ソースに文面のファイルが無いため、標準の文面で補った）
 - objc2-exception-helper 0.1.1（Zlib OR Apache-2.0 OR MIT。ソースに文面のファイルが無いため、標準の文面で補った）
 
@@ -2434,229 +2376,53 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 23. 使っているライブラリ（4 件）
+### 21. 使っているライブラリ（4 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- clap 4.6.7（MIT OR Apache-2.0）
-- clap_builder 4.6.7（MIT OR Apache-2.0）
-- clap_derive 4.6.7（MIT OR Apache-2.0）
-- clap_lex 1.1.1（MIT OR Apache-2.0）
+- encoding_rs 0.8.44（(Apache-2.0 OR MIT) AND BSD-3-Clause）
+- multiversion_no_op 1.0.0（Apache-2.0 OR MIT）
+- utf8_iter 1.1.0（Apache-2.0 OR MIT）
+- utf_types 1.0.0（Apache-2.0 OR MIT）
 
 </details>
 
 ````text
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
+Copyright Mozilla Foundation
 
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
 
-   1. Definitions.
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
 
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
-
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
-
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
-
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
-
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
-
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
-
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
-
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
-
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
-
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
-
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
-
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
-
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
-
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
-
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
-
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
-
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
-
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
-
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
-
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
-
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
-
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
-
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
-
-   END OF TERMS AND CONDITIONS
-
-   APPENDIX: How to apply the Apache License to your work.
-
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "{}"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
-
-   Copyright Individual contributors
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 ````
 
-### 24. 使っているライブラリ（4 件）
+### 22. 使っているライブラリ（4 件）
 
 <details><summary>ライブラリの一覧</summary>
 
 - @tauri-apps/plugin-dialog 2.7.3（MIT OR Apache-2.0, npm）
-- tauri-plugin-dialog 2.7.1（Apache-2.0 OR MIT）
-- tauri-plugin-fs 2.5.1（Apache-2.0 OR MIT）
-- tauri-plugin-updater 2.12.0（Apache-2.0 OR MIT）
+- tauri-plugin-dialog 2.8.4（Apache-2.0 OR MIT）
+- tauri-plugin-fs 2.7.1（Apache-2.0 OR MIT）
+- tauri-plugin-updater 2.14.1（Apache-2.0 OR MIT）
 
 </details>
 
@@ -2683,7 +2449,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
 Creator: Person: Daniel Thompson-Yvetot
 ````
 
-### 25. 使っているライブラリ（4 件）
+### 23. 使っているライブラリ（4 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -2717,7 +2483,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### 26. 使っているライブラリ（3 件）
+### 24. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -2931,13 +2697,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 27. 使っているライブラリ（3 件）
+### 25. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- html5ever 0.38.0（MIT OR Apache-2.0）
-- markup5ever 0.38.0（MIT OR Apache-2.0）
-- web_atoms 0.2.5（MIT OR Apache-2.0）
+- html5ever 0.39.0（MIT OR Apache-2.0）
+- markup5ever 0.39.0（MIT OR Apache-2.0）
+- web_atoms 0.2.6（MIT OR Apache-2.0）
 
 </details>
 
@@ -2969,13 +2735,13 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 28. 使っているライブラリ（3 件）
+### 26. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- alloc-no-stdlib 2.0.4（BSD-3-Clause）
-- brotli 8.0.4（BSD-3-Clause AND MIT）
-- brotli-decompressor 5.0.3（BSD-3-Clause/MIT）
+- alloc-no-stdlib 3.0.0（BSD-3-Clause）
+- brotli 9.1.1（BSD-3-Clause AND MIT）
+- brotli-decompressor 6.3.1（BSD-3-Clause/MIT）
 
 </details>
 
@@ -2994,7 +2760,221 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-### 29. 使っているライブラリ（3 件）
+### 27. 使っているライブラリ（3 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- ctor 1.0.13（Apache-2.0 OR MIT）
+- dpi 0.1.2（Apache-2.0 AND MIT）
+- tao 0.37.2（Apache-2.0）
+
+</details>
+
+````text
+Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "{}"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright {yyyy} {name of copyright owner}
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+````
+
+### 28. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -3032,13 +3012,13 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 30. 使っているライブラリ（3 件）
+### 29. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- time 0.3.49（MIT OR Apache-2.0）
+- time 0.3.55（MIT OR Apache-2.0）
 - time-core 0.1.9（MIT OR Apache-2.0）
-- time-macros 0.2.29（MIT OR Apache-2.0）
+- time-macros 0.2.32（MIT OR Apache-2.0）
 
 </details>
 
@@ -3064,13 +3044,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 31. 使っているライブラリ（3 件）
+### 30. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- cfg-if 1.0.4（MIT OR Apache-2.0）
+- cfg-if 1.0.5（MIT OR Apache-2.0）
 - filetime 0.2.29（MIT/Apache-2.0）
-- socket2 0.6.4（MIT OR Apache-2.0）
+- socket2 0.6.5（MIT OR Apache-2.0）
 
 </details>
 
@@ -3102,7 +3082,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 32. 使っているライブラリ（3 件）
+### 31. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -3140,7 +3120,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 33. 使っているライブラリ（3 件）
+### 32. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -3354,13 +3334,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 34. 使っているライブラリ（3 件）
+### 33. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- cssparser 0.36.0（MPL-2.0）
-- cssparser-macros 0.6.1（MPL-2.0）
-- selectors 0.36.1（MPL-2.0。ソースに文面のファイルが無いため、標準の文面で補った）
+- cssparser 0.37.0（MPL-2.0）
+- cssparser-macros 0.7.1（MPL-2.0）
+- selectors 0.38.0（MPL-2.0。ソースに文面のファイルが無いため、標準の文面で補った）
 
 </details>
 
@@ -3740,12 +3720,12 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ````
 
-### 35. 使っているライブラリ（3 件）
+### 34. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
 - foreign-types 0.5.0（MIT/Apache-2.0）
-- foreign-types-macros 0.2.3（MIT/Apache-2.0）
+- foreign-types-macros 0.2.4（MIT/Apache-2.0）
 - foreign-types-shared 0.3.1（MIT/Apache-2.0）
 
 </details>
@@ -3772,13 +3752,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 36. 使っているライブラリ（3 件）
+### 35. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- darling 0.23.0（MIT）
-- darling_core 0.23.0（MIT）
-- darling_macro 0.23.0（MIT）
+- darling 0.24.1（MIT）
+- darling_core 0.24.1（MIT）
+- darling_macro 0.24.1（MIT）
 
 </details>
 
@@ -3806,7 +3786,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 37. 使っているライブラリ（3 件）
+### 36. 使っているライブラリ（3 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -3844,44 +3824,38 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 38. 使っているライブラリ（2 件）
+### 37. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- heck 0.5.0（MIT OR Apache-2.0）
-- unicode-segmentation 1.13.3（MIT OR Apache-2.0）
+- ident_case 1.0.1（MIT/Apache-2.0）
+- simdutf8 0.1.5（MIT OR Apache-2.0）
 
 </details>
 
 ````text
-Copyright (c) 2015 The Rust Project Developers
+MIT License
 
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ````
 
-### 39. 使っているライブラリ（2 件）
+### 38. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -3913,7 +3887,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### 40. 使っているライブラリ（2 件）
+### 39. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -4126,12 +4100,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 41. 使っているライブラリ（2 件）
+### 40. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- tokio 1.52.3（MIT）
-- tokio-util 0.7.18（MIT）
+- tokio 1.54.1（MIT）
+- tokio-util 0.7.20（MIT）
 
 </details>
 
@@ -4159,7 +4133,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 42. 使っているライブラリ（2 件）
+### 41. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -4192,7 +4166,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 43. 使っているライブラリ（2 件）
+### 42. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -4229,12 +4203,12 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 44. 使っているライブラリ（2 件）
+### 43. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
 - indexmap 1.9.3（Apache-2.0 OR MIT）
-- indexmap 2.14.0（Apache-2.0 OR MIT）
+- indexmap 2.14.2（Apache-2.0 OR MIT）
 
 </details>
 
@@ -4266,12 +4240,49 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
+### 44. 使っているライブラリ（2 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- http-body 1.1.0（MIT）
+- http-body-util 0.1.5（MIT）
+
+</details>
+
+````text
+Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+````
+
 ### 45. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- crossbeam-channel 0.5.15（MIT OR Apache-2.0）
-- crossbeam-utils 0.8.21（MIT OR Apache-2.0）
+- crossbeam-channel 0.5.17（MIT OR Apache-2.0）
+- crossbeam-utils 0.8.23（MIT OR Apache-2.0）
 
 </details>
 
@@ -4310,7 +4321,7 @@ DEALINGS IN THE SOFTWARE.
 <details><summary>ライブラリの一覧</summary>
 
 - libsqlite3-sys 0.39.1（MIT）
-- rusqlite 0.41.0（MIT）
+- rusqlite 0.41.1（MIT）
 
 </details>
 
@@ -4373,6 +4384,176 @@ THE SOFTWARE.
 
 <details><summary>ライブラリの一覧</summary>
 
+- constant_time_eq 0.6.1（CC0-1.0 OR MIT-0 OR Apache-2.0）
+- dunce 1.0.5（CC0-1.0 OR MIT-0 OR Apache-2.0）
+
+</details>
+
+````text
+Creative Commons Legal Code
+
+CC0 1.0 Universal
+
+    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
+    LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
+    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
+    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
+    REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
+    PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
+    THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
+    HEREUNDER.
+
+Statement of Purpose
+
+The laws of most jurisdictions throughout the world automatically confer
+exclusive Copyright and Related Rights (defined below) upon the creator
+and subsequent owner(s) (each and all, an "owner") of an original work of
+authorship and/or a database (each, a "Work").
+
+Certain owners wish to permanently relinquish those rights to a Work for
+the purpose of contributing to a commons of creative, cultural and
+scientific works ("Commons") that the public can reliably and without fear
+of later claims of infringement build upon, modify, incorporate in other
+works, reuse and redistribute as freely as possible in any form whatsoever
+and for any purposes, including without limitation commercial purposes.
+These owners may contribute to the Commons to promote the ideal of a free
+culture and the further production of creative, cultural and scientific
+works, or to gain reputation or greater distribution for their Work in
+part through the use and efforts of others.
+
+For these and/or other purposes and motivations, and without any
+expectation of additional consideration or compensation, the person
+associating CC0 with a Work (the "Affirmer"), to the extent that he or she
+is an owner of Copyright and Related Rights in the Work, voluntarily
+elects to apply CC0 to the Work and publicly distribute the Work under its
+terms, with knowledge of his or her Copyright and Related Rights in the
+Work and the meaning and intended legal effect of CC0 on those rights.
+
+1. Copyright and Related Rights. A Work made available under CC0 may be
+protected by copyright and related or neighboring rights ("Copyright and
+Related Rights"). Copyright and Related Rights include, but are not
+limited to, the following:
+
+  i. the right to reproduce, adapt, distribute, perform, display,
+     communicate, and translate a Work;
+ ii. moral rights retained by the original author(s) and/or performer(s);
+iii. publicity and privacy rights pertaining to a person's image or
+     likeness depicted in a Work;
+ iv. rights protecting against unfair competition in regards to a Work,
+     subject to the limitations in paragraph 4(a), below;
+  v. rights protecting the extraction, dissemination, use and reuse of data
+     in a Work;
+ vi. database rights (such as those arising under Directive 96/9/EC of the
+     European Parliament and of the Council of 11 March 1996 on the legal
+     protection of databases, and under any national implementation
+     thereof, including any amended or successor version of such
+     directive); and
+vii. other similar, equivalent or corresponding rights throughout the
+     world based on applicable law or treaty, and any national
+     implementations thereof.
+
+2. Waiver. To the greatest extent permitted by, but not in contravention
+of, applicable law, Affirmer hereby overtly, fully, permanently,
+irrevocably and unconditionally waives, abandons, and surrenders all of
+Affirmer's Copyright and Related Rights and associated claims and causes
+of action, whether now known or unknown (including existing as well as
+future claims and causes of action), in the Work (i) in all territories
+worldwide, (ii) for the maximum duration provided by applicable law or
+treaty (including future time extensions), (iii) in any current or future
+medium and for any number of copies, and (iv) for any purpose whatsoever,
+including without limitation commercial, advertising or promotional
+purposes (the "Waiver"). Affirmer makes the Waiver for the benefit of each
+member of the public at large and to the detriment of Affirmer's heirs and
+successors, fully intending that such Waiver shall not be subject to
+revocation, rescission, cancellation, termination, or any other legal or
+equitable action to disrupt the quiet enjoyment of the Work by the public
+as contemplated by Affirmer's express Statement of Purpose.
+
+3. Public License Fallback. Should any part of the Waiver for any reason
+be judged legally invalid or ineffective under applicable law, then the
+Waiver shall be preserved to the maximum extent permitted taking into
+account Affirmer's express Statement of Purpose. In addition, to the
+extent the Waiver is so judged Affirmer hereby grants to each affected
+person a royalty-free, non transferable, non sublicensable, non exclusive,
+irrevocable and unconditional license to exercise Affirmer's Copyright and
+Related Rights in the Work (i) in all territories worldwide, (ii) for the
+maximum duration provided by applicable law or treaty (including future
+time extensions), (iii) in any current or future medium and for any number
+of copies, and (iv) for any purpose whatsoever, including without
+limitation commercial, advertising or promotional purposes (the
+"License"). The License shall be deemed effective as of the date CC0 was
+applied by Affirmer to the Work. Should any part of the License for any
+reason be judged legally invalid or ineffective under applicable law, such
+partial invalidity or ineffectiveness shall not invalidate the remainder
+of the License, and in such case Affirmer hereby affirms that he or she
+will not (i) exercise any of his or her remaining Copyright and Related
+Rights in the Work or (ii) assert any associated claims and causes of
+action with respect to the Work, in either case contrary to Affirmer's
+express Statement of Purpose.
+
+4. Limitations and Disclaimers.
+
+ a. No trademark or patent rights held by Affirmer are waived, abandoned,
+    surrendered, licensed or otherwise affected by this document.
+ b. Affirmer offers the Work as-is and makes no representations or
+    warranties of any kind concerning the Work, express, implied,
+    statutory or otherwise, including without limitation warranties of
+    title, merchantability, fitness for a particular purpose, non
+    infringement, or the absence of latent or other defects, accuracy, or
+    the present or absence of errors, whether or not discoverable, all to
+    the greatest extent permissible under applicable law.
+ c. Affirmer disclaims responsibility for clearing rights of other persons
+    that may apply to the Work or any use thereof, including without
+    limitation any person's Copyright and Related Rights in the Work.
+    Further, Affirmer disclaims responsibility for obtaining any necessary
+    consents, permissions or other rights required for any use of the
+    Work.
+ d. Affirmer understands and acknowledges that Creative Commons is not a
+    party to this document and has no duty or obligation with respect to
+    this CC0 or use of the Work.
+````
+
+### 49. 使っているライブラリ（2 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- miniz_oxide 0.8.9（MIT OR Zlib OR Apache-2.0）
+- miniz_oxide 0.9.1（MIT OR Zlib OR Apache-2.0）
+
+</details>
+
+````text
+MIT License
+
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+Copyright (c) 2017 Frommi
+Copyright (c) 2017-2024 oyvindln
+
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+````
+
+### 50. 使っているライブラリ（2 件）
+
+<details><summary>ライブラリの一覧</summary>
+
 - serialize-to-javascript 0.1.2（MIT OR Apache-2.0）
 - serialize-to-javascript-impl 0.1.2（MIT OR Apache-2.0）
 
@@ -4402,7 +4583,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 49. 使っているライブラリ（2 件）
+### 51. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -4439,49 +4620,12 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 50. 使っているライブラリ（2 件）
+### 52. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- png 0.17.16（MIT OR Apache-2.0）
-- png 0.18.1（MIT OR Apache-2.0）
-
-</details>
-
-````text
-Copyright (c) 2015 nwin
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-````
-
-### 51. 使っているライブラリ（2 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- muda 0.19.3（Apache-2.0 OR MIT）
-- tray-icon 0.24.1（MIT OR Apache-2.0）
+- muda 0.20.0（Apache-2.0 OR MIT）
+- tray-icon 0.25.1（MIT OR Apache-2.0）
 
 </details>
 
@@ -4509,11 +4653,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 52. 使っているライブラリ（2 件）
+### 53. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- dirs 6.0.0（MIT OR Apache-2.0）
+- dirs 7.0.0（MIT OR Apache-2.0）
 - dirs-sys 0.5.0（MIT OR Apache-2.0）
 
 </details>
@@ -4695,43 +4839,6 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
    of your accepting any such warranty or additional liability.
 ````
 
-### 53. 使っているライブラリ（2 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- digest 0.10.7（MIT OR Apache-2.0）
-- hmac 0.12.1（MIT OR Apache-2.0）
-
-</details>
-
-````text
-Copyright (c) 2017 Artyom Pavlov
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-````
-
 ### 54. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
@@ -4773,6 +4880,42 @@ DEALINGS IN THE SOFTWARE.
 
 <details><summary>ライブラリの一覧</summary>
 
+- miniz_oxide 0.8.9（MIT OR Zlib OR Apache-2.0）
+- miniz_oxide 0.9.1（MIT OR Zlib OR Apache-2.0）
+
+</details>
+
+````text
+MIT License
+
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+Copyright (c) 2017 Frommi
+Copyright (c) 2017-2024 oyvindln
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+````
+
+### 56. 使っているライブラリ（2 件）
+
+<details><summary>ライブラリの一覧</summary>
+
 - hashbrown 0.12.3（MIT OR Apache-2.0）
 - hashbrown 0.17.1（MIT OR Apache-2.0）
 
@@ -4806,7 +4949,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 56. 使っているライブラリ（2 件）
+### 57. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -4833,7 +4976,24 @@ ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ````
 
-### 57. 使っているライブラリ（2 件）
+### 58. 使っているライブラリ（2 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- ctor 1.0.13（Apache-2.0 OR MIT）
+- tinyvec 1.13.3（Zlib OR Apache-2.0 OR MIT）
+
+</details>
+
+````text
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+````
+
+### 59. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -4870,7 +5030,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 58. 使っているライブラリ（2 件）
+### 60. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -4943,7 +5103,33 @@ of Data, including for example machine learning models and models'
 insights.
 ````
 
-### 59. 使っているライブラリ（2 件）
+### 61. 使っているライブラリ（2 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- miniz_oxide 0.8.9（MIT OR Zlib OR Apache-2.0）
+- miniz_oxide 0.9.1（MIT OR Zlib OR Apache-2.0）
+
+</details>
+
+````text
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+Copyright (c) 2020 Frommi
+Copyright (c) 2017-2024 oyvindln
+
+This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose, including commercial applications, and to alter it and redistribute it freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.
+
+2. Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.
+````
+
+### 62. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -4980,11 +5166,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 60. 使っているライブラリ（2 件）
+### 63. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- dirs 6.0.0（MIT OR Apache-2.0）
+- dirs 7.0.0（MIT OR Apache-2.0）
 - dirs-sys 0.5.0（MIT OR Apache-2.0）
 
 </details>
@@ -5011,12 +5197,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 61. 使っているライブラリ（2 件）
+### 64. 使っているライブラリ（2 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- serde_with 3.21.0（MIT OR Apache-2.0）
-- serde_with_macros 3.21.0（MIT OR Apache-2.0）
+- serde_with 3.24.0（MIT OR Apache-2.0）
+- serde_with_macros 3.24.0（MIT OR Apache-2.0）
 
 </details>
 
@@ -5048,11 +5234,47 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 62. 使っているライブラリ（1 件）
+### 65. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- jsonptr 0.6.3（MIT OR Apache-2.0）
+- heck 0.5.0（MIT OR Apache-2.0）
+
+</details>
+
+````text
+Copyright (c) 2015 The Rust Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+````
+
+### 66. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- jsonptr 0.7.1（MIT OR Apache-2.0）
 
 </details>
 
@@ -5080,11 +5302,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 63. 使っているライブラリ（1 件）
+### 67. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- hyper 1.10.1（MIT）
+- hyper 1.12.0（MIT）
 
 </details>
 
@@ -5110,7 +5332,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 64. 使っているライブラリ（1 件）
+### 68. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -5134,7 +5356,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ````
 
-### 65. 使っているライブラリ（1 件）
+### 69. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -5170,11 +5392,47 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 66. 使っているライブラリ（1 件）
+### 70. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- uuid 1.23.3（Apache-2.0 OR MIT）
+- zeroize_derive 1.5.0（Apache-2.0 OR MIT）
+
+</details>
+
+````text
+Copyright (c) 2019-2026 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+````
+
+### 71. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- uuid 1.29.2（Apache-2.0 OR MIT）
 
 </details>
 
@@ -5207,11 +5465,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 67. 使っているライブラリ（1 件）
+### 72. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- quick-xml 0.39.4（MIT）
+- quick-xml 0.42.0（MIT）
 
 </details>
 
@@ -5241,7 +5499,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 68. 使っているライブラリ（1 件）
+### 73. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -5277,11 +5535,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 69. 使っているライブラリ（1 件）
+### 74. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- deranged 0.5.8（MIT OR Apache-2.0）
+- deranged 0.5.9（MIT OR Apache-2.0）
 
 </details>
 
@@ -5489,41 +5747,11 @@ DEALINGS IN THE SOFTWARE.
    limitations under the License.
 ````
 
-### 70. 使っているライブラリ（1 件）
+### 75. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- ident_case 1.0.1（MIT/Apache-2.0）
-
-</details>
-
-````text
-MIT License
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-````
-
-### 71. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- json-patch 3.0.1（MIT/Apache-2.0）
+- json-patch 4.2.0（MIT/Apache-2.0）
 
 </details>
 
@@ -5551,7 +5779,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 72. 使っているライブラリ（1 件）
+### 76. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -5587,11 +5815,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 73. 使っているライブラリ（1 件）
+### 77. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- rfd 0.16.0（MIT）
+- rfd 0.17.2（MIT）
 
 </details>
 
@@ -5619,7 +5847,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 74. 使っているライブラリ（1 件）
+### 78. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -5649,7 +5877,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ````
 
-### 75. 使っているライブラリ（1 件）
+### 79. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -5685,11 +5913,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 76. 使っているライブラリ（1 件）
+### 80. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- deranged 0.5.8（MIT OR Apache-2.0）
+- deranged 0.5.9（MIT OR Apache-2.0）
 
 </details>
 
@@ -5715,11 +5943,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 77. 使っているライブラリ（1 件）
+### 81. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- flate2 1.1.9（MIT OR Apache-2.0）
+- flate2 1.1.10（MIT OR Apache-2.0）
 
 </details>
 
@@ -5751,7 +5979,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 78. 使っているライブラリ（1 件）
+### 82. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -5807,7 +6035,35 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 79. 使っているライブラリ（1 件）
+### 83. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- siphasher 1.0.4（MIT OR Apache-2.0）
+
+</details>
+
+````text
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+````
+
+### 84. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -5839,11 +6095,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 80. 使っているライブラリ（1 件）
+### 85. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- siphasher 1.0.3（MIT/Apache-2.0）
+- siphasher 1.0.4（MIT OR Apache-2.0）
 
 </details>
 
@@ -5857,11 +6113,11 @@ http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 option.
 ````
 
-### 81. 使っているライブラリ（1 件）
+### 86. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- wry 0.55.1（Apache-2.0 OR MIT）
+- wry 0.57.2（Apache-2.0 OR MIT）
 
 </details>
 
@@ -5888,41 +6144,11 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/wry.git
 Creator: Person: Daniel Thompson-Yvetot
 ````
 
-### 82. 使っているライブラリ（1 件）
+### 87. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- tinyvec_macros 0.1.1（MIT OR Apache-2.0 OR Zlib）
-
-</details>
-
-````text
-zlib License
-
-(C) 2020 Tomasz "Soveu" Marx
-
-This software is provided 'as-is', without any express or implied
-warranty.  In no event will the authors be held liable for any damages
-arising from the use of this software.
-
-Permission is granted to anyone to use this software for any purpose,
-including commercial applications, and to alter it and redistribute it
-freely, subject to the following restrictions:
-
-1. The origin of this software must not be misrepresented; you must not
-   claim that you wrote the original software. If you use this software
-   in a product, an acknowledgment in the product documentation would be
-   appreciated but is not required.
-2. Altered source versions must be plainly marked as such, and must not be
-   misrepresented as being the original software.
-3. This notice may not be removed or altered from any source distribution.
-````
-
-### 83. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- tao 0.35.3（Apache-2.0）
+- tao 0.37.2（Apache-2.0）
 
 </details>
 
@@ -5947,7 +6173,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tao.git
 Creator: Person: Daniel Thompson-Yvetot
 ````
 
-### 84. 使っているライブラリ（1 件）
+### 88. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -5979,11 +6205,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 85. 使っているライブラリ（1 件）
+### 89. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- brotli 8.0.4（BSD-3-Clause AND MIT）
+- brotli 9.1.1（BSD-3-Clause AND MIT）
 
 </details>
 
@@ -6009,11 +6235,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 86. 使っているライブラリ（1 件）
+### 90. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- alloc-stdlib 0.2.4（BSD-3-Clause。ソースに文面のファイルが無いため、標準の文面で補った）
+- alloc-stdlib 0.3.0（BSD-3-Clause。ソースに文面のファイルが無いため、標準の文面で補った）
 
 </details>
 
@@ -6049,11 +6275,11 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-### 87. 使っているライブラリ（1 件）
+### 91. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- reqwest 0.13.4（MIT OR Apache-2.0）
+- reqwest 0.13.5（MIT OR Apache-2.0）
 
 </details>
 
@@ -6261,7 +6487,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 88. 使っているライブラリ（1 件）
+### 92. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -6291,11 +6517,43 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 89. 使っているライブラリ（1 件）
+### 93. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- keyboard-types 0.7.0（MIT OR Apache-2.0）
+- base64 0.23.1（MIT OR Apache-2.0）
+
+</details>
+
+````text
+The MIT License (MIT)
+
+Copyright (c) 2025 Alice Maz, Marshall Pierce
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+````
+
+### 94. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- keyboard-types 0.8.3（MIT OR Apache-2.0）
 
 </details>
 
@@ -6321,7 +6579,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 90. 使っているライブラリ（1 件）
+### 95. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- web-time 1.1.0（MIT OR Apache-2.0）
+
+</details>
+
+````text
+MIT License
+
+Copyright (c) 2023 dAxpeDDa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+````
+
+### 96. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -6357,7 +6647,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 91. 使っているライブラリ（1 件）
+### 97. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -6393,11 +6683,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 92. 使っているライブラリ（1 件）
+### 98. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- unicode-ident 1.0.24（(MIT OR Apache-2.0) AND Unicode-3.0）
+- unicode-ident 1.0.27（(MIT OR Apache-2.0) AND Unicode-3.0）
 
 </details>
 
@@ -6443,7 +6733,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 ````
 
-### 93. 使っているライブラリ（1 件）
+### 99. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -6474,11 +6764,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 94. 使っているライブラリ（1 件）
+### 100. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- synstructure 0.13.2（MIT）
+- synstructure 0.14.0（MIT）
 
 </details>
 
@@ -6492,7 +6782,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### 95. 使っているライブラリ（1 件）
+### 101. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -6522,11 +6812,11 @@ The files under third-party/chromium are licensed as described in
 third-party/chromium/LICENSE.
 ````
 
-### 96. 使っているライブラリ（1 件）
+### 102. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- cfb 0.7.3（MIT）
+- cfb 0.14.0（MIT）
 
 </details>
 
@@ -6554,7 +6844,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 97. 使っているライブラリ（1 件）
+### 103. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -6592,7 +6882,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 98. 使っているライブラリ（1 件）
+### 104. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -6628,11 +6918,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 99. 使っているライブラリ（1 件）
+### 105. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- equivalent 1.0.2（Apache-2.0 OR MIT）
+- equivalent 1.0.3（Apache-2.0 OR MIT）
 
 </details>
 
@@ -6664,7 +6954,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 100. 使っているライブラリ（1 件）
+### 106. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -6701,11 +6991,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 101. 使っているライブラリ（1 件）
+### 107. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- cookie 0.18.1（MIT OR Apache-2.0）
+- cookie 0.18.2（MIT OR Apache-2.0）
 
 </details>
 
@@ -6738,11 +7028,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 102. 使っているライブラリ（1 件）
+### 108. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- swift-rs 1.0.7（MIT OR Apache-2.0）
+- swift-rs 1.0.9（MIT OR Apache-2.0）
 
 </details>
 
@@ -6950,7 +7240,7 @@ DEALINGS IN THE SOFTWARE.
    limitations under the License.
 ````
 
-### 103. 使っているライブラリ（1 件）
+### 109. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -7334,255 +7624,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ````
 
-### 104. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- http-body-util 0.1.3（MIT）
-
-</details>
-
-````text
-Copyright (c) 2019-2025 Sean McArthur & Hyper Contributors
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-````
-
-### 105. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- tinyvec_macros 0.1.1（MIT OR Apache-2.0 OR Zlib）
-
-</details>
-
-````text
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-   1. Definitions.
-
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
-
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
-
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
-
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
-
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
-
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
-
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
-
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
-
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
-
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
-
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
-
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
-
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
-
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
-
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
-
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
-
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
-
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
-
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
-
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
-
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
-
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
-
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
-
-   END OF TERMS AND CONDITIONS
-
-   APPENDIX: How to apply the Apache License to your work.
-
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
-
-   Copyright 2020 Tomasz "Soveu" Marx
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-````
-
-### 106. 使っているライブラリ（1 件）
+### 110. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -7612,7 +7654,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 107. 使っているライブラリ（1 件）
+### 111. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -7824,7 +7866,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 108. 使っているライブラリ（1 件）
+### 112. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -7856,11 +7898,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 109. 使っているライブラリ（1 件）
+### 113. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- bytes 1.12.0（MIT）
+- bytes 1.12.1（MIT）
 
 </details>
 
@@ -7892,7 +7934,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 110. 使っているライブラリ（1 件）
+### 114. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -7928,11 +7970,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 111. 使っているライブラリ（1 件）
+### 115. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- minisign-verify 0.2.5（MIT）
+- minisign-verify 0.3.0（MIT）
 
 </details>
 
@@ -7998,11 +8040,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 112. 使っているライブラリ（1 件）
+### 116. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- plist 1.9.0（MIT）
+- plist 1.10.3（MIT）
 
 </details>
 
@@ -8028,7 +8070,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 113. 使っているライブラリ（1 件）
+### 117. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8064,7 +8106,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 114. 使っているライブラリ（1 件）
+### 118. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8100,7 +8142,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 115. 使っているライブラリ（1 件）
+### 119. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8132,7 +8174,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 116. 使っているライブラリ（1 件）
+### 120. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8164,7 +8206,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 117. 使っているライブラリ（1 件）
+### 121. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8196,7 +8238,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 118. 使っているライブラリ（1 件）
+### 122. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8232,11 +8274,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 119. 使っているライブラリ（1 件）
+### 123. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- ipnet 2.12.0（MIT OR Apache-2.0）
+- ipnet 2.12.2（MIT OR Apache-2.0）
 
 </details>
 
@@ -8444,7 +8486,7 @@ DEALINGS IN THE SOFTWARE.
    limitations under the License.
 ````
 
-### 120. 使っているライブラリ（1 件）
+### 124. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8475,7 +8517,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 121. 使っているライブラリ（1 件）
+### 125. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8511,7 +8553,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 122. 使っているライブラリ（1 件）
+### 126. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8543,11 +8585,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 123. 使っているライブラリ（1 件）
+### 127. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- zip 9.1.2（MIT）
+- zip 9.5.1（MIT）
 
 </details>
 
@@ -8575,11 +8617,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 124. 使っているライブラリ（1 件）
+### 128. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- tray-icon 0.24.1（MIT OR Apache-2.0）
+- tray-icon 0.25.1（MIT OR Apache-2.0）
 
 </details>
 
@@ -8605,7 +8647,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tray-icon.git
 Creator: Person: Daniel Thompson-Yvetot
 ````
 
-### 125. 使っているライブラリ（1 件）
+### 129. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -8641,143 +8683,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 126. 使っているライブラリ（1 件）
+### 130. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- dunce 1.0.5（CC0-1.0 OR MIT-0 OR Apache-2.0）
-
-</details>
-
-````text
-Creative Commons Legal Code
-
-CC0 1.0 Universal
-
-    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
-    LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
-    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
-    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
-    REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
-    PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
-    THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
-    HEREUNDER.
-
-Statement of Purpose
-
-The laws of most jurisdictions throughout the world automatically confer
-exclusive Copyright and Related Rights (defined below) upon the creator
-and subsequent owner(s) (each and all, an "owner") of an original work of
-authorship and/or a database (each, a "Work").
-
-Certain owners wish to permanently relinquish those rights to a Work for
-the purpose of contributing to a commons of creative, cultural and
-scientific works ("Commons") that the public can reliably and without fear
-of later claims of infringement build upon, modify, incorporate in other
-works, reuse and redistribute as freely as possible in any form whatsoever
-and for any purposes, including without limitation commercial purposes.
-These owners may contribute to the Commons to promote the ideal of a free
-culture and the further production of creative, cultural and scientific
-works, or to gain reputation or greater distribution for their Work in
-part through the use and efforts of others.
-
-For these and/or other purposes and motivations, and without any
-expectation of additional consideration or compensation, the person
-associating CC0 with a Work (the "Affirmer"), to the extent that he or she
-is an owner of Copyright and Related Rights in the Work, voluntarily
-elects to apply CC0 to the Work and publicly distribute the Work under its
-terms, with knowledge of his or her Copyright and Related Rights in the
-Work and the meaning and intended legal effect of CC0 on those rights.
-
-1. Copyright and Related Rights. A Work made available under CC0 may be
-protected by copyright and related or neighboring rights ("Copyright and
-Related Rights"). Copyright and Related Rights include, but are not
-limited to, the following:
-
-  i. the right to reproduce, adapt, distribute, perform, display,
-     communicate, and translate a Work;
- ii. moral rights retained by the original author(s) and/or performer(s);
-iii. publicity and privacy rights pertaining to a person's image or
-     likeness depicted in a Work;
- iv. rights protecting against unfair competition in regards to a Work,
-     subject to the limitations in paragraph 4(a), below;
-  v. rights protecting the extraction, dissemination, use and reuse of data
-     in a Work;
- vi. database rights (such as those arising under Directive 96/9/EC of the
-     European Parliament and of the Council of 11 March 1996 on the legal
-     protection of databases, and under any national implementation
-     thereof, including any amended or successor version of such
-     directive); and
-vii. other similar, equivalent or corresponding rights throughout the
-     world based on applicable law or treaty, and any national
-     implementations thereof.
-
-2. Waiver. To the greatest extent permitted by, but not in contravention
-of, applicable law, Affirmer hereby overtly, fully, permanently,
-irrevocably and unconditionally waives, abandons, and surrenders all of
-Affirmer's Copyright and Related Rights and associated claims and causes
-of action, whether now known or unknown (including existing as well as
-future claims and causes of action), in the Work (i) in all territories
-worldwide, (ii) for the maximum duration provided by applicable law or
-treaty (including future time extensions), (iii) in any current or future
-medium and for any number of copies, and (iv) for any purpose whatsoever,
-including without limitation commercial, advertising or promotional
-purposes (the "Waiver"). Affirmer makes the Waiver for the benefit of each
-member of the public at large and to the detriment of Affirmer's heirs and
-successors, fully intending that such Waiver shall not be subject to
-revocation, rescission, cancellation, termination, or any other legal or
-equitable action to disrupt the quiet enjoyment of the Work by the public
-as contemplated by Affirmer's express Statement of Purpose.
-
-3. Public License Fallback. Should any part of the Waiver for any reason
-be judged legally invalid or ineffective under applicable law, then the
-Waiver shall be preserved to the maximum extent permitted taking into
-account Affirmer's express Statement of Purpose. In addition, to the
-extent the Waiver is so judged Affirmer hereby grants to each affected
-person a royalty-free, non transferable, non sublicensable, non exclusive,
-irrevocable and unconditional license to exercise Affirmer's Copyright and
-Related Rights in the Work (i) in all territories worldwide, (ii) for the
-maximum duration provided by applicable law or treaty (including future
-time extensions), (iii) in any current or future medium and for any number
-of copies, and (iv) for any purpose whatsoever, including without
-limitation commercial, advertising or promotional purposes (the
-"License"). The License shall be deemed effective as of the date CC0 was
-applied by Affirmer to the Work. Should any part of the License for any
-reason be judged legally invalid or ineffective under applicable law, such
-partial invalidity or ineffectiveness shall not invalidate the remainder
-of the License, and in such case Affirmer hereby affirms that he or she
-will not (i) exercise any of his or her remaining Copyright and Related
-Rights in the Work or (ii) assert any associated claims and causes of
-action with respect to the Work, in either case contrary to Affirmer's
-express Statement of Purpose.
-
-4. Limitations and Disclaimers.
-
- a. No trademark or patent rights held by Affirmer are waived, abandoned,
-    surrendered, licensed or otherwise affected by this document.
- b. Affirmer offers the Work as-is and makes no representations or
-    warranties of any kind concerning the Work, express, implied,
-    statutory or otherwise, including without limitation warranties of
-    title, merchantability, fitness for a particular purpose, non
-    infringement, or the absence of latent or other defects, accuracy, or
-    the present or absence of errors, whether or not discoverable, all to
-    the greatest extent permissible under applicable law.
- c. Affirmer disclaims responsibility for clearing rights of other persons
-    that may apply to the Work or any use thereof, including without
-    limitation any person's Copyright and Related Rights in the Work.
-    Further, Affirmer disclaims responsibility for obtaining any necessary
-    consents, permissions or other rights required for any use of the
-    Work.
- d. Affirmer understands and acknowledges that Creative Commons is not a
-    party to this document and has no duty or obligation with respect to
-    this CC0 or use of the Work.
-````
-
-### 127. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- powerfmt 0.2.0（MIT OR Apache-2.0）
+- powerfmt 0.2.1（MIT OR Apache-2.0）
 
 </details>
 
@@ -8803,7 +8713,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 128. 使っているライブラリ（1 件）
+### 131. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9015,7 +8925,7 @@ SOFTWARE.
    limitations under the License.
 ````
 
-### 129. 使っているライブラリ（1 件）
+### 132. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9227,7 +9137,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 130. 使っているライブラリ（1 件）
+### 133. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9259,7 +9169,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 131. 使っているライブラリ（1 件）
+### 134. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9296,47 +9206,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 132. 使っているライブラリ（1 件）
+### 135. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- miniz_oxide 0.8.9（MIT OR Zlib OR Apache-2.0）
-
-</details>
-
-````text
-MIT License
-
-Copyright 2013-2014 RAD Game Tools and Valve Software
-Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
-Copyright (c) 2017 Frommi
-Copyright (c) 2017-2024 oyvindln
-
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-````
-
-### 133. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- dom_query 0.27.0（MIT）
+- dom_query 0.28.0（MIT）
 
 </details>
 
@@ -9370,11 +9244,11 @@ derived from the "nipper" project (https://github.com/importcjj/nipper),
 developed by Chen Jiaju, licensed under the MIT License and the Apache License 2.0 (dual licensed).
 ````
 
-### 134. 使っているライブラリ（1 件）
+### 136. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- swift-rs 1.0.7（MIT OR Apache-2.0）
+- swift-rs 1.0.9（MIT OR Apache-2.0）
 
 </details>
 
@@ -9400,7 +9274,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 135. 使っているライブラリ（1 件）
+### 137. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9436,11 +9310,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 136. 使っているライブラリ（1 件）
+### 138. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- infer 0.19.0（MIT）
+- infer 0.22.0（MIT）
 
 </details>
 
@@ -9468,11 +9342,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 137. 使っているライブラリ（1 件）
+### 139. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- cookie 0.18.1（MIT OR Apache-2.0）
+- cookie 0.18.2（MIT OR Apache-2.0）
 
 </details>
 
@@ -9681,47 +9555,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 138. 使っているライブラリ（1 件）
+### 140. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- utf8_iter 1.0.4（Apache-2.0 OR MIT）
-
-</details>
-
-````text
-Copyright Mozilla Foundation
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-````
-
-### 139. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- smallvec 1.15.2（MIT OR Apache-2.0）
+- smallvec 1.16.4（MIT OR Apache-2.0）
 
 </details>
 
@@ -9753,7 +9591,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 140. 使っているライブラリ（1 件）
+### 141. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9789,7 +9627,43 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 141. 使っているライブラリ（1 件）
+### 142. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- png 0.18.1（MIT OR Apache-2.0）
+
+</details>
+
+````text
+Copyright (c) 2015 nwin
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+````
+
+### 143. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9811,7 +9685,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 ````
 
-### 142. 使っているライブラリ（1 件）
+### 144. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9847,7 +9721,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 143. 使っているライブラリ（1 件）
+### 145. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9877,7 +9751,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 144. 使っているライブラリ（1 件）
+### 146. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -9909,11 +9783,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 145. 使っているライブラリ（1 件）
+### 147. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- wry 0.55.1（Apache-2.0 OR MIT）
+- wry 0.57.2（Apache-2.0 OR MIT）
 
 </details>
 
@@ -9941,11 +9815,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 146. 使っているライブラリ（1 件）
+### 148. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- winnow 1.0.3（MIT）
+- winnow 1.0.5（MIT）
 
 </details>
 
@@ -9970,7 +9844,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### 147. 使っているライブラリ（1 件）
+### 149. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10002,11 +9876,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 148. 使っているライブラリ（1 件）
+### 150. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- mrcr-core 0.4.0（MIT。ソースに文面のファイルが無いため、標準の文面で補った）
+- mrcr-core 0.5.0（MIT。ソースに文面のファイルが無いため、標準の文面で補った）
 
 </details>
 
@@ -10034,7 +9908,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 149. 使っているライブラリ（1 件）
+### 151. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10068,7 +9942,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 150. 使っているライブラリ（1 件）
+### 152. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10280,11 +10154,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 151. 使っているライブラリ（1 件）
+### 153. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- tinyvec 1.11.0（Zlib OR Apache-2.0 OR MIT）
+- tinyvec 1.13.3（Zlib OR Apache-2.0 OR MIT）
 
 </details>
 
@@ -10302,7 +10176,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 ````
 
-### 152. 使っているライブラリ（1 件）
+### 154. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10339,11 +10213,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 153. 使っているライブラリ（1 件）
+### 155. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- ico 0.5.0（MIT）
+- ico 0.6.0（MIT）
 
 </details>
 
@@ -10371,11 +10245,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 154. 使っているライブラリ（1 件）
+### 156. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- crc32fast 1.5.3（MIT OR Apache-2.0）
+- crc32fast 1.5.4（MIT OR Apache-2.0）
 
 </details>
 
@@ -10403,7 +10277,43 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 155. 使っているライブラリ（1 件）
+### 157. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- digest 0.10.7（MIT OR Apache-2.0）
+
+</details>
+
+````text
+Copyright (c) 2017 Artyom Pavlov
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+````
+
+### 158. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10434,7 +10344,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 156. 使っているライブラリ（1 件）
+### 159. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10646,7 +10556,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 157. 使っているライブラリ（1 件）
+### 160. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10670,7 +10580,7 @@ limitations under the License.
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ````
 
-### 158. 使っているライブラリ（1 件）
+### 161. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10693,7 +10603,7 @@ AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
 OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ````
 
-### 159. 使っているライブラリ（1 件）
+### 162. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10725,11 +10635,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 160. 使っているライブラリ（1 件）
+### 163. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- mime 0.3.17（MIT OR Apache-2.0）
+- mime 0.3.18（MIT OR Apache-2.0）
 
 </details>
 
@@ -10755,7 +10665,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 161. 使っているライブラリ（1 件）
+### 164. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -10787,11 +10697,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 162. 使っているライブラリ（1 件）
+### 165. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- http 1.4.2（MIT OR Apache-2.0）
+- http 1.5.0（MIT OR Apache-2.0）
 
 </details>
 
@@ -10999,7 +10909,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 163. 使っているライブラリ（1 件）
+### 166. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -11031,42 +10941,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 164. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- miniz_oxide 0.8.9（MIT OR Zlib OR Apache-2.0）
-
-</details>
-
-````text
-MIT License
-
-Copyright 2013-2014 RAD Game Tools and Valve Software
-Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
-Copyright (c) 2017 Frommi
-Copyright (c) 2017-2024 oyvindln
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-````
-
-### 165. 使っているライブラリ（1 件）
+### 167. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -11098,47 +10973,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 166. 使っているライブラリ（1 件）
+### 168. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- http-body 1.0.1（MIT）
-
-</details>
-
-````text
-Copyright (c) 2019-2024 Sean McArthur & Hyper Contributors
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-````
-
-### 167. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- jsonptr 0.6.3（MIT OR Apache-2.0）
+- jsonptr 0.7.1（MIT OR Apache-2.0）
 
 </details>
 
@@ -11346,7 +11185,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 168. 使っているライブラリ（1 件）
+### 169. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -11376,11 +11215,48 @@ the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ````
 
-### 169. 使っているライブラリ（1 件）
+### 170. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- window-vibrancy 0.6.0（Apache-2.0 OR MIT）
+- encoding_rs 0.8.44（(Apache-2.0 OR MIT) AND BSD-3-Clause）
+
+</details>
+
+````text
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+````
+
+### 171. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- window-vibrancy 0.8.1（Apache-2.0 OR MIT）
 
 </details>
 
@@ -11408,11 +11284,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 170. 使っているライブラリ（1 件）
+### 172. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- muda 0.19.3（Apache-2.0 OR MIT）
+- muda 0.20.0（Apache-2.0 OR MIT）
 
 </details>
 
@@ -11438,7 +11314,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/muda.git
 Creator: Person: Daniel Thompson-Yvetot
 ````
 
-### 171. 使っているライブラリ（1 件）
+### 173. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -11470,11 +11346,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 172. 使っているライブラリ（1 件）
+### 174. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- window-vibrancy 0.6.0（Apache-2.0 OR MIT）
+- window-vibrancy 0.8.1（Apache-2.0 OR MIT）
 
 </details>
 
@@ -11500,7 +11376,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/window-vibrancy.git
 Creator: Person: Daniel Thompson-Yvetot
 ````
 
-### 173. 使っているライブラリ（1 件）
+### 175. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -11532,11 +11408,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 174. 使っているライブラリ（1 件）
+### 176. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- reqwest 0.13.4（MIT OR Apache-2.0）
+- reqwest 0.13.5（MIT OR Apache-2.0）
 
 </details>
 
@@ -11562,11 +11438,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 175. 使っているライブラリ（1 件）
+### 177. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- powerfmt 0.2.0（MIT OR Apache-2.0）
+- powerfmt 0.2.1（MIT OR Apache-2.0）
 
 </details>
 
@@ -11774,7 +11650,7 @@ THE SOFTWARE.
    limitations under the License.
 ````
 
-### 176. 使っているライブラリ（1 件）
+### 178. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -11806,7 +11682,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 177. 使っているライブラリ（1 件）
+### 179. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -11842,7 +11718,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 178. 使っているライブラリ（1 件）
+### 180. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -11878,11 +11754,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 179. 使っているライブラリ（1 件）
+### 181. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- mio 1.2.1（MIT）
+- mio 1.2.4（MIT）
 
 </details>
 
@@ -11908,11 +11784,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 180. 使っているライブラリ（1 件）
+### 182. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- ipnet 2.12.0（MIT OR Apache-2.0）
+- ipnet 2.12.2（MIT OR Apache-2.0）
 
 </details>
 
@@ -11926,11 +11802,11 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-### 181. 使っているライブラリ（1 件）
+### 183. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- libc 0.2.186（MIT OR Apache-2.0）
+- libc 0.2.191（MIT OR Apache-2.0）
 
 </details>
 
@@ -11962,7 +11838,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 182. 使っているライブラリ（1 件）
+### 184. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -12191,7 +12067,219 @@ the License, but only in their entirety and only with respect to the Combined
 Software.
 ````
 
-### 183. 使っているライブラリ（1 件）
+### 185. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- web-time 1.1.0（MIT OR Apache-2.0）
+
+</details>
+
+````text
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright 2023 dAxpeDDa
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+````
+
+### 186. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -12231,7 +12319,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
 ````
 
-### 184. 使っているライブラリ（1 件）
+### 187. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -12481,7 +12569,7 @@ limitations under the License.
 ~~~~
 ````
 
-### 185. 使っているライブラリ（1 件）
+### 188. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -12693,11 +12781,43 @@ limitations under the License.
    limitations under the License.
 ````
 
-### 186. 使っているライブラリ（1 件）
+### 189. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- crossbeam-channel 0.5.15（MIT OR Apache-2.0）
+- objc2-quartz-core 0.3.2（Zlib OR Apache-2.0 OR MIT。ソースに文面のファイルが無いため、標準の文面で補った）
+
+</details>
+
+````text
+MIT License
+
+Copyright (c) the objc2-quartz-core developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+````
+
+### 190. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- crossbeam-channel 0.5.17（MIT OR Apache-2.0）
 
 </details>
 
@@ -13297,7 +13417,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ````
 
-### 187. 使っているライブラリ（1 件）
+### 191. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13329,39 +13449,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 188. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- tinyvec_macros 0.1.1（MIT OR Apache-2.0 OR Zlib）
-
-</details>
-
-````text
-MIT License
-
-Copyright (c) 2020 Soveu
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-````
-
-### 189. 使っているライブラリ（1 件）
+### 192. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13373,7 +13461,7 @@ SOFTWARE.
 MIT OR Apache-2.0
 ````
 
-### 190. 使っているライブラリ（1 件）
+### 193. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13409,11 +13497,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 191. 使っているライブラリ（1 件）
+### 194. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- tendril 0.5.0（MIT OR Apache-2.0）
+- tendril 0.5.1（MIT OR Apache-2.0）
 
 </details>
 
@@ -13445,7 +13533,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 192. 使っているライブラリ（1 件）
+### 195. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13475,7 +13563,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 193. 使っているライブラリ（1 件）
+### 196. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13537,7 +13625,7 @@ have been licensed under extremely permissive terms.
 ------------------------------------------------------------------------------
 ````
 
-### 194. 使っているライブラリ（1 件）
+### 197. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13569,7 +13657,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 195. 使っているライブラリ（1 件）
+### 198. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13851,7 +13939,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-### 196. 使っているライブラリ（1 件）
+### 199. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13887,11 +13975,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 197. 使っているライブラリ（1 件）
+### 200. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- hyper-util 0.1.20（MIT）
+- hyper-util 0.1.21（MIT）
 
 </details>
 
@@ -13917,7 +14005,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 198. 使っているライブラリ（1 件）
+### 201. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13954,32 +14042,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 199. 使っているライブラリ（1 件）
-
-<details><summary>ライブラリの一覧</summary>
-
-- miniz_oxide 0.8.9（MIT OR Zlib OR Apache-2.0）
-
-</details>
-
-````text
-Copyright 2013-2014 RAD Game Tools and Valve Software
-Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
-Copyright (c) 2020 Frommi
-Copyright (c) 2017-2024 oyvindln
-
-This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software.
-
-Permission is granted to anyone to use this software for any purpose, including commercial applications, and to alter it and redistribute it freely, subject to the following restrictions:
-
-1. The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.
-
-2. Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
-
-3. This notice may not be removed or altered from any source distribution.
-````
-
-### 200. 使っているライブラリ（1 件）
+### 202. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -13999,7 +14062,7 @@ See src/polyfill/once_cell/LICENSE-APACHE and src/polyfill/once_cell/LICENSE-MIT
 for the license to code that was sourced from the once_cell project.
 ````
 
-### 201. 使っているライブラリ（1 件）
+### 203. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
@@ -14035,11 +14098,36 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 202. 使っているライブラリ（1 件）
+### 204. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- urlpattern 0.3.0（MIT）
+- constant_time_eq 0.6.1（CC0-1.0 OR MIT-0 OR Apache-2.0）
+
+</details>
+
+````text
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+````
+
+### 205. 使っているライブラリ（1 件）
+
+<details><summary>ライブラリの一覧</summary>
+
+- urlpattern 0.6.0（MIT）
 
 </details>
 
@@ -14067,11 +14155,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-### 203. 使っているライブラリ（1 件）
+### 206. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- http 1.4.2（MIT OR Apache-2.0）
+- http 1.5.0（MIT OR Apache-2.0）
 
 </details>
 
@@ -14103,11 +14191,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ````
 
-### 204. 使っているライブラリ（1 件）
+### 207. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
-- want 0.3.1（MIT）
+- want 0.3.2（MIT）
 
 </details>
 
@@ -14133,7 +14221,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-### 205. 使っているライブラリ（1 件）
+### 208. 使っているライブラリ（1 件）
 
 <details><summary>ライブラリの一覧</summary>
 
