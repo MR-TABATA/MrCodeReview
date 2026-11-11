@@ -21,7 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: テスト（ワークスペース全体）
-        run: cargo test --workspace
+        # 最初の失敗で止めず、全部のクレートの結果を出す（失敗の全体が、1 回で分かる）
+        run: cargo test --workspace --no-fail-fast
 
   frontend:
     runs-on: ubuntu-latest
