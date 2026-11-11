@@ -1133,6 +1133,23 @@ mod tests {
     }
 
     #[test]
+    fn there_is_no_limit_on_how_many_repositories_can_be_registered() {
+        // OSS 版は、登録できる数に上限がない（`limit()` は None）。上限を渡したときだけ、仕組みが働く
+        assert_eq!(limit(), None);
+        let d = scratch("no-limit");
+        let base = scratch("no-limit-repos");
+        for i in 0..12 {
+            let o = add(&d, &repo(&base, &format!("r{i}"), &format!("s{i}")), None).unwrap();
+            assert!(!o.limit_reached && o.path.is_some(), "{} 件目も、登録できる", i + 1);
+            assert_eq!(o.list.limit, None, "一覧の上限は、無し");
+        }
+        assert_eq!(list(&d).unwrap().repos.len(), 12);
+        assert_eq!(list(&d).unwrap().limit, None);
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn import_takes_everything_even_over_the_limit_merges_duplicates_and_runs_only_once() {
         let d = scratch("import");
         let base = scratch("import-repos");

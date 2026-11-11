@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getAppLang, resolveLang, runLangChange, setAppLang, t, tWithLang } from './i18n';
+import { getAppLang, msg, resolveLang, runLangChange, setAppLang, t, tWithLang } from './i18n';
 
 describe('i18n', () => {
   it('resolves explicit setting value', () => {
@@ -61,5 +61,29 @@ describe('i18n', () => {
     expect(loadBases).not.toHaveBeenCalled();
     expect(render).not.toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+});
+
+describe('登録できるリポジトリの数の説明', () => {
+  it('上限が無いとき、日本語・英語とも、「上限なし」と言い、上限の数や「枠」を言わない（OSS 版には、登録数の上限がない）', () => {
+    for (const lang of ['ja', 'en']) {
+      const text = msg(lang).mainUi.registeredReposIntro1(null);
+      expect(text, lang).not.toMatch(/\d+ *(リポジトリ|repositories)|up to \d/);
+      expect(text, lang).not.toMatch(/枠|slot/i);
+      expect(text, lang).toMatch(lang === 'ja' ? /上限はありません/ : /no limit/);
+    }
+  });
+
+  it('上限を渡したときだけ、その数を言う（仕組みは残してある）', () => {
+    expect(msg('ja').mainUi.registeredReposIntro1(3)).toContain('3 リポジトリ');
+    expect(msg('en').mainUi.registeredReposIntro1(3)).toContain('3 repositories');
+  });
+
+  it('「枠を空ける」「枠は戻りません」のような、存在しない仕組みの説明を、操作の案内に出さない', () => {
+    for (const lang of ['ja', 'en']) {
+      const m = msg(lang).mainUi;
+      const guidance = [m.repoDeleteConfirmTitle('x'), m.deleteAndFreeSlotBtn, m.deleteDataTitle, m.unlinkWithHistoryTitle, m.removeEmptyTitle, m.slotsLabel, m.slotsUnlimited(2), m.unlinkedHoldingSlots(1)].join(' ');
+      expect(guidance, lang).not.toMatch(/枠|slot/i);
+    }
   });
 });

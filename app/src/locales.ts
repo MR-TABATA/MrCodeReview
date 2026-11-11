@@ -276,7 +276,7 @@ export interface Messages {
     removeEmptyTitle: string;
     removeEmptyBtn: string;
     registeredReposHeading: string;
-    registeredReposIntro1: (limit: number) => string;
+    registeredReposIntro1: (limit: number | null) => string;
     registeredReposIntro2: string;
     slotsLabel: string;
     slotsUnlimited: (used: number) => string;
@@ -642,38 +642,40 @@ export const MESSAGES: Record<Lang, Messages> = {
     mainUi: {
       repoDataSummary: (d) =>
         d.reviews === 0 ? '履歴なし' : `履歴 ${d.reviews} 件・指摘 ${d.findings} 件・仕分け ${d.triaged} 件・メモ ${d.memos} 件`,
-      repoDeleteConfirmTitle: (title) => `「${title}」のデータを削除して、枠を空けます。`,
+      repoDeleteConfirmTitle: (title) => `「${title}」の履歴などを、削除します。`,
       repoDeleteConfirmBody: (summary) => `消えるもの: ${summary}。リポジトリの中身は、消えません。`,
       repoDeleteCannotUndo: '元に戻せません。',
       repoDeleteExportHiddenHint: '書き出すなら、先に「復元」して、レポートを作ってください。',
       repoDeleteExportVisibleHint: '先に、レポート（Markdown・Excel・PDF）に書き出せます。',
       openReportBtn: 'レポートを開く',
-      deleteAndFreeSlotBtn: '削除して枠を空ける',
+      deleteAndFreeSlotBtn: '削除する',
       cancelBtn: 'やめる',
-      deleteDataTitle: '履歴などを削除して、枠を空けます',
+      deleteDataTitle: '履歴などを削除します',
       deleteDataBtn: 'データを削除…',
       displayNameAria: (title) => `${title} の表示名`,
       inUseChip: '使用中',
       subdirNote: (root) => `サブディレクトリを登録しています（リポジトリの根: ${root}）。履歴は、根のパスで結びつきます`,
       moveUpTitle: '上へ',
       moveDownTitle: '下へ',
-      unlinkWithHistoryTitle: '一覧から外します（履歴があるあいだは、枠は戻りません）',
+      unlinkWithHistoryTitle: '一覧から外します（履歴は残ります。「復元」で戻せます）',
       unlinkBtn: '解除',
       restoreBtn: '復元',
-      removeEmptyTitle: '履歴がないので、登録を消して、枠を戻します',
+      removeEmptyTitle: '履歴がないので、登録を消します',
       removeEmptyBtn: '登録を消す',
       registeredReposHeading: '登録したリポジトリ',
       registeredReposIntro1: (limit) =>
-        `${limit} リポジトリ分のデータまで使えます。「解除」は一覧から外すだけで、履歴があるあいだは、枠は戻りません（履歴が 1 件もないものは、登録ごと消えて、枠が戻ります）。枠を空けるには、「データを削除…」を使います。`,
+        limit === null
+          ? '登録できるリポジトリの数に、上限はありません。「解除」は一覧から外すだけで、履歴は残ります（「復元」で戻せます。履歴が 1 件もないものは、登録ごと消えます）。履歴ごと消すには、「データを削除…」を使います。'
+          : `${limit} リポジトリ分のデータまで使えます。「解除」は一覧から外すだけで、履歴があるあいだは、枠は戻りません（履歴が 1 件もないものは、登録ごと消えて、枠が戻ります）。枠を空けるには、「データを削除…」を使います。`,
       registeredReposIntro2:
         '表示名は、空にすると、フォルダ名になります。パスは変えられません（履歴が、パスに結びついているため）。リポジトリを移したときは、新しい場所を登録してください。',
-      slotsLabel: '枠: ',
-      slotsUnlimited: (used) => `${used}（無制限）`,
+      slotsLabel: '登録: ',
+      slotsUnlimited: (used) => `${used} 件（上限なし）`,
       slotsOverLimit: '上限を超えています（新しい追加だけが止まります。いまの登録は、そのまま使えます）',
       slotsFull: '枠がいっぱいです',
       addRepoBtn: '+ リポジトリを追加…',
       noReposRegistered: '使用中のリポジトリが、ありません。',
-      unlinkedHoldingSlots: (count) => `解除済み（枠を使用中）${count} 件`,
+      unlinkedHoldingSlots: (count) => `解除済み（履歴あり）${count} 件`,
       savedReportToast: (path) => `保存しました: ${path}`,
       rangePrefix: '見る範囲',
       baseInputPlaceholder: 'コミット・ブランチ・タグの名前（例: v1.2.0、feature/x、abc1234）',
@@ -1220,38 +1222,40 @@ export const MESSAGES: Record<Lang, Messages> = {
         d.reviews === 0
           ? 'No history'
           : `History: ${d.reviews} · Findings: ${d.findings} · Triaged: ${d.triaged} · Memos: ${d.memos}`,
-      repoDeleteConfirmTitle: (title) => `Delete data for "${title}" to free up a slot.`,
+      repoDeleteConfirmTitle: (title) => `Delete the history and data for "${title}".`,
       repoDeleteConfirmBody: (summary) => `Data to be deleted: ${summary}. Repository files will not be deleted. `,
       repoDeleteCannotUndo: 'Cannot be undone.',
       repoDeleteExportHiddenHint: 'To export, first "Restore" and generate a report.',
       repoDeleteExportVisibleHint: 'You can export to a report (Markdown, Excel, PDF) first.',
       openReportBtn: 'Open Report',
-      deleteAndFreeSlotBtn: 'Delete & Free Slot',
+      deleteAndFreeSlotBtn: 'Delete',
       cancelBtn: 'Cancel',
-      deleteDataTitle: 'Delete history and data to free up slot',
+      deleteDataTitle: 'Delete history and data',
       deleteDataBtn: 'Delete data…',
       displayNameAria: (title) => `Display name of ${title}`,
       inUseChip: 'In Use',
       subdirNote: (root) => `Subdirectory registered (repository root: ${root}). History is associated with the root path.`,
       moveUpTitle: 'Move up',
       moveDownTitle: 'Move down',
-      unlinkWithHistoryTitle: 'Unlink from list (slot remains occupied while history exists)',
+      unlinkWithHistoryTitle: 'Unlink from list (history is kept; "Restore" brings it back)',
       unlinkBtn: 'Unlink',
       restoreBtn: 'Restore',
-      removeEmptyTitle: 'No history. Remove registration and free slot.',
+      removeEmptyTitle: 'No history. Remove the registration.',
       removeEmptyBtn: 'Remove registration',
       registeredReposHeading: 'Registered Repositories',
       registeredReposIntro1: (limit) =>
-        `You can use data for up to ${limit} repositories. "Unlink" only removes a repository from the active list; slots remain occupied while history exists (registrations with 0 history entries are removed completely, freeing the slot). To free a slot, use "Delete data…".`,
+        limit === null
+          ? 'There is no limit on how many repositories you can register. "Unlink" only removes a repository from the active list; its history is kept ("Restore" brings it back; registrations with no history are removed completely). To delete the history too, use "Delete data…".'
+          : `You can use data for up to ${limit} repositories. "Unlink" only removes a repository from the active list; slots remain occupied while history exists (registrations with 0 history entries are removed completely, freeing the slot). To free a slot, use "Delete data…".`,
       registeredReposIntro2:
         'Display name defaults to the folder name if left blank. The path cannot be changed because history is linked to it. If you moved the repository, register the new location.',
-      slotsLabel: 'Slots: ',
-      slotsUnlimited: (used) => `${used} (Unlimited)`,
+      slotsLabel: 'Registered: ',
+      slotsUnlimited: (used) => `${used} (no limit)`,
       slotsOverLimit: 'Limit reached (new additions paused; existing repositories work normally)',
       slotsFull: 'All slots in use',
       addRepoBtn: '+ Add Repository…',
       noReposRegistered: 'No repositories registered.',
-      unlinkedHoldingSlots: (count) => `Unlinked (holding slots): ${count}`,
+      unlinkedHoldingSlots: (count) => `Unlinked (with history): ${count}`,
       savedReportToast: (path) => `Saved: ${path}`,
       rangePrefix: 'Range',
       baseInputPlaceholder: 'Commit, branch, or tag name (e.g. v1.2.0, feature/x, abc1234)',

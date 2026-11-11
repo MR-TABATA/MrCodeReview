@@ -940,8 +940,8 @@ async function unlinkRepo(repo: RegisteredRepo): Promise<void> {
   const out = await repoOp<RepoUnlinkResult>('repo_unlink', { id: repo.id });
   if (!out) return;
   state.repoMsg = out.removed
-    ? { text: `「${title}」を解除しました（履歴がないので、登録ごと消えました。枠が戻りました）${unattributedNote(out.unattributed_reviews)}`, kind: 'ok' }
-    : { text: `「${title}」を解除しました（履歴があるので、枠は使ったままです。「復元」で戻せます）`, kind: 'ok' };
+    ? { text: `「${title}」を解除しました（履歴がないので、登録ごと消えました）${unattributedNote(out.unattributed_reviews)}`, kind: 'ok' }
+    : { text: `「${title}」を解除しました（履歴があるので、一覧から外しただけです。「復元」で戻せます）`, kind: 'ok' };
   await afterRepoChange(repo.path, true);
 }
 
@@ -957,7 +957,7 @@ async function dropEmptyRepo(repo: RegisteredRepo): Promise<void> {
   const out = await repoOp<RepoUnlinkResult>('repo_unlink', { id: repo.id });
   if (!out) return;
   state.repoMsg = out.removed
-    ? { text: `「${repoDisplayName(repo)}」の登録を消しました（枠が戻りました）${unattributedNote(out.unattributed_reviews)}`, kind: 'ok' }
+    ? { text: `「${repoDisplayName(repo)}」の登録を消しました${unattributedNote(out.unattributed_reviews)}`, kind: 'ok' }
     : { text: `「${repoDisplayName(repo)}」には履歴があるので、登録は消さず、解除のままにしました`, kind: 'err' };
   await afterRepoChange(repo.path, true);
 }
@@ -972,7 +972,7 @@ async function deleteRepoData(repo: RegisteredRepo): Promise<void> {
     applyRepoList(list);
     await ensureSelectionRegistered();
     gone = true;
-    state.repoMsg = { text: `「${title}」のデータを削除し、枠を空けました（レビュー ${d.reviews} 件・指摘 ${d.findings} 件・仕分け ${d.triaged} 件・メモ ${d.memos} 件）${unattributedNote(unattributed_reviews)}`, kind: 'ok' };
+    state.repoMsg = { text: `「${title}」のデータを削除しました（レビュー ${d.reviews} 件・指摘 ${d.findings} 件・仕分け ${d.triaged} 件・メモ ${d.memos} 件）${unattributedNote(unattributed_reviews)}`, kind: 'ok' };
   } catch (e) {
     state.repoMsg = { text: `削除できませんでした（何も消えていません）: ${String(e)}`, kind: 'err' };
   }
@@ -1120,7 +1120,7 @@ function reposSection(lang: Lang = getAppLang()): HTMLElement {
     'section',
     { class: 'llm-config-section' },
     h('h3', {}, m.registeredReposHeading),
-    h('p', { class: 'muted byok-note' }, m.registeredReposIntro1(limit ?? 3)),
+    h('p', { class: 'muted byok-note' }, m.registeredReposIntro1(limit)),
     h('p', { class: 'muted byok-note' }, m.registeredReposIntro2),
     h(
       'div',
@@ -1145,7 +1145,7 @@ function reposSection(lang: Lang = getAppLang()): HTMLElement {
 
 /** 左の一覧の「✕」。解除する（履歴があるあいだは、枠は戻らない）。 */
 async function handleRemoveRepo(repo: RegisteredRepo): Promise<void> {
-  if (!(await confirmDialog(`リポジトリ「${repoDisplayName(repo)}」を解除しますか？\n（履歴があるあいだは、枠は戻りません。設定の「リポジトリ」で、復元・データの削除ができます）`, { title: '登録の解除', okLabel: '解除する' }))) return;
+  if (!(await confirmDialog(`リポジトリ「${repoDisplayName(repo)}」を解除しますか？\n（履歴は残ります。設定の「リポジトリ」で、復元・データの削除ができます）`, { title: '登録の解除', okLabel: '解除する' }))) return;
   await unlinkRepo(repo);
 }
 
