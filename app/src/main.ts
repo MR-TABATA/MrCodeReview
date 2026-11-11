@@ -57,6 +57,7 @@ import { recipeBar } from './recipebar';
 import { fixAllBySeverity as runFixAllBySeverity, fixAllSeverityButtons } from './fixall';
 import { newReportState, reportFileName, reportOptions, reportPanel, reportRange, htmlNodes, type ReportState } from './reportview';
 import { periodSince, usagePanel, type Period, type UsageState } from './usageview';
+import { canTrustRerun } from './lintrerun';
 import type {
   AgentFetch,
   AgentReport,
@@ -2633,16 +2634,16 @@ function resultView(): HTMLElement {
 
   let body: HTMLElement;
   if (state.tab === 'findings') {
-    const canTrustRerun = r.recipe.id === 'lint' && !!r.error && !state.lintPlan?.trusted && !!state.lintPlan?.items.some((i) => i.runs_repo_code);
+    const canRerun = canTrustRerun(r.recipe.id, r.error, state.lintPlan);
     body = h(
       'div',
       {},
       r.error
         ? h(
             'p',
-            { class: canTrustRerun ? 'err err-row' : 'err' },
+            { class: canRerun ? 'err err-row' : 'err' },
             h('span', {}, m.execFailed(r.error)),
-            canTrustRerun
+            canRerun
               ? h('button', { class: 'small run', onclick: () => void trustAndRerunLint() }, m.allowAndRerunBtn)
               : null,
           )
