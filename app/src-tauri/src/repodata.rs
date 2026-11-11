@@ -399,4 +399,31 @@ mod tests {
         assert_eq!(resolve_keys(&known, &paths), one_by_one, "並行に解いても、1 つずつ解いたものと同じ");
         let _ = std::fs::remove_dir_all(&d);
     }
+
+    #[test]
+    fn match_known_prefers_the_exact_root_then_a_case_only_difference_and_otherwise_keeps_the_key() {
+        let known: HashSet<String> = ["/Gone/Known".to_string(), "/gone/other".to_string()].into();
+        assert_eq!(match_known(&known, "/Gone/Known".into()), "/Gone/Known", "そのままあれば、それ");
+        assert_eq!(match_known(&known, "/gone/known".into()), "/Gone/Known", "大文字小文字だけ違うなら、履歴にある根に寄せる");
+        assert_eq!(match_known(&known, "/GONE/KNOWN".into()), "/Gone/Known");
+        assert_eq!(match_known(&known, "/gone/unknown".into()), "/gone/unknown", "履歴に無ければ、そのまま");
+        // 完全に一致するものが、大文字小文字だけ違うものより、優先される（別のリポジトリを取り違えない）
+        let both: HashSet<String> = ["/a/Repo".to_string(), "/a/repo".to_string()].into();
+        assert_eq!(match_known(&both, "/a/repo".into()), "/a/repo");
+        assert_eq!(match_known(&both, "/a/Repo".into()), "/a/Repo");
+        assert_eq!(match_known(&HashSet::new(), "/x".into()), "/x");
+    }
+
+    #[test]
+    fn a_path_that_differs_only_in_case_from_the_history_shows_that_history_in_the_summary() {
+        // 履歴に /Gone/Known があるとき、/gone/known を渡しても、同じ根として履歴の件数が出る（0 件に見えない）
+        let d = scratch("case-known");
+        let conn = db::open(&d).unwrap();
+        add_review(&conn, "k1", "/Gone/Known", 2);
+        drop(conn);
+        let s = summaries(&d, &["/gone/known".to_string(), "/Gone/Known".to_string(), "/gone/none".to_string()]).unwrap();
+        assert_eq!((s[0].data.reviews, s[1].data.reviews, s[2].data.reviews), (1, 1, 0));
+        assert_eq!(s[0].data, s[1].data, "大文字小文字だけ違うパスも、同じ結果");
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }
