@@ -82,7 +82,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     tab_history: '履歴',
     tab_usage: '利用量',
     tab_settings: '設定',
-    tab_license: 'ライセンス',
     tab_report: 'レポート',
   },
   en: {
@@ -137,7 +136,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     tab_history: 'History',
     tab_usage: 'Usage',
     tab_settings: 'Settings',
-    tab_license: 'License',
     tab_report: 'Report',
   },
 };

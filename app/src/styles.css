@@ -107,9 +107,6 @@ button.run:disabled { background: var(--accent-dim); border-color: var(--accent-
 .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
 .warn { color: var(--warn); }
 .err { color: var(--bad); background: var(--bad-bg); padding: 6px 8px; border-radius: 6px; margin: 6px 0; }
-.err.err-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; }
-.err.err-row > span { flex: 1 1 auto; min-width: 0; }
-.err.err-row > button { width: auto; flex: 0 0 auto; margin-left: auto; padding: 4px 12px; font-size: 12px; white-space: nowrap; }
 .prompt { background: var(--code-bg); padding: 8px 10px; border-radius: 6px; max-height: 240px; overflow: auto; }
 .prompt.tall { max-height: 420px; }
 
@@ -254,18 +251,10 @@ button.small.run { width: auto; padding: 3px 10px; font-size: 12px; }
 .badge.repo { background: var(--accent-bg); color: var(--accent); }
 .scope { font-size: 11.5px; margin-left: auto; }
 
-/* リンターの欄 */
-.lintlist { list-style: none; margin: 6px 0; padding: 0; }
-.lintitem { padding: 6px 0; border-top: 1px solid var(--line); font-size: 12px; }
-.lintitem:first-child { border-top: 0; }
-.lintitem .badge { margin-left: 6px; }
-.badge.okb { background: var(--ok-bg); color: var(--ok); }
 .confirm { margin: 8px 0; padding: 8px 10px; background: var(--warn-bg); border-radius: 6px; font-size: 12px; }
 .confirm p { margin: 0 0 6px; }
 .confirm .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .confirm .row button, .confirm .row button.run { width: auto; flex: 0 0 auto; padding: 5px 12px; font-size: 12px; }
-.lint-trust-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0 0; }
-.lint-trust-row > button.small { margin-left: 0; flex: 0 0 auto; white-space: nowrap; }
 
 /* ヘッダ */
 .app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
@@ -944,13 +933,6 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 }
 
 
-
-
-/* 設定の「ライセンス」: キーの入力欄は、キーの長さ（約 42 文字）に合わせた幅にして、横に並べる。「登録」は折り返さない */
-.license .row { align-items: center; flex-wrap: wrap; }
-.license input.licensekey { flex: 0 1 30em; width: auto; min-width: 14em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-.license .row button { flex: none; white-space: nowrap; }
-
 /* 指摘の番号（#3）と、識別子の行。エージェントの報告（mrcr:…#番号）と、照合するための印 */
 .fc-no { flex: 0 0 auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--muted); min-width: 2.4em; text-align: right; font-variant-numeric: tabular-nums; }
 .fc-tag { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; }
@@ -960,6 +942,3 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 /* 「対応」にした指摘の、状態の印。未対応は目立たせ、対応済みは落ち着いた緑 */
 .chip.open { background: var(--warn-bg); color: var(--warn); }
 
-/* 設定の「ライセンス」: ロゴ（Free はライム地、Pro は黒地に金）と、Free / Pro の見出し */
-.lic-head { display: flex; align-items: center; gap: 10px; }
-.lic-logo { width: 44px; height: 44px; flex: none; }
