@@ -42,5 +42,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" "${{ steps.build.outputs.zip }}" \
-            --title "mrcr ${{ steps.build.outputs.version }}" \
+            --title "MrCodeReview ${{ steps.build.outputs.version }}" \
             --notes "sha256: \`${{ steps.build.outputs.sha }}\`"
