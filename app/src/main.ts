@@ -1480,6 +1480,7 @@ function baseChip(): HTMLElement | null {
     id: 'base',
     compact: true,
     prefix: msg(lang).mainUi.rangePrefix,
+    placeholder: msg(lang).baseInfo.uncommitted,
     items: baseItems(state.bases, state.base, lang),
     value: state.base,
     rerender: render,

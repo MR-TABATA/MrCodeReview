@@ -5,6 +5,7 @@
 // キー操作: ↑↓ で動かす・Enter で決める・Esc で閉じる。外を押しても閉じる。
 
 import { h } from './dom';
+import { t } from './i18n';
 import { icon } from './icons';
 
 export interface ComboItem {
@@ -116,7 +117,7 @@ export function combo(o: ComboOptions): HTMLElement {
     h(
       'span',
       { class: 'combo-cur' },
-      h('span', { class: 'combo-title' }, h('span', { class: 'combo-name' }, cur?.title ?? o.placeholder ?? '選んでください')),
+      h('span', { class: 'combo-title' }, h('span', { class: 'combo-name' }, cur?.title ?? o.placeholder ?? t('select_placeholder'))),
       cur?.desc && !o.compact ? h('span', { class: 'combo-desc' }, cur.desc) : null,
     ),
     icon('chevron', 16),
