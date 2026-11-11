@@ -40,5 +40,5 @@ cd app && npx eslint src        # 既知の 5 件が出る（Mrk から引き継
 
 - **リリース手順**: 署名・公証・配布の置き場への配置（旧 `release.sh`）。
 - **自動更新の宛先**: `tauri.conf.json` の `endpoints` は、旧来の `mrktools.app/downloads/mrcodereview/update.json` のまま。
-- **CI**: GUI のビルド・試験。
-- **`THIRD-PARTY-NOTICES.md`**: 生成スクリプトは `scripts/gen-third-party-notices.py`。依存を変えたので、作り直しが要る。
+- **CI**: `.github/workflows/ci.yml`（Rust の試験は macOS・画面側は Node）を足した。GitHub 上では、まだ走らせていない（最初の push で確かめる）。CLI の配布（`release.yml`）の試験は、CLI と core だけに絞った。
+- **`THIRD-PARTY-NOTICES.md`**: 2026-11-11 に作り直した（`python3 scripts/gen-third-party-notices.py --check` で確かめられる）。依存を変えたら、作り直す。

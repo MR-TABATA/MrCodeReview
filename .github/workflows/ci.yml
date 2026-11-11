@@ -1,0 +1,45 @@
+# main への push と、PR のたびに、テストを通す。
+#
+# - rust: CLI・core・GUI（app/src-tauri）の Rust の試験。GUI は macOS のキーチェーンや osascript を使う部分があるので、macOS で走らせる
+#   （Linux は未検証）。本物のキーチェーンに触る試験は #[ignore] で、ここでは走らない。
+# - frontend: GUI の画面側（app/）の型検査・試験・ビルド。
+#
+# CLI の配布（タグ v* の push）は release.yml。そちらは CLI と core だけを試験する。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: テスト（ワークスペース全体）
+        run: cargo test --workspace
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: 依存の取得
+        run: npm ci
+      - name: 型検査
+        run: npm run typecheck
+      - name: 試験
+        run: npm test
+      - name: ビルド
+        run: npm run build
