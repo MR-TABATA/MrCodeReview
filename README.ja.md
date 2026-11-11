@@ -18,7 +18,7 @@
 - **でっち上げ（ハルシネーション）の即時検出**: モデルが引用した行が実際の差分に存在するかを文字列照合し、「根拠あり」「⚠️ 根拠不一致」を判定します。
 - **コーディングエージェントとの完全連携**: レビュー結果を `.mrcodereview/out/review.md`（または JSON）に自動出力。`agy` や `Claude Code` にそのまま読ませて自動修正ループを回せます。
 - **Pure Rust 実装**: macOS でビルド・テストし、リリースも macOS 向けです。Linux や CI/CD（GitHub Actions など）は、まだ動作を確かめていません。
-- **GUI アプリとの履歴共有**: macOS で実行した場合、有償 GUI アプリ（MrkCodeReview）と同じローカル SQLite DB にレビュー結果が記録され、後から画面で仕分け・確認が可能です。
+- **GUI アプリとの履歴共有**: macOS で実行した場合、このリポジトリのデスクトップアプリ（`app/`）と同じローカル SQLite DB にレビュー結果が記録され、後から画面で仕分け・確認が可能です。
 
 ---
 
@@ -126,7 +126,7 @@ Terraform のレシピは、`terraform plan`・state・プロバイダのスキ�
 
 ### 文書
 
-設計メモ・仕様書・README 向けです。Markdown やテキストの変更に対して実行します（例: `mrcr review -r doc-claims,doc-steps`）。同じ観点は、デスクトップアプリ（MrCodeReview / MrkCodeReview）の次のリリースから、差分に `.md`・`.mdx`・`.txt`・`.rst` があるときに、観点バーに出ます。
+設計メモ・仕様書・README 向けです。Markdown やテキストの変更に対して実行します（例: `mrcr review -r doc-claims,doc-steps`）。同じ観点は、デスクトップアプリ（`app/`）でも、差分に `.md`・`.mdx`・`.txt`・`.rst` があるときに、観点バーに出ます。
 
 | ID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | 見るもの |
 |---|---|

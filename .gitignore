@@ -4,3 +4,8 @@ dist/
 .mrcodereview/out/
 *.tmp
 .preview/
+node_modules/
+app/src-tauri/gen/
+.dev/
+__pycache__/
+*.pyc

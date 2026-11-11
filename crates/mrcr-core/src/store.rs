@@ -386,18 +386,32 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
 /// このリポジトリ（記録に残っている根のパス）の、「未」の指摘の合計。履歴の各行の「未」（`TriageCounts::open`）を足したもの
 /// （未仕分け ＋ 対応中。待ち・無視・済みは、入れない）。仕分けの読み取りに失敗したら、エラー（0 件に見せない）。
 pub fn open_count(conn: &Connection, repo: &str) -> Result<usize, String> {
-    let by_review = triage_counts(conn, Some(repo)).map_err(|e| format!("仕分けを数えられません: {e}"))?;
-    let mut stmt = conn.prepare("SELECT id, findings_count FROM reviews WHERE repo = ?1").map_err(|e| format!("履歴を読めません: {e}"))?;
-    let rows = stmt
-        .query_map([repo], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?.max(0) as usize)))
-        .map_err(|e| format!("履歴を読めません: {e}"))?;
-    let mut open = 0;
-    for row in rows {
-        let (id, findings) = row.map_err(|e| format!("履歴を読めません: {e}"))?;
-        let (wait, dismiss, done) = by_review.get(&id).copied().unwrap_or((0, 0, 0));
-        open += findings.saturating_sub(wait + dismiss + done);
+    Ok(open_counts(conn, &[repo.to_string()])?.get(repo).copied().unwrap_or(0))
+}
+
+/// 複数のリポジトリの「未」の合計を、まとめて数える（リポジトリごとに問い合わせを出さない）。返す表は、渡したすべての根のパスを持つ
+/// （履歴が無ければ 0）。1 つだけのときは、そのリポジトリの仕分けだけを集計し、複数のときは、全体を 1 回で集計する。
+/// 仕分けの読み取りに失敗したら、エラー（0 件に見せない）。
+pub fn open_counts(conn: &Connection, repos: &[String]) -> Result<std::collections::HashMap<String, usize>, String> {
+    let mut out: std::collections::HashMap<String, usize> = repos.iter().map(|r| (r.clone(), 0)).collect();
+    if repos.is_empty() {
+        return Ok(out);
     }
-    Ok(open)
+    let only = (repos.len() == 1).then(|| repos[0].as_str());
+    let by_review = triage_counts(conn, only).map_err(|e| format!("仕分けを数えられません: {e}"))?;
+    let marks = vec!["?"; repos.len()].join(",");
+    let mut stmt = conn
+        .prepare(&format!("SELECT id, repo, findings_count FROM reviews WHERE repo IN ({marks})"))
+        .map_err(|e| format!("履歴を読めません: {e}"))?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(repos.iter()), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?.max(0) as usize)))
+        .map_err(|e| format!("履歴を読めません: {e}"))?;
+    for row in rows {
+        let (id, repo, findings) = row.map_err(|e| format!("履歴を読めません: {e}"))?;
+        let (wait, dismiss, done) = by_review.get(&id).copied().unwrap_or((0, 0, 0));
+        *out.entry(repo).or_insert(0) += findings.saturating_sub(wait + dismiss + done);
+    }
+    Ok(out)
 }
 
 /// 履歴のレビューを、選んだ分だけ消す。**元に戻せない。** そのレビューに紐づく、仕分け・仕分けの履歴・エージェントの申告・対応メモ・
@@ -919,6 +933,30 @@ mod tests {
         // 指摘の件数を、仕分けより少なく書き換えても（範囲の外の仕分けは、数えない）、負にならず、0 で止まる
         conn.execute("UPDATE reviews SET findings_count = 1 WHERE id = 'a'", []).unwrap();
         assert_eq!(open_count(&conn, "/r").unwrap(), 0);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn open_counts_for_many_repos_match_the_one_by_one_counts() {
+        let d = scratch("open-counts-many");
+        review_with_findings(&d, "a", 10, 4);
+        review_with_findings(&d, "b", 20, 3);
+        review_with_findings(&d, "c", 30, 5);
+        crate::triage::set_with(&d, "a", 0, "wait", 4, 100, None).unwrap();
+        crate::triage::set_with(&d, "a", 1, "dismiss", 4, 101, None).unwrap();
+        crate::triage::set_with(&d, "c", 2, "fix", 5, 102, None).unwrap();
+        crate::notes::set_done(&d, "c", 2, 5, true, 200, None).unwrap();
+        let conn = db::open(&d).unwrap();
+        conn.execute("UPDATE reviews SET repo = '/other' WHERE id = 'b'", []).unwrap();
+        conn.execute("UPDATE reviews SET repo = '/third' WHERE id = 'c'", []).unwrap();
+        let repos: Vec<String> = ["/r", "/other", "/third", "/none"].iter().map(|s| s.to_string()).collect();
+        let many = open_counts(&conn, &repos).unwrap();
+        for r in &repos {
+            assert_eq!(many[r], open_count(&conn, r).unwrap(), "{r}: まとめて数えても、1 つずつ数えたものと同じ");
+        }
+        assert_eq!((many["/r"], many["/other"], many["/third"], many["/none"]), (2, 3, 4, 0));
+        assert!(open_counts(&conn, &[]).unwrap().is_empty());
         drop(conn);
         let _ = std::fs::remove_dir_all(&d);
     }

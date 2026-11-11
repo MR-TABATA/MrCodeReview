@@ -23,28 +23,50 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// データの置き場。GUI と同じ規則（`mrcr_core::datadir`）。旧の名前の置き場があれば、ロックを取れたときだけ移す。
+/// ロックを取れない（GUI が動いている、など）ときは、何も動かさずに、使う置き場だけを決める。
 fn resolve_data_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("MRCR_DATA_DIR") {
-        return PathBuf::from(dir);
+    resolve_data_dir_in(std::env::var("MRCR_DATA_DIR").ok().map(PathBuf::from), mrcr_core::datadir::default_base())
+}
+
+/// 基準のフォルダが取れないときの置き場と、その警告の文。
+fn fallback_data_dir() -> (PathBuf, String) {
+    let dir = std::env::temp_dir().join(mrcr_core::datadir::DATA_ID);
+    let warning = format!(
+        "警告: データの置き場の基準（HOME など）が取れないので、一時フォルダ（{}）を使います。履歴・仕分けは、再起動や掃除で消えます。残したいときは、MRCR_DATA_DIR で置き場を指定してください。",
+        dir.display()
+    );
+    (dir, warning)
+}
+
+/// `resolve_data_dir` の本体。環境変数（`explicit`）と基準のフォルダ（`base`）を、引数で受ける（試験できるように）。
+/// `explicit` があれば、ロックも移しもせず、そこをそのまま使う（隔離したデータを、本物と混ぜない）。
+fn resolve_data_dir_in(explicit: Option<PathBuf>, base: Option<PathBuf>) -> PathBuf {
+    use mrcr_core::applock::{acquire, Acquired};
+    use mrcr_core::datadir::{self, Mode};
+    if let Some(dir) = explicit {
+        return dir;
     }
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home)
-                .join("Library/Application Support/com.hitoshi.mrkcodereview");
+    let Some(base) = base else {
+        // 基準のフォルダが取れない（HOME が無い、など）。止めはしない（--no-save のような、記録を残さない実行もある）が、
+        // 履歴・仕分けが、掃除や再起動で消える場所に書かれることを、警告する
+        let (dir, warning) = fallback_data_dir();
+        eprintln!("{warning}");
+        return dir;
+    };
+    // ロックは、置き場を決めるあいだだけ持つ（関数を出ると外れる）。
+    let lock = acquire(&datadir::lock_file(&base, None));
+    let mode = match &lock {
+        Acquired::Locked(_) => Mode::Migrate,
+        // GUI などが、すでに置き場を使っている。移しは、そちらが済ませている。動かさずに、決めるだけ
+        Acquired::AlreadyRunning => Mode::ReadOnly,
+        // ロックを試せなかった。移さないが、理由は言う（旧の置き場が残っていても、なぜ移らないのか分かるように）
+        Acquired::Unsupported(why) => {
+            eprintln!("データの置き場の移しを行いません: ロックを試せませんでした（{why}）。いまある置き場を、そのまま使います。");
+            Mode::ReadOnly
         }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
-            return PathBuf::from(data_home).join("com.hitoshi.mrkcodereview");
-        }
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home)
-                .join(".local/share/com.hitoshi.mrkcodereview");
-        }
-    }
-    std::env::temp_dir().join("com.hitoshi.mrkcodereview")
+    };
+    datadir::resolve_in(&base, mode).dir
 }
 
 fn resolve_api_key() -> Result<String, String> {
@@ -364,5 +386,87 @@ fn run_review(args: ReviewArgs) -> i32 {
         1
     } else {
         0
+    }
+}
+
+#[cfg(test)]
+mod data_dir_tests {
+    use super::*;
+    use mrcr_core::applock::{acquire, Acquired};
+    use mrcr_core::datadir::{lock_file, DATA_ID, LEGACY_ID};
+    use std::fs;
+
+    fn base(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("mrcr-cli-datadir-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn with_legacy(b: &Path) {
+        fs::create_dir_all(b.join(LEGACY_ID)).unwrap();
+        fs::write(b.join(LEGACY_ID).join("marker"), "history").unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn without_the_lock_held_the_legacy_dir_is_moved_and_a_link_is_left() {
+        let b = base("moves");
+        with_legacy(&b);
+        let got = resolve_data_dir_in(None, Some(b.clone()));
+        assert_eq!(got, b.join(DATA_ID));
+        assert_eq!(fs::read_to_string(got.join("marker")).unwrap(), "history");
+        assert!(fs::symlink_metadata(b.join(LEGACY_ID)).unwrap().file_type().is_symlink(), "旧の名前に、リンクが残る");
+        let _ = fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn while_another_process_holds_the_lock_nothing_is_moved() {
+        let b = base("held");
+        with_legacy(&b);
+        // GUI が動いているつもり: ロックを先に取っておく
+        let held = acquire(&lock_file(&b, None));
+        assert!(matches!(held, Acquired::Locked(_)));
+        let got = resolve_data_dir_in(None, Some(b.clone()));
+        assert_eq!(got, b.join(LEGACY_ID), "移さず、いまある旧の置き場を使う");
+        assert!(!b.join(DATA_ID).exists(), "新を作らない");
+        assert_eq!(fs::read_to_string(b.join(LEGACY_ID).join("marker")).unwrap(), "history");
+        drop(held);
+        let _ = fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn when_the_lock_cannot_even_be_tried_nothing_is_moved_either() {
+        let b = base("unsupported");
+        with_legacy(&b);
+        // ロックのファイルの場所が「フォルダ」だと、ファイルとして開けない（ロックを試せない）
+        fs::create_dir_all(lock_file(&b, None)).unwrap();
+        let got = resolve_data_dir_in(None, Some(b.clone()));
+        assert_eq!(got, b.join(LEGACY_ID));
+        assert!(!b.join(DATA_ID).exists());
+        let _ = fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn an_explicit_data_dir_is_used_as_is_with_no_lock_and_no_move() {
+        let b = base("explicit");
+        with_legacy(&b);
+        let custom = b.join("isolated").join("data");
+        let got = resolve_data_dir_in(Some(custom.clone()), Some(b.clone()));
+        assert_eq!(got, custom, "指定どおり");
+        assert_eq!(fs::read_to_string(b.join(LEGACY_ID).join("marker")).unwrap(), "history", "本物の置き場は、無傷");
+        assert!(!b.join(DATA_ID).exists(), "新を作らない");
+        assert!(!lock_file(&b, None).exists(), "ロックのファイルも作らない");
+        let _ = fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn without_a_base_directory_the_fallback_is_a_temp_dir_and_says_what_that_means() {
+        let (dir, warning) = fallback_data_dir();
+        assert_eq!(dir, std::env::temp_dir().join(DATA_ID));
+        assert!(warning.contains("一時フォルダ") && warning.contains("消えます") && warning.contains("MRCR_DATA_DIR"), "{warning}");
+        assert!(warning.contains(&dir.display().to_string()), "どこを使うかを、書く");
+        // 基準が無くても、決定そのものは止まらずに、その置き場を返す（--no-save のような実行を、止めない）
+        assert_eq!(resolve_data_dir_in(None, None), dir);
     }
 }

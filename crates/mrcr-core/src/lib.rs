@@ -1,6 +1,8 @@
 pub mod agent_report;
+pub mod applock;
 pub mod byok;
 pub mod carry;
+pub mod datadir;
 pub mod db;
 pub mod findings;
 pub mod format;
