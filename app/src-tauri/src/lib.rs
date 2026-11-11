@@ -1086,7 +1086,7 @@ fn build_menu_with_lang(app: &tauri::AppHandle, lang: &str) -> tauri::Result<tau
     MenuBuilder::new(app).item(&app_menu).item(&edit).item(&view).item(&window).build()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(test)))]
 pub(crate) fn system_lang() -> i18n::Lang {
     use objc2::runtime::{AnyClass, AnyObject};
     use objc2::msg_send;
@@ -1114,7 +1114,13 @@ pub(crate) fn system_lang() -> i18n::Lang {
     i18n::Lang::default()
 }
 
-#[cfg(not(target_os = "macos"))]
+/// 試験では、実行する Mac の言語に依存させない。試験は、日本語の環境で書かれている（GitHub の実行環境は、英語で、そのままだと 12 件が落ちる）。
+#[cfg(test)]
+pub(crate) fn system_lang() -> i18n::Lang {
+    i18n::Lang::Ja
+}
+
+#[cfg(all(not(target_os = "macos"), not(test)))]
 pub(crate) fn system_lang() -> i18n::Lang {
     std::env::var("LANG")
         .ok()
