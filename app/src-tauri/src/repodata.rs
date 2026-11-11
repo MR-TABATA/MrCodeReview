@@ -76,18 +76,49 @@ fn known_repos(conn: &Connection) -> Result<HashSet<String>, String> {
     rows.collect::<Result<HashSet<_>, _>>().map_err(|e| format!("履歴を読めません: {e}"))
 }
 
-/// 登録のパスから、履歴の根のパスを決める。履歴にそのままある根は、git を起動せずに使う。
-/// 無ければ `repo_key`。それでも履歴に無ければ、大文字小文字だけが違うものを探す（macOS の既定のファイルシステムは、区別しない）。
-fn resolve_key(known: &HashSet<String>, path: &str) -> String {
-    let trimmed = path.trim_end_matches('/');
-    if known.contains(trimmed) {
-        return trimmed.to_string();
-    }
-    let key = repo_key(path);
+/// 根のパス `key` を、履歴にある根に合わせる。そのままあればそれ。無ければ、大文字小文字だけが違うものを探す
+/// （macOS の既定のファイルシステムは、区別しない）。それも無ければ `key` のまま。
+fn match_known(known: &HashSet<String>, key: String) -> String {
     if known.contains(&key) {
         return key;
     }
     known.iter().find(|k| k.eq_ignore_ascii_case(&key)).cloned().unwrap_or(key)
+}
+
+/// 同時に走らせる git の数（根の解決）。
+const GIT_PARALLEL: usize = 8;
+
+/// `items` の各要素に `f` を、最大 `n` 本のスレッドで並行にかけて、**元の並びのまま**結果を返す。
+fn parallel_map<T: Sync, R: Send>(items: &[T], n: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    if items.is_empty() {
+        return Vec::new();
+    }
+    let chunk = items.len().div_ceil(n.clamp(1, items.len()));
+    std::thread::scope(|s| {
+        let handles: Vec<_> = items.chunks(chunk).map(|c| s.spawn(|| c.iter().map(&f).collect::<Vec<R>>())).collect();
+        handles.into_iter().flat_map(|h| h.join().expect("根の解決のスレッドが止まった")).collect()
+    })
+}
+
+/// 登録のパスの一覧から、それぞれの、履歴の根のパスを決める（`paths` と同じ並び）。
+/// 履歴にそのままある根は、git を起動せずに使う。残りは、同じパスを 1 回だけ、並行して `repo_key`（git）で解く。
+fn resolve_keys(known: &HashSet<String>, paths: &[String]) -> Vec<String> {
+    let mut direct: HashMap<&str, String> = HashMap::new();
+    let mut todo: Vec<&String> = Vec::new();
+    for p in paths {
+        let trimmed = p.trim_end_matches('/');
+        if known.contains(trimmed) {
+            direct.insert(p.as_str(), trimmed.to_string());
+        } else if !todo.contains(&p) {
+            todo.push(p);
+        }
+    }
+    let solved: HashMap<&str, String> = todo
+        .iter()
+        .zip(parallel_map(&todo, GIT_PARALLEL, |p| repo_key(p)))
+        .map(|(p, key)| (p.as_str(), match_known(known, key)))
+        .collect();
+    paths.iter().map(|p| direct.get(p.as_str()).or_else(|| solved.get(p.as_str())).cloned().expect("すべてのパスを解いた")).collect()
 }
 
 const IDS: &str = "(SELECT id FROM reviews WHERE repo = ?1)";
@@ -138,9 +169,11 @@ fn counts_for(conn: &Connection, keys: &[String]) -> Result<HashMap<String, Repo
     grouped(format!("SELECT r.repo, COUNT(*), 0 FROM finding_note f JOIN reviews r ON r.id = f.review_id WHERE f.memo <> '' AND r.repo IN ({marks}) GROUP BY r.repo"), Box::new(|k, n, _| {
         by.entry(k.to_string()).or_default().3 = n;
     }))?;
+    // 「未」の数は、履歴のあるリポジトリだけ、まとめて数える（リポジトリごとに問い合わせない）
+    let with_history: Vec<String> = by.iter().filter(|(_, v)| v.0 > 0).map(|(k, _)| k.clone()).collect();
+    let open_by = store::open_counts(conn, &with_history)?;
     for (k, (reviews, findings, triaged, memos)) in by {
-        // 「未」の数は、履歴のあるリポジトリだけ数える
-        let open = if reviews > 0 { store::open_count(conn, &k)? } else { 0 };
+        let open = open_by.get(&k).copied().unwrap_or(0);
         out.insert(k, RepoData { reviews, findings, triaged, memos, open });
     }
     Ok(out)
@@ -150,7 +183,7 @@ fn counts_for(conn: &Connection, keys: &[String]) -> Result<HashMap<String, Repo
 pub fn summaries(dir: &Path, paths: &[String]) -> Result<Vec<RepoDataRow>, String> {
     let conn = db::open(dir)?;
     let known = known_repos(&conn)?;
-    let keys: Vec<String> = paths.iter().map(|p| resolve_key(&known, p)).collect();
+    let keys = resolve_keys(&known, paths);
     let mut uniq: Vec<String> = keys.clone();
     uniq.sort();
     uniq.dedup();
@@ -330,6 +363,40 @@ mod tests {
         assert_eq!(s[0].data.reviews, 1, "リンク経由のパスでも、履歴が見える");
         assert_eq!(s[1].data.reviews, 1, "大文字小文字だけ違うパスでも、履歴が見える");
         assert_eq!(repo_key(&via_link), stored, "削除などに使う根のパスも、実体に寄る");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn parallel_map_keeps_the_order_and_handles_edge_sizes() {
+        let items: Vec<usize> = (0..50).collect();
+        assert_eq!(parallel_map(&items, 8, |x| x * 2), (0..50).map(|x| x * 2).collect::<Vec<_>>(), "元の並びのまま");
+        assert_eq!(parallel_map(&items, 1, |x| *x), items, "1 本でも同じ");
+        assert_eq!(parallel_map(&items, 1000, |x| *x), items, "要素より多くのスレッドを求めても、同じ");
+        assert!(parallel_map(&[] as &[usize], 8, |x| *x).is_empty());
+        assert_eq!(parallel_map(&[7usize], 8, |x| *x + 1), vec![8]);
+    }
+
+    #[test]
+    fn many_paths_without_history_resolve_in_order_and_the_same_as_one_by_one() {
+        let d = scratch("many-unknown");
+        let conn = db::open(&d).unwrap();
+        add_review(&conn, "k1", "/gone/known", 2);
+        drop(conn);
+        // 履歴の無いパスを、多数（重複・末尾の / を含む）。履歴のあるパスと混ぜる
+        let mut paths: Vec<String> = (0..40).map(|i| format!("/gone/unknown{i}")).collect();
+        paths.push("/gone/known/".into());
+        paths.push("/gone/unknown3/".into());
+        paths.push("/gone/unknown3".into());
+        let s = summaries(&d, &paths).unwrap();
+        assert_eq!(s.len(), paths.len());
+        for (row, p) in s.iter().zip(&paths) {
+            assert_eq!(&row.path, p, "並びは、渡した順");
+            let expect = if p.trim_end_matches('/') == "/gone/known" { 1 } else { 0 };
+            assert_eq!(row.data.reviews, expect, "{p}");
+        }
+        let known: HashSet<String> = ["/gone/known".to_string()].into();
+        let one_by_one: Vec<String> = paths.iter().map(|p| match_known(&known, if known.contains(p.trim_end_matches('/')) { p.trim_end_matches('/').to_string() } else { repo_key(p) })).collect();
+        assert_eq!(resolve_keys(&known, &paths), one_by_one, "並行に解いても、1 つずつ解いたものと同じ");
         let _ = std::fs::remove_dir_all(&d);
     }
 }
