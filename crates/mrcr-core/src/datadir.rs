@@ -22,6 +22,33 @@ pub const LEGACY_ID: &str = "com.hitoshi.mrkcodereview";
 /// 旧の名前に残すリンクを消す目安（旧版が使われなくなったとき）。コードでは消さない。
 pub const LEGACY_LINK_REMOVAL: &str = "mrcr 0.5.0 と MrkCodeReview 1.x の利用が無くなったとき（リリースノートで、リンクを消すと告げてから）";
 
+/// ディスクを動かす操作。試験では、失敗するものに差し替える（rename が失敗した後の状態や、リンクを作れなかったときの通知を確かめるため）。
+pub struct Ops<'a> {
+    pub rename: &'a dyn Fn(&Path, &Path) -> io::Result<()>,
+    pub symlink: &'a dyn Fn(&Path, &Path) -> io::Result<()>,
+}
+
+fn real_rename(from: &Path, to: &Path) -> io::Result<()> {
+    std::fs::rename(from, to)
+}
+
+#[cfg(unix)]
+fn real_symlink(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+/// unix 以外には、リンクを残す仕組みが無い（何もしない）。
+#[cfg(not(unix))]
+fn real_symlink(_target: &Path, _link: &Path) -> io::Result<()> {
+    Ok(())
+}
+
+impl Ops<'static> {
+    pub fn real() -> Ops<'static> {
+        Ops { rename: &real_rename, symlink: &real_symlink }
+    }
+}
+
 /// 置き場を決めるとき、動かしてよいか。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -50,8 +77,8 @@ pub fn default_base() -> Option<PathBuf> {
 enum Migration {
     /// 旧の置き場が無い（新規の利用者、または移し済みで、リンクも無い）。
     NothingToMove,
-    /// 旧の置き場を、新の置き場に移した。
-    Moved,
+    /// 旧の置き場を、新の置き場に移した。値は、旧の名前にリンクを残せなかったときの理由（残せたなら `None`）。
+    Moved(Option<String>),
     /// 旧が、新へのリンク（前に移したときに、残したもの）。移し済み。
     AlreadyMigrated,
     /// 新の置き場に、すでに中身がある。**混ぜず**、どちらも触らない（新を使う）。
@@ -87,12 +114,17 @@ pub struct Resolved {
 
 /// `base` の下で使う置き場を返す。`Mode::Migrate` なら、旧の置き場があれば、先に移す。
 pub fn resolve_in(base: &Path, mode: Mode) -> Resolved {
+    resolve_in_with(base, mode, &Ops::real())
+}
+
+/// `resolve_in` の本体。ディスクの操作（`ops`）を受け取る（試験用）。
+pub fn resolve_in_with(base: &Path, mode: Mode, ops: &Ops) -> Resolved {
     let new = base.join(DATA_ID);
     let old = base.join(LEGACY_ID);
     if mode == Mode::ReadOnly {
         return Resolved { dir: read_only_pick(&old, &new), notice: None };
     }
-    match migrate(&old, &new) {
+    match migrate(&old, &new, ops) {
         Ok(Migration::BothHaveData) => {
             let notice = format!(
                 "データの置き場が 2 か所にあり、混ぜずに、新しい方（{new}）だけを使っています。以前の置き場（{old}）にある履歴・仕分けは、画面に出ません（消してはいません）。",
@@ -115,6 +147,16 @@ pub fn resolve_in(base: &Path, mode: Mode) -> Resolved {
                 eprintln!("{n}");
             }
             Resolved { dir: old, notice }
+        }
+        // 移せたが、旧の名前にリンクを残せなかった。旧版を使うとデータが割れるので、利用者に知らせる（画面の帯に出る）
+        Ok(Migration::Moved(Some(why))) => {
+            let notice = format!(
+                "データの置き場を新しい場所（{new}）へ移しました。ただし、以前の名前（{old}）に、新しい置き場へのリンクを残せませんでした（{why}）。旧版の mrcr や MrkCodeReview 1.x を起動すると、以前の名前に空のデータが作られ、履歴が 2 か所に割れます。",
+                new = new.display(),
+                old = old.display()
+            );
+            eprintln!("{notice}");
+            Resolved { dir: new, notice: Some(notice) }
         }
         Ok(_) => Resolved { dir: new, notice: None },
         // 移せなかったとき。旧の置き場は、そのまま残っている（移しは 1 回の rename だけ）ので、そちらを使い続ける。
@@ -155,7 +197,7 @@ fn links_to(old: &Path, new: &Path) -> bool {
 }
 
 /// 旧 → 新。**コピーでなく rename 1 回**（途中で止まっても、半端な新が残らない）。移したあと、旧の名前に新へのリンクを残す。
-fn migrate(old: &Path, new: &Path) -> io::Result<Migration> {
+fn migrate(old: &Path, new: &Path, ops: &Ops) -> io::Result<Migration> {
     let old_meta = match std::fs::symlink_metadata(old) {
         Ok(m) => m,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Migration::NothingToMove),
@@ -186,23 +228,17 @@ fn migrate(old: &Path, new: &Path) -> io::Result<Migration> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),
     }
-    std::fs::rename(old, new)?;
-    leave_legacy_link(old, new);
-    Ok(Migration::Moved)
+    // 空の新を消したあとに rename が失敗しても、旧は、そのまま残っている（呼び出し側が、旧を使い続ける）
+    (ops.rename)(old, new)?;
+    Ok(Migration::Moved(leave_legacy_link(old, new, ops)))
 }
 
-/// 旧の名前に、新へのリンク（同じフォルダの中の相対）を残す。残せなくても、移しは成功のまま（旧版が、空のデータを作るだけ）。
-fn leave_legacy_link(old: &Path, new: &Path) {
-    #[cfg(unix)]
-    {
-        let target = new.file_name().map(PathBuf::from).unwrap_or_else(|| new.to_path_buf());
-        if let Err(e) = std::os::unix::fs::symlink(&target, old) {
-            eprintln!("旧の名前（{}）に、新しい置き場へのリンクを残せませんでした（{e}）。旧版を使うと、データが割れます。", old.display());
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (old, new);
+/// 旧の名前に、新へのリンク（同じフォルダの中の相対）を残す。残せなかったときは、その理由を返す（移しは成功のまま。旧版が、空のデータを作るだけ）。
+fn leave_legacy_link(old: &Path, new: &Path, ops: &Ops) -> Option<String> {
+    let target = new.file_name().map(PathBuf::from).unwrap_or_else(|| new.to_path_buf());
+    match (ops.symlink)(&target, old) {
+        Ok(()) => None,
+        Err(e) => Some(e.to_string()),
     }
 }
 
@@ -411,5 +447,56 @@ mod tests {
         put(&b.new_dir(), "store.sqlite", "n");
         assert_eq!(b.read_only().dir, b.new_dir());
         assert_eq!(fs::read_to_string(b.old().join("store.sqlite")).unwrap(), "o");
+    }
+
+    fn failing_rename(_: &Path, _: &Path) -> io::Result<()> {
+        Err(io::Error::new(io::ErrorKind::PermissionDenied, "denied (test)"))
+    }
+
+    fn failing_symlink(_: &Path, _: &Path) -> io::Result<()> {
+        Err(io::Error::new(io::ErrorKind::PermissionDenied, "link denied (test)"))
+    }
+
+    #[test]
+    fn a_rename_that_fails_after_the_empty_new_dir_was_removed_keeps_the_old_data_and_says_so() {
+        let b = Base::new("rename-fails");
+        put(&b.old(), "store.sqlite", "history");
+        fs::create_dir_all(b.new_dir()).unwrap(); // 空の新（先に消される）
+        let ops = Ops { rename: &failing_rename, symlink: &real_symlink };
+        let r = resolve_in_with(&b.0, Mode::Migrate, &ops);
+        assert_eq!(r.dir, b.old(), "移せなければ、旧を使い続ける");
+        let notice = r.notice.expect("移せなかったことを、利用者に知らせる");
+        assert!(notice.contains("移せませんでした") && notice.contains("denied (test)"), "{notice}");
+        assert_eq!(fs::read_to_string(b.old().join("store.sqlite")).unwrap(), "history", "旧のデータは、無傷");
+        // 次の起動（rename が通る）で、移しがやり直される
+        let again = b.migrate();
+        assert_eq!(again.dir, b.new_dir());
+        assert!(again.notice.is_none());
+        assert_eq!(fs::read_to_string(again.dir.join("store.sqlite")).unwrap(), "history");
+    }
+
+    #[test]
+    fn a_rename_that_fails_without_an_empty_new_dir_also_keeps_the_old_data() {
+        let b = Base::new("rename-fails-2");
+        put(&b.old(), "store.sqlite", "history");
+        let ops = Ops { rename: &failing_rename, symlink: &real_symlink };
+        let r = resolve_in_with(&b.0, Mode::Migrate, &ops);
+        assert_eq!(r.dir, b.old());
+        assert!(r.notice.is_some());
+        assert!(!b.new_dir().exists());
+        assert_eq!(fs::read_to_string(b.old().join("store.sqlite")).unwrap(), "history");
+    }
+
+    #[test]
+    fn when_the_legacy_link_cannot_be_made_the_move_still_succeeds_and_the_user_is_told() {
+        let b = Base::new("link-fails");
+        put(&b.old(), "store.sqlite", "history");
+        let ops = Ops { rename: &real_rename, symlink: &failing_symlink };
+        let r = resolve_in_with(&b.0, Mode::Migrate, &ops);
+        assert_eq!(r.dir, b.new_dir(), "移しは、成功している");
+        assert_eq!(fs::read_to_string(r.dir.join("store.sqlite")).unwrap(), "history");
+        let notice = r.notice.expect("リンクを残せなかったことを、通知に入れる");
+        assert!(notice.contains("リンクを残せませんでした") && notice.contains("link denied (test)") && notice.contains("割れます"), "{notice}");
+        assert!(fs::symlink_metadata(b.old()).is_err(), "旧の名前には、何も無い");
     }
 }

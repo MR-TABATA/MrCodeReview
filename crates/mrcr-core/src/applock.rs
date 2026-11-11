@@ -46,6 +46,21 @@ pub fn acquire(lock_file: &Path) -> Acquired {
     }
 }
 
+/// `acquire` を、取れなかったとき（`AlreadyRunning`）だけ、`wait` あけて、あと `retries` 回、取り直す。
+/// CLI は、置き場を決めるあいだ、一瞬だけロックを持つ。その一瞬に GUI を起動しても、「すでに起動しています」と断らないため。
+/// 本当に別の GUI が動いているときは、`retries * wait` 待ってから、`AlreadyRunning` を返す。
+pub fn acquire_retry(lock_file: &Path, retries: u32, wait: std::time::Duration) -> Acquired {
+    let mut got = acquire(lock_file);
+    for _ in 0..retries {
+        if !matches!(got, Acquired::AlreadyRunning) {
+            break;
+        }
+        std::thread::sleep(wait);
+        got = acquire(lock_file);
+    }
+    got
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,5 +164,44 @@ mod tests {
         assert_eq!(st.code(), Some(3), "持っているあいだは、別のプロセスは取れない");
         drop(held);
         assert_eq!(run(&d.lock()).unwrap().code(), Some(0), "外れたら、別のプロセスが取れる");
+    }
+
+    #[test]
+    fn a_lock_held_only_for_a_moment_is_taken_after_retrying() {
+        let d = Dir::new("retry-short");
+        let held = acquire(&d.lock());
+        assert!(matches!(held, Acquired::Locked(_)));
+        // 別のプロセス（CLI）が、短い間だけ持って、手放す
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            drop(held);
+        });
+        let got = acquire_retry(&d.lock(), 30, std::time::Duration::from_millis(20));
+        releaser.join().unwrap();
+        assert!(matches!(got, Acquired::Locked(_)), "手放されたら、取り直しで取れる: {got:?}");
+    }
+
+    #[test]
+    fn a_lock_that_stays_held_is_still_refused_after_the_retries() {
+        let d = Dir::new("retry-long");
+        let held = acquire(&d.lock());
+        assert!(matches!(held, Acquired::Locked(_)));
+        let started = std::time::Instant::now();
+        let got = acquire_retry(&d.lock(), 3, std::time::Duration::from_millis(30));
+        assert!(matches!(got, Acquired::AlreadyRunning), "持ち続けていれば、断る: {got:?}");
+        assert!(started.elapsed() >= std::time::Duration::from_millis(90), "取り直すあいだ、待った");
+    }
+
+    #[test]
+    fn retrying_does_not_wait_when_the_first_try_succeeds_or_cannot_be_tried() {
+        let d = Dir::new("retry-none");
+        let t = std::time::Instant::now();
+        assert!(matches!(acquire_retry(&d.lock(), 50, std::time::Duration::from_millis(100)), Acquired::Locked(_)));
+        assert!(t.elapsed() < std::time::Duration::from_millis(500), "最初に取れれば、待たない");
+        let d2 = Dir::new("retry-unsupported");
+        std::fs::create_dir_all(d2.lock()).unwrap();
+        let t = std::time::Instant::now();
+        assert!(matches!(acquire_retry(&d2.lock(), 50, std::time::Duration::from_millis(100)), Acquired::Unsupported(_)));
+        assert!(t.elapsed() < std::time::Duration::from_millis(500), "試せないときは、取り直さない");
     }
 }
