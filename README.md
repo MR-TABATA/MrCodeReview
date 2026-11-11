@@ -10,7 +10,7 @@ Provides both a visual **Mac desktop app (GUI)** and a command-line **CLI tool (
 [日本語](README.ja.md)
 
 <p align="center">
-  <img src="art/hero.png" alt="MrCodeReview Desktop App Screenshot" width="900">
+  <img src="art/hero-en.png" alt="MrCodeReview Desktop App Screenshot" width="900">
 </p>
 
 ---
