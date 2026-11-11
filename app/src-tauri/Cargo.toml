@@ -1,6 +1,6 @@
 [package]
 name = "mrcodereview"
-version = "1.5.0"
+version = "1.6.0"
 description = "On-demand, inspectable AI code review"
 authors = ["hitoshi"]
 edition = "2021"
