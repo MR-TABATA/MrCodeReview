@@ -1,9 +1,9 @@
 //! 登録リポジトリ（構想書 §8）。登録の置き場は SQLite の `repos` 表。画面は、ここが返す一覧を表示するだけ。
 //!
-//! - **枠 ＝ 行数。** 解除（`hidden`）した行も数える。Free は `FREE_REPO_LIMIT`（3）、上限に達していると、新しい行が要る追加は断る。
+//! - **枠 ＝ 行数。** 解除（`hidden`）した行も数える。いまの上限は無制限（`limit()` は `None`）。上限を渡されたときだけ、上限に達していると、新しい行が要る追加を断る（仕組みは残してある）。
 //! - 解除は、履歴が 1 件もなければ行ごと消し（枠が戻る）、あれば非表示にするだけ（枠は戻らない）。
 //! - 枠を空けるのは「データを削除」だけ（履歴・仕分け・メモ・報告と行を、1 つのトランザクションで消す）。
-//! - **同じリポジトリの見分け方:** 根のパス → 最初のコミットのハッシュ。フォルダの移動・クローン・ワークツリーは、同じ行にまとまる。
+//! - **同じリポジトリの見分け方:** 根のパス → 最初のコミットのハッシュ。フォルダの移動・ワークツリー（`.git` を共有する）は、同じ行にまとまる。クローン・フォークは、最初のコミットが同じでも、別の行（履歴を混ぜない）。
 //! - 超過（上限を超える登録）は、追加だけを止める。すでにある登録は、そのまま使える。
 //! - 登録していない（または解除した）リポジトリは、実行の入口（`require_registered`）で断る。
 
@@ -146,9 +146,126 @@ fn same_dir(a: &str, b: &str) -> bool {
     matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
 }
 
-/// 同じリポジトリの行を探す。先にパス、次に最初のコミット。
-fn find<'a>(rows: &'a [RepoRow], root: &str, first_commit: Option<&str>) -> Option<&'a RepoRow> {
-    rows.iter().find(|r| same_dir(&r.path, root)).or_else(|| first_commit.and_then(|fc| rows.iter().find(|r| r.first_commit.as_deref() == Some(fc))))
+/// フォルダの `.git`（共有ディレクトリ）の調べ結果。ワークツリーは、本体と同じ `Dir` になる。クローン・フォークは、別の `Dir`。
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum GitDir {
+    /// フォルダが無い（移動した、外付けドライブの未接続など）
+    Missing,
+    /// フォルダはあるが、git が「リポジトリではない」と言った
+    NotRepo,
+    /// 共有ディレクトリの、正規のパス
+    Dir(std::path::PathBuf),
+}
+
+/// `git rev-parse --git-common-dir` の結果を読む。「リポジトリではない」だけを `NotRepo` とし、
+/// それ以外の失敗（権限・所有者の警告・壊れたリポジトリ・正規化できない、など）は、「別のリポジトリ」と取り違えず、エラーにする。
+fn parse_git_dir(path: &str, success: bool, stdout: &str, stderr: &str) -> Result<GitDir, String> {
+    if !success {
+        return if stderr.contains("not a git repository") {
+            Ok(GitDir::NotRepo)
+        } else {
+            Err(format!("{path} の .git を調べられません: {}", stderr.trim()))
+        };
+    }
+    let raw = stdout.trim();
+    if raw.is_empty() {
+        return Err(format!("{path} の .git を調べられません: git が空の答えを返しました"));
+    }
+    let p = Path::new(raw);
+    let abs = if p.is_absolute() { p.to_path_buf() } else { Path::new(path).join(p) };
+    std::fs::canonicalize(&abs).map(GitDir::Dir).map_err(|e| format!("{path} の .git を調べられません（{}）: {e}", abs.display()))
+}
+
+fn git_dir_of(path: &str) -> Result<GitDir, String> {
+    if !Path::new(path).is_dir() {
+        return Ok(GitDir::Missing);
+    }
+    // 「リポジトリではない」の文は、ロケールで変わるので、C ロケールで聞く
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["rev-parse", "--git-common-dir"])
+        .env("LC_ALL", "C")
+        .env("LANGUAGE", "C")
+        .output()
+        .map_err(|e| format!("{path} の .git を調べられません: git を起動できません: {e}"))?;
+    parse_git_dir(path, out.status.success(), &String::from_utf8_lossy(&out.stdout), &String::from_utf8_lossy(&out.stderr))
+}
+
+/// 調べ済みの `.git`（パス → 結果）。書き込みのロックの中で `git` を待たせないよう、呼び出し側は、先にロックの外で `warm` しておく。
+/// ここに無いものは、`get` が、その場で調べる（ロックを取るまでの間に、行が変わったときだけ）。
+#[derive(Debug, Default, Clone)]
+struct GitDirs(HashMap<String, GitDir>);
+
+impl GitDirs {
+    fn get(&mut self, path: &str) -> Result<GitDir, String> {
+        if let Some(d) = self.0.get(path) {
+            return Ok(d.clone());
+        }
+        let d = git_dir_of(path)?;
+        self.0.insert(path.to_string(), d.clone());
+        Ok(d)
+    }
+
+    /// まだ調べていないものを、`GIT_PARALLEL` 件ずつ並行して調べる。1 件でも調べられなければ、エラー。
+    fn warm(&mut self, paths: &[String]) -> Result<(), String> {
+        let mut missing: Vec<&String> = paths.iter().filter(|p| !self.0.contains_key(*p)).collect();
+        missing.sort();
+        missing.dedup();
+        for chunk in missing.chunks(GIT_PARALLEL) {
+            let results: Vec<Result<GitDir, String>> = std::thread::scope(|s| {
+                let handles: Vec<_> = chunk.iter().map(|p| s.spawn(move || git_dir_of(p))).collect();
+                handles.into_iter().map(|h| h.join().unwrap_or_else(|_| Err("`.git` の確認が中断しました".into()))).collect()
+            });
+            for (p, r) in chunk.iter().zip(results) {
+                self.0.insert((*p).clone(), r?);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// 最初のコミットが同じ 2 つのフォルダを、「同じリポジトリ」と見なしてよいか。
+/// - 登録のフォルダが無い: 移動したかもしれない（呼び出し側が、確認を取る）ので、見なす。
+/// - 登録のフォルダがある: `.git` を共有している（ワークツリー）ときだけ。クローン・フォークは、最初のコミットが同じでも、別のリポジトリ。
+///   登録のフォルダが、リポジトリでなくなっていたら、同じとは確かめられないので、見なさない（新しい行になる）。
+fn same_repo(registered: &GitDir, other: &GitDir) -> bool {
+    match registered {
+        GitDir::Missing => true,
+        GitDir::NotRepo => false,
+        GitDir::Dir(a) => matches!(other, GitDir::Dir(b) if a == b),
+    }
+}
+
+/// `find` の前に、ロックの外で、「最初のコミットが同じ行」と `root` の `.git` を調べておく。
+fn warm_find(conn: &Connection, root: &str, first_commit: Option<&str>, dirs: &mut GitDirs) -> Result<(), String> {
+    let Some(fc) = first_commit else { return Ok(()) };
+    let mut paths: Vec<String> = rows(conn)?.into_iter().filter(|r| r.first_commit.as_deref() == Some(fc)).map(|r| r.path).collect();
+    if !paths.is_empty() {
+        paths.push(root.to_string());
+        dirs.warm(&paths)?;
+    }
+    Ok(())
+}
+
+/// 同じリポジトリの行を探す。先にパス、次に最初のコミット（ただし、`same_repo` を満たすもの）。
+/// `.git` を調べられなければ、エラー（「別のリポジトリ」と取り違えて、行を増やさない）。
+fn find<'a>(rows: &'a [RepoRow], root: &str, first_commit: Option<&str>, dirs: &mut GitDirs) -> Result<Option<&'a RepoRow>, String> {
+    if let Some(r) = rows.iter().find(|r| same_dir(&r.path, root)) {
+        return Ok(Some(r));
+    }
+    let Some(fc) = first_commit else { return Ok(None) };
+    let candidates: Vec<&RepoRow> = rows.iter().filter(|r| r.first_commit.as_deref() == Some(fc)).collect();
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+    let other = dirs.get(root)?;
+    for r in candidates {
+        if same_repo(&dirs.get(&r.path)?, &other) {
+            return Ok(Some(r));
+        }
+    }
+    Ok(None)
 }
 
 // ── 読み書き ─────────────────────────────────────────────────────────────
@@ -213,18 +330,25 @@ struct History {
 }
 
 /// `paths` のうち、まだ調べていないものの最初のコミットを、並行して調べて、`known` に入れる。
-fn fill_first_commits(known: &mut HashMap<String, Option<String>>, paths: &[String]) -> Result<(), String> {
-    let missing: Vec<String> = paths.iter().filter(|p| !known.contains_key(*p)).cloned().collect();
+fn fill_first_commits(known: &mut Known, paths: &[String]) -> Result<(), String> {
+    let missing: Vec<String> = paths.iter().filter(|p| !known.first.contains_key(*p)).cloned().collect();
     for (p, found) in missing.iter().zip(first_commits(&missing)?) {
-        known.insert(p.clone(), found);
+        known.first.insert(p.clone(), found);
     }
     Ok(())
+}
+
+/// 履歴の帰属で、調べ済みのもの: 最初のコミット（パス → 結果）と、`.git`。
+#[derive(Debug, Default, Clone)]
+struct Known {
+    first: HashMap<String, Option<String>>,
+    dirs: GitDirs,
 }
 
 /// 最初のコミットを調べられない（git の失敗）ときは、エラー。何も変えずに止める。
 /// `known` は、調べ済みの最初のコミット（パス → 結果）。ここに無いものだけ、`git` で調べて足す。
 /// 書き込みのロックの中で `git` を待たせないよう、呼び出し側は、先にロックの外で一度呼んで、`known` を温めておく。
-fn history_of(conn: &Connection, all: &[RepoRow], row: &RepoRow, known: &mut HashMap<String, Option<String>>) -> Result<History, String> {
+fn history_of(conn: &Connection, all: &[RepoRow], row: &RepoRow, known: &mut Known) -> Result<History, String> {
     let mut h = History { keys: vec![row.path.clone()], unattributed: Vec::new() };
     let mut stmt = conn.prepare("SELECT DISTINCT repo FROM reviews").map_err(|e| format!("履歴のパスを読めません: {e}"))?;
     let repos = stmt
@@ -249,18 +373,32 @@ fn history_of(conn: &Connection, all: &[RepoRow], row: &RepoRow, known: &mut Has
         Some(f) => Some(f.clone()),
         None if Path::new(&row.path).is_dir() => {
             fill_first_commits(known, std::slice::from_ref(&row.path))?;
-            known.get(&row.path).cloned().flatten()
+            known.first.get(&row.path).cloned().flatten()
         }
         None => None,
     };
     match fc {
         Some(fc) => {
             fill_first_commits(known, &candidates)?;
+            let mut same_first: Vec<String> = Vec::new();
             for repo in &candidates {
-                match known.get(repo).and_then(|f| f.as_deref()) {
-                    Some(x) if x == fc => h.keys.push(repo.clone()),
+                match known.first.get(repo).and_then(|f| f.as_deref()) {
+                    Some(x) if x == fc => same_first.push(repo.clone()),
                     Some(_) => {} // 別のリポジトリのもの
                     None => h.unattributed.push(repo.clone()), // フォルダはあるが、リポジトリではなくなった
+                }
+            }
+            // 最初のコミットが同じでも、クローン・フォークは別のリポジトリ（履歴を混ぜない）。
+            // この行の `.git` は 1 回だけ、候補の分は並行して調べる。調べられなければ、エラー（「別」とも「同じ」とも決めない）
+            if !same_first.is_empty() {
+                let mut paths = same_first.clone();
+                paths.push(row.path.clone());
+                known.dirs.warm(&paths)?;
+                let registered = known.dirs.get(&row.path)?;
+                for repo in same_first {
+                    if same_repo(&registered, &known.dirs.get(&repo)?) {
+                        h.keys.push(repo);
+                    }
                 }
             }
         }
@@ -271,8 +409,8 @@ fn history_of(conn: &Connection, all: &[RepoRow], row: &RepoRow, known: &mut Has
 }
 
 /// 書き込みのロックを取る前に、履歴の帰属に要る `git` の確認を済ませる（結果は `known` に残る）。
-fn warm_history(conn: &Connection, id: &str) -> Result<HashMap<String, Option<String>>, String> {
-    let mut known = HashMap::new();
+fn warm_history(conn: &Connection, id: &str) -> Result<Known, String> {
+    let mut known = Known::default();
     let all = rows(conn)?;
     let row = find_id(&all, id)?;
     history_of(conn, &all, row, &mut known)?;
@@ -309,7 +447,7 @@ pub fn add_with(dir: &Path, path: &str, name: Option<&str>, confirm_move: bool) 
     add_at(dir, path, name, confirm_move, limit())
 }
 
-/// `add_with` の本体。上限を引数で受ける（試験で、Free と Pro を、旗を触らずに確かめるため）。
+/// `add_with` の本体。上限を引数で受ける（試験で、上限ありの動きを確かめるため）。
 fn add_at(dir: &Path, path: &str, name: Option<&str>, confirm_move: bool, limit: Option<usize>) -> Result<AddOutcome, String> {
     if path.trim().is_empty() {
         return Err("パスが空です".into());
@@ -317,11 +455,15 @@ fn add_at(dir: &Path, path: &str, name: Option<&str>, confirm_move: bool, limit:
     let ident = identify(path).map_err(|e| format!("{e}（何も変えていません。もう一度試してください）"))?;
     let name = clean_name(name);
     let conn = db::open(dir)?;
+    let not_changed = |e: String| format!("{e}（何も変えていません。もう一度試してください）");
+    // `.git` の確認は、書き込みのロックを取る前に済ませる
+    let mut dirs = GitDirs::default();
+    warm_find(&conn, &ident.root, ident.first_commit.as_deref(), &mut dirs).map_err(not_changed)?;
     let t = tx(&conn)?;
     let all = rows(&t)?;
     let front = min_position(&t)? - 1;
     let (result_path, already_at);
-    if let Some(row) = find(&all, &ident.root, ident.first_commit.as_deref()) {
+    if let Some(row) = find(&all, &ident.root, ident.first_commit.as_deref(), &mut dirs).map_err(not_changed)? {
         // 旧パスのフォルダが無い（移動した）なら、登録を新しい根へ移す。履歴も、新しいパスへ付け替える（結びつきを切らない）。
         // 旧パスのフォルダが残っている（クローン・ワークツリー）なら、行はそのまま。
         let moved = !Path::new(&row.path).is_dir() && !same_dir(&row.path, &ident.root);
@@ -474,6 +616,7 @@ pub fn import_legacy(dir: &Path, legacy: &[LegacyRepo]) -> Result<RepoList, Stri
     let t = tx(&conn)?;
     let done = import_done(&t)?;
     let mut warnings: Vec<String> = Vec::new();
+    let mut dirs = GitDirs::default();
     if !done {
         let mut all = rows(&t)?;
         for (i, l) in legacy.iter().enumerate() {
@@ -492,7 +635,15 @@ pub fn import_legacy(dir: &Path, legacy: &[LegacyRepo]) -> Result<RepoList, Stri
                 }
             };
             let hidden = l.hidden.unwrap_or(false);
-            if let Some(existing) = find(&all, &ident.root, ident.first_commit.as_deref()) {
+            // `.git` を調べられなければ、取り込みは止めず、別のリポジトリとして登録して、失敗を伝える（最初のコミットの失敗と同じ）
+            let existing = match find(&all, &ident.root, ident.first_commit.as_deref(), &mut dirs) {
+                Ok(e) => e,
+                Err(e) => {
+                    warnings.push(format!("{}: {e}", l.path.trim()));
+                    None
+                }
+            };
+            if let Some(existing) = existing {
                 if existing.hidden && !hidden {
                     t.execute("UPDATE repos SET hidden = 0 WHERE id = ?1", params![existing.id]).map_err(|e| format!("取り込めません: {e}"))?;
                 }
@@ -567,9 +718,19 @@ fn check_registered(dir: &Path, repo: &str) -> Result<(), String> {
             let fc = snapshot::first_commit(root)
                 .map_err(|e| format!("登録されているか確かめられませんでした（登録していない、という意味ではありません。もう一度試してください）: {e}"))?;
             if let Some(fc) = fc {
-                for r in all.iter().filter(|r| r.first_commit.as_deref() == Some(fc.as_str())) {
-                    if !matches.iter().any(|m| m.id == r.id) {
-                        matches.push(r);
+                // 最初のコミットが同じでも、クローン・フォークは別のリポジトリ。`.git` を調べられなければ、「未登録」にせず、エラー
+                let candidates: Vec<&RepoRow> = all.iter().filter(|r| r.first_commit.as_deref() == Some(fc.as_str())).collect();
+                if !candidates.is_empty() {
+                    let unverified = |e: String| format!("登録されているか確かめられませんでした（登録していない、という意味ではありません。もう一度試してください）: {e}");
+                    let mut dirs = GitDirs::default();
+                    let mut paths: Vec<String> = candidates.iter().map(|r| r.path.clone()).collect();
+                    paths.push(root.clone());
+                    dirs.warm(&paths).map_err(unverified)?;
+                    let other = dirs.get(root).map_err(unverified)?;
+                    for r in candidates {
+                        if same_repo(&dirs.get(&r.path).map_err(unverified)?, &other) && !matches.iter().any(|m| m.id == r.id) {
+                            matches.push(r);
+                        }
                     }
                 }
             }
@@ -654,7 +815,7 @@ mod tests {
     }
 
     #[test]
-    fn symlink_subdirectory_clone_and_worktree_count_as_the_same_repo() {
+    fn symlink_subdirectory_and_worktree_count_as_the_same_repo() {
         let d = scratch("same");
         let base = scratch("same-repos");
         let p = repo(&base, "orig", "s");
@@ -664,13 +825,10 @@ mod tests {
         std::os::unix::fs::symlink(&p, &link).unwrap();
         // サブディレクトリ
         std::fs::create_dir_all(Path::new(&p).join("sub")).unwrap();
-        // クローン（最初のコミットが同じ）
-        let clone = base.join("clone");
-        assert!(Command::new("git").args(["clone", "-q", &p, clone.to_str().unwrap()]).status().unwrap().success());
-        // ワークツリー
+        // ワークツリー（`.git` を共有する）
         let wt = base.join("wt");
         git(Path::new(&p), &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "wt"]);
-        for same in [link.to_str().unwrap().to_string(), format!("{p}/sub"), clone.to_str().unwrap().to_string(), wt.to_str().unwrap().to_string()] {
+        for same in [link.to_str().unwrap().to_string(), format!("{p}/sub"), wt.to_str().unwrap().to_string()] {
             let o = add(&d, &same, None).unwrap();
             assert!(!o.limit_reached);
             assert_eq!(o.list.repos.len(), 1, "{same} は、同じリポジトリ");
@@ -681,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    fn a_moved_folder_updates_the_registration_and_keeps_its_history_while_a_clone_keeps_the_original_row() {
+    fn a_moved_folder_updates_the_registration_and_keeps_its_history_while_a_worktree_keeps_the_original_row() {
         let d = scratch("moved");
         let base = scratch("moved-repos");
         let old = repo(&base, "old", "s");
@@ -713,11 +871,12 @@ mod tests {
         assert!(require_registered(&d, &new_root).is_ok());
         assert!(!unlink(&d, &o.list.repos[0].id).unwrap().removed, "付け替えた履歴が数えられる");
 
-        // クローン: 元のフォルダが残っているので、行は変えず、登録済みの場所を伝える
-        let clone = base.join("clone");
-        assert!(Command::new("git").args(["clone", "-q", &new_root, clone.to_str().unwrap()]).status().unwrap().success());
-        let o = add(&d, clone.to_str().unwrap(), None).unwrap();
+        // ワークツリー: 元のフォルダが残っていて `.git` を共有するので、行は変えず、登録済みの場所を伝える
+        let wt = base.join("wt");
+        git(Path::new(&new_root), &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "wt"]);
+        let o = add(&d, wt.to_str().unwrap(), None).unwrap();
         assert_eq!((o.path.as_deref(), o.already_at.as_deref()), (Some(new_root.as_str()), Some(new_root.as_str())));
+        assert_eq!(o.list.repos.len(), 1);
         assert_eq!(o.list.repos[0].path, new_root);
         let _ = std::fs::remove_dir_all(&d);
         let _ = std::fs::remove_dir_all(&base);
@@ -754,32 +913,189 @@ mod tests {
     }
 
     #[test]
-    fn history_made_in_a_clone_or_worktree_counts_for_unlinking_and_is_deleted_with_the_row() {
+    fn history_made_in_a_worktree_counts_for_unlinking_and_is_deleted_with_the_row() {
         let d = scratch("clonehist");
         let base = scratch("clonehist-repos");
         let p = repo(&base, "orig", "s");
         let other = repo(&base, "other", "so");
         add(&d, &p, None).unwrap();
         add(&d, &other, None).unwrap();
-        let clone = base.join("clone");
-        assert!(Command::new("git").args(["clone", "-q", &p, clone.to_str().unwrap()]).status().unwrap().success());
-        add_review(&d, clone.to_str().unwrap()); // 履歴は、クローンのパスにだけある
+        let clone = base.join("wt");
+        git(Path::new(&p), &["worktree", "add", "-q", clone.to_str().unwrap(), "-b", "wt"]);
+        add_review(&d, clone.to_str().unwrap()); // 履歴は、ワークツリーのパスにだけある
         add_review(&d, &other);
         let ids = |l: &RepoList, path: &str| l.repos.iter().find(|r| same_dir(&r.path, path)).unwrap().id.clone();
         let l = list(&d).unwrap();
         let (id_p, id_other) = (ids(&l, &p), ids(&l, &other));
 
         let u = unlink(&d, &id_p).unwrap();
-        assert!(!u.removed, "クローンの履歴があるので、行ごとは消えず、枠も戻らない");
+        assert!(!u.removed, "ワークツリーの履歴があるので、行ごとは消えず、枠も戻らない");
         assert!(u.list.repos.iter().find(|r| r.id == id_p).unwrap().hidden);
 
         let (removed, l, _) = delete_data(&d, &id_p).unwrap();
-        assert_eq!(removed.reviews, 1, "クローンの履歴も、消す対象");
+        assert_eq!(removed.reviews, 1, "ワークツリーの履歴も、消す対象");
         assert_eq!(l.repos.len(), 1);
         let conn = db::open(&d).unwrap();
         let left: Vec<String> = conn.prepare("SELECT repo FROM reviews").unwrap().query_map([], |r| r.get(0)).unwrap().flatten().collect();
         assert_eq!(left, [repodata::repo_key(&other)], "孤児が残らない。別の行の履歴は、そのまま");
         assert!(l.repos.iter().any(|r| r.id == id_other));
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// `src` と `.git` を共有する別のフォルダ（ワークツリー）。同じリポジトリの、別の場所。
+    fn linked(src: &str, dest: &Path) {
+        let branch = format!("wt-{}", dest.file_name().unwrap().to_string_lossy());
+        git(Path::new(src), &["worktree", "add", "-q", dest.to_str().unwrap(), "-b", &branch]);
+    }
+
+    /// 最初のコミットが同じ別のリポジトリ（フォーク）。履歴を引き継いだ別フォルダにする（`git clone` のあと、別の履歴を足す）。
+    fn fork_of(base: &Path, src: &str, name: &str) -> String {
+        let d = base.join(name);
+        assert!(Command::new("git").args(["clone", "-q", src, d.to_str().unwrap()]).status().unwrap().success());
+        std::fs::write(d.join("pro.txt"), name).unwrap();
+        git(&d, &["add", "."]);
+        git(&d, &["commit", "-q", "-m", name]);
+        d.to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn a_fork_with_the_same_first_commit_is_a_separate_repo_with_its_own_row_and_history() {
+        let d = scratch("fork");
+        let base = scratch("fork-repos");
+        let up = repo(&base, "up", "s");
+        let fork = fork_of(&base, &up, "fork");
+        assert_eq!(snapshot::first_commit(&up).unwrap(), snapshot::first_commit(&fork).unwrap(), "前提: 最初のコミットは同じ");
+        add(&d, &up, None).unwrap();
+        // 追加: 別の行になる（「すでに登録されています」にならない）
+        let o = add(&d, &fork, None).unwrap();
+        assert!(!o.limit_reached);
+        assert_eq!((o.path.as_deref(), o.already_at.as_deref()), (Some(root_of(&fork).as_str()), None));
+        assert_eq!(o.list.repos.len(), 2, "フォークは、別の行");
+        assert!(require_registered(&d, &fork).is_ok());
+        // 履歴: 混ざらない
+        add_review(&d, &fork);
+        let l = list(&d).unwrap();
+        let up_row = l.repos.iter().find(|r| same_dir(&r.path, &up)).unwrap();
+        let fork_row = l.repos.iter().find(|r| same_dir(&r.path, &fork)).unwrap();
+        assert!(unlink(&d, &up_row.id).unwrap().removed, "フォークの履歴は、元の行に数えない（履歴が無いので、行ごと消える）");
+        assert!(!unlink(&d, &fork_row.id).unwrap().removed, "フォークの履歴は、フォークの行に付く");
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn when_the_registered_folder_is_gone_a_fork_is_asked_about_as_a_possible_move_and_a_full_list_still_refuses_a_fork() {
+        // 登録のフォルダが無い間は、最初のコミットが同じなら移動の疑い（従来どおり確認）
+        let d = scratch("forkmove");
+        let base = scratch("forkmove-repos");
+        let up = repo(&base, "up", "s");
+        let fork = fork_of(&base, &up, "fork");
+        add(&d, &up, None).unwrap();
+        std::fs::rename(&up, base.join("up-gone")).unwrap();
+        let ask = add(&d, &fork, None).unwrap();
+        assert!(ask.move_from.is_some(), "元のフォルダが無いので、移動の確認になる");
+        assert_eq!(ask.list.repos.len(), 1, "確認が取れるまで、何も変えない");
+        let _ = std::fs::remove_dir_all(&d);
+        // フォークは別の行なので、枠（上限を渡したときの仕組み）を使う
+        let d = scratch("forklimit");
+        let up = repo(&base, "up2", "s2");
+        let fork = fork_of(&base, &up, "fork2");
+        add_at(&d, &up, None, false, Some(1)).unwrap();
+        let o = add_at(&d, &fork, None, false, Some(1)).unwrap();
+        assert!(o.limit_reached, "枠が満杯なら、フォークの追加は断る");
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn git_dir_of_tells_missing_not_a_repo_subdirectory_worktree_and_clone_apart() {
+        let base = scratch("gitdir");
+        let p = repo(&base, "orig", "s");
+        std::fs::create_dir_all(Path::new(&p).join("sub")).unwrap();
+        let wt = base.join("wt");
+        linked(&p, &wt);
+        let clone = base.join("clone");
+        assert!(Command::new("git").args(["clone", "-q", &p, clone.to_str().unwrap()]).status().unwrap().success());
+        let plain = base.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        let dir = |x: &str| git_dir_of(x).unwrap();
+        let main = dir(&p);
+        assert!(matches!(main, GitDir::Dir(_)));
+        assert_eq!(dir(&format!("{p}/sub")), main, "サブディレクトリ（相対パスが返る）でも、本体と同じパス");
+        assert_eq!(dir(wt.to_str().unwrap()), main, "ワークツリーは、本体と同じ");
+        assert_ne!(dir(clone.to_str().unwrap()), main, "クローンは、別");
+        assert_eq!(dir(plain.to_str().unwrap()), GitDir::NotRepo, "git 管理でないフォルダ");
+        assert_eq!(dir(base.join("nothing").to_str().unwrap()), GitDir::Missing, "存在しないパス");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_git_failure_other_than_not_a_repo_is_an_error_not_a_different_repo() {
+        let nr = "fatal: not a git repository (or any of the parent directories): .git";
+        assert_eq!(parse_git_dir("/x", false, "", nr), Ok(GitDir::NotRepo));
+        for stderr in ["fatal: detected dubious ownership in repository at '/x'", "fatal: unable to read /x/.git/config: Permission denied", ""] {
+            let e = parse_git_dir("/x", false, "", stderr).unwrap_err();
+            assert!(e.contains("/x の .git を調べられません"), "{e}");
+        }
+        assert!(parse_git_dir("/x", true, "  \n", "").unwrap_err().contains("空の答え"), "成功でも、答えが空ならエラー");
+        assert!(parse_git_dir("/nonexistent-root", true, "../.git\n", "").is_err(), "正規化できないパスは、エラー");
+        // 登録のフォルダが無い／リポジトリでない／別の .git
+        let d = GitDir::Dir("/a/.git".into());
+        assert!(same_repo(&GitDir::Missing, &d), "登録のフォルダが無ければ、移動の疑い");
+        assert!(!same_repo(&GitDir::NotRepo, &d), "リポジトリでなくなっていたら、同じとは見なさない");
+        assert!(same_repo(&d, &GitDir::Dir("/a/.git".into())));
+        assert!(!same_repo(&d, &GitDir::Dir("/b/.git".into())));
+        assert!(!same_repo(&d, &GitDir::NotRepo));
+    }
+
+    #[test]
+    fn a_registered_folder_that_stopped_being_a_repo_makes_a_fork_a_new_row_not_a_move() {
+        let d = scratch("brokenreg");
+        let base = scratch("brokenreg-repos");
+        let up = repo(&base, "up", "s");
+        let fork = fork_of(&base, &up, "fork");
+        add(&d, &up, None).unwrap();
+        std::fs::remove_dir_all(Path::new(&up).join(".git")).unwrap(); // フォルダは残るが、リポジトリではなくなった
+        let o = add(&d, &fork, None).unwrap();
+        assert!(o.move_from.is_none(), "フォルダがあるので、移動の確認にはならない");
+        assert_eq!(o.already_at, None);
+        assert_eq!(o.list.repos.len(), 2, "同じとは確かめられないので、新しい行（枠を使う）");
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn deleting_the_original_rows_data_never_deletes_a_forks_history() {
+        let d = scratch("forkdel");
+        let base = scratch("forkdel-repos");
+        let up = repo(&base, "up", "s");
+        let fork = fork_of(&base, &up, "fork");
+        add(&d, &up, None).unwrap();
+        add(&d, &fork, None).unwrap();
+        add_review(&d, &fork); // 履歴は、フォークのパスにだけある
+        let l = list(&d).unwrap();
+        let up_id = l.repos.iter().find(|r| same_dir(&r.path, &up)).unwrap().id.clone();
+        let (removed, l, _) = delete_data(&d, &up_id).unwrap();
+        assert_eq!(removed.reviews, 0, "フォークの履歴は、元の行の削除に含めない");
+        assert_eq!(l.repos.len(), 1);
+        let conn = db::open(&d).unwrap();
+        let left: Vec<String> = conn.prepare("SELECT repo FROM reviews").unwrap().query_map([], |r| r.get(0)).unwrap().flatten().collect();
+        assert_eq!(left, [repodata::repo_key(&fork)], "フォークの履歴が残る");
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn with_only_the_fork_registered_the_original_folder_is_not_reported_as_registered() {
+        let d = scratch("forkonly");
+        let base = scratch("forkonly-repos");
+        let up = repo(&base, "up", "s");
+        let fork = fork_of(&base, &up, "fork");
+        add(&d, &fork, None).unwrap();
+        assert!(require_registered(&d, &fork).is_ok());
+        let e = require_registered(&d, &up).unwrap_err();
+        assert!(e.contains("登録されていません"), "元のフォルダは、フォークの行では通らない: {e}");
         let _ = std::fs::remove_dir_all(&d);
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -1132,7 +1448,7 @@ mod tests {
         assert_eq!(r.name.as_deref(), Some("カスタム名"));
         // 同じリポジトリのクローンを、名前なしで選んでも、残る
         let clone = base.join("clone");
-        assert!(Command::new("git").args(["clone", "-q", &p, clone.to_str().unwrap()]).status().unwrap().success());
+        linked(&p, &clone);
         assert_eq!(add(&d, clone.to_str().unwrap(), None).unwrap().list.repos[0].name.as_deref(), Some("カスタム名"));
         // 空白だけの名前は「渡されていない」と同じ。名前を渡せば、更新される。消すのは rename
         assert_eq!(add(&d, &p, Some("   ")).unwrap().list.repos[0].name.as_deref(), Some("カスタム名"));
@@ -1221,9 +1537,9 @@ mod tests {
         let p = repo(&base, "orig", "s");
         add(&d, &p, None).unwrap();
         let id = list(&d).unwrap().repos[0].id.clone();
-        let clone = base.join("clone");
-        assert!(Command::new("git").args(["clone", "-q", &p, clone.to_str().unwrap()]).status().unwrap().success());
-        add_review(&d, clone.to_str().unwrap()); // 履歴は、クローンのパスにだけある
+        let clone = base.join("wt");
+        git(Path::new(&p), &["worktree", "add", "-q", clone.to_str().unwrap(), "-b", "wt"]);
+        add_review(&d, clone.to_str().unwrap()); // 履歴は、ワークツリーのパスにだけある
         std::fs::remove_dir_all(&clone).unwrap(); // そのクローンが、消えた
 
         let u = unlink(&d, &id).unwrap();
@@ -1260,7 +1576,7 @@ mod tests {
         for i in 0..(GIT_PARALLEL * 2 + 3) {
             let (src, mark) = if i % 4 == 3 { (&other, false) } else { (&p, true) };
             let c = base.join(format!("c{i}"));
-            assert!(Command::new("git").args(["clone", "-q", src, c.to_str().unwrap()]).status().unwrap().success());
+            linked(src, &c);
             add_review_with_id(&d, &format!("r{i}"), c.to_str().unwrap());
             if mark {
                 mine += 1;
@@ -1299,7 +1615,7 @@ mod tests {
 
         std::fs::create_dir_all(Path::new(&p).join("sub")).unwrap();
         let clone = base.join("clone");
-        assert!(Command::new("git").args(["clone", "-q", &p, clone.to_str().unwrap()]).status().unwrap().success());
+        linked(&p, &clone);
         let wt = base.join("wt");
         git(Path::new(&p), &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "wt"]);
         for via in [p.clone(), format!("{p}/sub"), clone.to_str().unwrap().to_string(), wt.to_str().unwrap().to_string()] {
@@ -1345,7 +1661,7 @@ mod tests {
         let base = scratch("tworows-repos");
         let p = repo(&base, "orig", "s");
         let clone = base.join("clone");
-        assert!(Command::new("git").args(["clone", "-q", &p, clone.to_str().unwrap()]).status().unwrap().success());
+        linked(&p, &clone);
         let (root, croot) = (root_of(&p), root_of(clone.to_str().unwrap()));
         let fc = snapshot::first_commit(&p).unwrap().unwrap();
         let conn = db::open(&d).unwrap();
@@ -1438,9 +1754,9 @@ mod tests {
         let d = scratch("nofc");
         let base = scratch("nofc-repos");
         let p = repo(&base, "orig", "s");
-        let clone = base.join("clone");
-        assert!(Command::new("git").args(["clone", "-q", &p, clone.to_str().unwrap()]).status().unwrap().success());
-        add_review(&d, clone.to_str().unwrap()); // 履歴は、クローンのパスにだけある
+        let clone = base.join("wt");
+        git(Path::new(&p), &["worktree", "add", "-q", clone.to_str().unwrap(), "-b", "wt"]);
+        add_review(&d, clone.to_str().unwrap()); // 履歴は、ワークツリーのパスにだけある
 
         // フォルダのある行（最初のコミット無し）: いま調べて、クローンの履歴を、この行のものと数える
         let conn = db::open(&d).unwrap();
@@ -1472,7 +1788,7 @@ mod tests {
         let p = repo(&base, "orig", "s");
         std::fs::create_dir_all(Path::new(&p).join("sub")).unwrap();
         let clone = base.join("clone");
-        assert!(Command::new("git").args(["clone", "-q", &p, clone.to_str().unwrap()]).status().unwrap().success());
+        linked(&p, &clone);
         add(&d, &p, None).unwrap();
         let id = list(&d).unwrap().repos[0].id.clone();
         let via = [format!("{p}/sub"), clone.to_str().unwrap().to_string()];
@@ -1512,21 +1828,22 @@ mod tests {
         let mut clones = Vec::new();
         for i in 0..3 {
             let c = base.join(format!("c{i}"));
-            assert!(Command::new("git").args(["clone", "-q", &p, c.to_str().unwrap()]).status().unwrap().success());
+            linked(&p, &c);
             add_review_with_id(&d, &format!("r{i}"), c.to_str().unwrap());
             clones.push(repodata::repo_key(c.to_str().unwrap()));
         }
         let conn = db::open(&d).unwrap();
         let known = warm_history(&conn, &id).unwrap();
         for c in &clones {
-            assert!(known.get(c).is_some_and(|f| f.is_some()), "{c} の最初のコミットを、ロックの前に調べてある");
+            assert!(known.first.get(c).is_some_and(|f| f.is_some()), "{c} の最初のコミットを、ロックの前に調べてある");
+            assert!(known.dirs.0.contains_key(c), "{c} の .git も、ロックの前に調べてある");
         }
         // ロックの中の判定は、調べ済みの結果を使うだけ（結果は、ロックの外でやったときと同じ）
         let mut known2 = known.clone();
         let all = rows(&conn).unwrap();
         let h = history_of(&conn, &all, &all[0], &mut known2).unwrap();
         assert_eq!(h.keys.len(), 1 + clones.len());
-        assert_eq!(known2.len(), known.len(), "新しく git で調べたものは、無い");
+        assert_eq!((known2.first.len(), known2.dirs.0.len()), (known.first.len(), known.dirs.0.len()), "新しく git で調べたものは、無い");
         // 実際の操作も、同じ結果
         let (removed, _, _) = delete_data(&d, &id).unwrap();
         assert_eq!(removed.reviews, 3);
