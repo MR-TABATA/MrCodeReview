@@ -50,12 +50,18 @@ pub fn acquire(lock_file: &Path) -> Acquired {
 /// CLI は、置き場を決めるあいだ、一瞬だけロックを持つ。その一瞬に GUI を起動しても、「すでに起動しています」と断らないため。
 /// 本当に別の GUI が動いているときは、`retries * wait` 待ってから、`AlreadyRunning` を返す。
 pub fn acquire_retry(lock_file: &Path, retries: u32, wait: std::time::Duration) -> Acquired {
+    acquire_retry_with(lock_file, retries, || std::thread::sleep(wait))
+}
+
+/// `acquire_retry` の本体。取り直しの間に呼ぶ処理（`pause`）を、引数で受ける。試験では、実際には待たず、この中でロックを手放して、
+/// 「手放された後は取れる」「持たれ続けたら、決めた回数だけ待って、断る」を、時間にも、別のスレッドの順序にも頼らずに確かめる。
+pub fn acquire_retry_with(lock_file: &Path, retries: u32, mut pause: impl FnMut()) -> Acquired {
     let mut got = acquire(lock_file);
     for _ in 0..retries {
         if !matches!(got, Acquired::AlreadyRunning) {
             break;
         }
-        std::thread::sleep(wait);
+        pause();
         got = acquire(lock_file);
     }
     got
@@ -167,41 +173,51 @@ mod tests {
     }
 
     #[test]
-    fn a_lock_held_only_for_a_moment_is_taken_after_retrying() {
+    fn a_lock_released_between_two_tries_is_taken_by_the_retry() {
         let d = Dir::new("retry-short");
-        let held = acquire(&d.lock());
-        assert!(matches!(held, Acquired::Locked(_)));
-        // 別のプロセス（CLI）が、短い間だけ持って、手放す
-        let releaser = std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(150));
-            drop(held);
+        let mut held = Some(acquire(&d.lock())); // 別のプロセス（CLI）が、持っている
+        assert!(matches!(held.as_ref().unwrap(), Acquired::Locked(_)));
+        let mut pauses = 0;
+        // 1 回目は取れず、最初の「待ち」の中で手放される。2 回目で取れる（実際には待たない。順序は、決まっている）
+        let got = acquire_retry_with(&d.lock(), 5, || {
+            pauses += 1;
+            held.take();
         });
-        let got = acquire_retry(&d.lock(), 30, std::time::Duration::from_millis(20));
-        releaser.join().unwrap();
         assert!(matches!(got, Acquired::Locked(_)), "手放されたら、取り直しで取れる: {got:?}");
+        assert_eq!(pauses, 1, "取れたら、それ以上は、取り直さない");
     }
 
     #[test]
-    fn a_lock_that_stays_held_is_still_refused_after_the_retries() {
+    fn a_lock_that_stays_held_is_refused_after_exactly_the_given_number_of_retries() {
         let d = Dir::new("retry-long");
         let held = acquire(&d.lock());
         assert!(matches!(held, Acquired::Locked(_)));
-        let started = std::time::Instant::now();
-        let got = acquire_retry(&d.lock(), 3, std::time::Duration::from_millis(30));
-        assert!(matches!(got, Acquired::AlreadyRunning), "持ち続けていれば、断る: {got:?}");
-        assert!(started.elapsed() >= std::time::Duration::from_millis(90), "取り直すあいだ、待った");
+        let mut pauses = 0;
+        let got = acquire_retry_with(&d.lock(), 3, || pauses += 1);
+        assert!(matches!(got, Acquired::AlreadyRunning), "持ち続けられたら、断る: {got:?}");
+        assert_eq!(pauses, 3, "決めた回数だけ、待った");
+        let zero = acquire_retry_with(&d.lock(), 0, || panic!("取り直しが 0 回なら、待たない"));
+        assert!(matches!(zero, Acquired::AlreadyRunning));
     }
 
     #[test]
-    fn retrying_does_not_wait_when_the_first_try_succeeds_or_cannot_be_tried() {
+    fn retrying_does_not_pause_when_the_first_try_succeeds_or_cannot_be_tried() {
         let d = Dir::new("retry-none");
-        let t = std::time::Instant::now();
-        assert!(matches!(acquire_retry(&d.lock(), 50, std::time::Duration::from_millis(100)), Acquired::Locked(_)));
-        assert!(t.elapsed() < std::time::Duration::from_millis(500), "最初に取れれば、待たない");
+        let got = acquire_retry_with(&d.lock(), 50, || panic!("最初に取れれば、待たない"));
+        assert!(matches!(got, Acquired::Locked(_)));
         let d2 = Dir::new("retry-unsupported");
         std::fs::create_dir_all(d2.lock()).unwrap();
-        let t = std::time::Instant::now();
-        assert!(matches!(acquire_retry(&d2.lock(), 50, std::time::Duration::from_millis(100)), Acquired::Unsupported(_)));
-        assert!(t.elapsed() < std::time::Duration::from_millis(500), "試せないときは、取り直さない");
+        let got = acquire_retry_with(&d2.lock(), 50, || panic!("試せないときは、取り直さない"));
+        assert!(matches!(got, Acquired::Unsupported(_)));
+    }
+
+    /// 実際の `sleep` を使う公開の関数が、同じ動きをすること（待ち時間は、ごく短く）。
+    #[test]
+    fn the_public_retry_gives_up_with_already_running_when_the_lock_stays_held() {
+        let d = Dir::new("retry-public");
+        let held = acquire(&d.lock());
+        assert!(matches!(held, Acquired::Locked(_)));
+        let got = acquire_retry(&d.lock(), 2, std::time::Duration::from_millis(1));
+        assert!(matches!(got, Acquired::AlreadyRunning));
     }
 }
