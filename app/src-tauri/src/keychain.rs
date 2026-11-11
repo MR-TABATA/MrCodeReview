@@ -60,33 +60,59 @@ fn add_command_line(account: &str, service: &str, key: &str) -> Result<String, S
     Ok(format!("add-generic-password -a \"{account}\" -s \"{service}\" -w \"{key}\" -U\n"))
 }
 
+/// `security -i` を 1 回走らせた結果（試験で、差し替えられるようにするための、最小の形）。
+struct Ran {
+    success: bool,
+    stderr: String,
+}
+
+/// 保存の本体。`security` の実行（`run`）と、保存後の読み戻し（`readback`）を、引数で受ける（試験で、失敗の経路を作れるように）。
+/// 手順: 命令行を作る（作れなければ、実行せずに断る）→ 実行 → 終了コードが失敗、または標準エラーに出力があれば失敗
+/// （対話モードは、命令が失敗しても、終了コードが 0 のことがある）→ 読み戻して、同じ値かを確かめる。**エラーの文に、キーは入れない。**
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn set_via(
+    service: &str,
+    account: &str,
+    key: &str,
+    run: impl FnOnce(&str) -> Result<Ran, String>,
+    readback: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<(), String> {
+    let line = add_command_line(account, service, key)?;
+    let ran = run(&line)?;
+    if !ran.success || !ran.stderr.trim().is_empty() {
+        return Err(format!("キーチェーンに保存できませんでした: {}", ran.stderr.trim()));
+    }
+    match readback()? {
+        Some(saved) if saved == key => Ok(()),
+        _ => Err("キーチェーンに保存できませんでした（保存したはずのキーを、読み戻せませんでした）".into()),
+    }
+}
+
 /// 保存する（同じ項目があれば、置き換える）。キーは、標準入力で渡す（コマンドの引数に出さない）。
 #[cfg(target_os = "macos")]
 pub fn set(service: &str, account: &str, key: &str) -> Result<(), String> {
     use std::io::Write;
-    let line = add_command_line(account, service, key)?;
-    let mut child = Command::new("/usr/bin/security")
-        .arg("-i")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("キーチェーンを使えません（security を起動できない: {e}）"))?;
-    {
-        let mut stdin = child.stdin.take().ok_or("キーチェーンを使えません（標準入力を開けない）")?;
-        stdin.write_all(line.as_bytes()).map_err(|e| format!("キーチェーンに保存できませんでした（標準入力に書けない: {e}）"))?;
-    } // ここで標準入力を閉じる（対話モードが、終わる）
-    let out = child.wait_with_output().map_err(|e| format!("キーチェーンに保存できませんでした: {e}"))?;
-    // 対話モードは、命令が失敗しても、終了コードが 0 のことがある。標準エラーの出力も、失敗として扱う。
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    if !out.status.success() || !stderr.trim().is_empty() {
-        return Err(format!("キーチェーンに保存できませんでした: {}", stderr.trim()));
-    }
-    // 保存できたことを、読み戻して確かめる（無言の失敗を、成功と取り違えない）
-    match get(service, account)? {
-        Some(saved) if saved == key => Ok(()),
-        _ => Err("キーチェーンに保存できませんでした（保存したはずのキーを、読み戻せませんでした）".into()),
-    }
+    set_via(
+        service,
+        account,
+        key,
+        |line| {
+            let mut child = Command::new("/usr/bin/security")
+                .arg("-i")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("キーチェーンを使えません（security を起動できない: {e}）"))?;
+            {
+                let mut stdin = child.stdin.take().ok_or("キーチェーンを使えません（標準入力を開けない）")?;
+                stdin.write_all(line.as_bytes()).map_err(|e| format!("キーチェーンに保存できませんでした（標準入力に書けない: {e}）"))?;
+            } // ここで標準入力を閉じる（対話モードが、終わる）
+            let out = child.wait_with_output().map_err(|e| format!("キーチェーンに保存できませんでした: {e}"))?;
+            Ok(Ran { success: out.status.success(), stderr: String::from_utf8_lossy(&out.stderr).into_owned() })
+        },
+        || get(service, account),
+    )
 }
 
 /// 読む。項目が無ければ `None`。
@@ -155,11 +181,68 @@ mod tests {
         assert_eq!(ok, "add-generic-password -a \"anthropic-api-key\" -s \"com.hitoshi.mrcodereview\" -w \"sk-ant-api03-abcdefghijklmnop\" -U\n");
         // 先頭が「-」のキーも、引用符で囲まれた値として渡る（オプションと取り違えない）
         assert!(add_command_line("a", "s", "-dash-leading-key-0123456789").unwrap().contains("-w \"-dash-leading-key-0123456789\""));
-        for bad in ["abc\"def", "abc'def", "abc\\def", "abc def", "abc\ndef", "abc\"; delete-generic-password -a x -s y\n", ""] {
+        // エラーの文は、固定の 2 種類だけ（値を文に入れない）。値の全体・各行・各断片のどれも、文に含まれない
+        let known = ["キーに使えない文字（空白・引用符・バックスラッシュ・改行など）が入っています", "キーチェーンの項目名に、使えない文字が入っています"];
+        for bad in ["abc\"def", "abc'def", "abc\\def", "abc def", "abc\ndef", "abc\"; delete-generic-password -a x -s y\n", "line1-secret\nline2-secret", ""] {
             let e = add_command_line("a", "s", bad).unwrap_err();
-            assert!(!e.contains(bad.trim()) || bad.is_empty(), "エラーの文に、キーを入れない: {e}");
+            assert!(known.contains(&e.as_str()), "固定の文だけ: {e}");
+            assert!(bad.is_empty() || !e.contains(bad), "全体を含まない: {e}");
+            for frag in bad.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '\\' | ';')).filter(|f| f.len() >= 4) {
+                assert!(!e.contains(frag), "断片 {frag:?} を含まない: {e}");
+            }
         }
         assert!(add_command_line("a b", "s", "k").is_err() && add_command_line("a", "s\"", "k").is_err() && add_command_line("", "s", "k").is_err());
+    }
+
+    const KEY: &str = "sk-ant-api03-abcdefghijklmnop";
+
+    fn ran(success: bool, stderr: &str) -> Result<Ran, String> {
+        Ok(Ran { success, stderr: stderr.into() })
+    }
+
+    #[test]
+    fn a_save_succeeds_only_when_the_command_is_clean_and_the_key_reads_back() {
+        let mut sent = String::new();
+        let r = set_via("svc", "acct", KEY, |line| { sent = line.to_string(); ran(true, "") }, || Ok(Some(KEY.to_string())));
+        assert!(r.is_ok());
+        assert!(sent.contains(KEY) && sent.starts_with("add-generic-password"), "キーは、実行に渡す命令行（標準入力）にだけ入る");
+    }
+
+    #[test]
+    fn output_on_stderr_is_a_failure_even_when_the_exit_code_is_zero() {
+        // 対話モードは、命令が失敗しても、終了コードが 0 のことがある
+        let e = set_via("svc", "acct", KEY, |_| ran(true, "security: SecKeychainItemCreateFromContent: User interaction is not allowed.\n"), || panic!("失敗したら、読み戻さない")).unwrap_err();
+        assert!(e.contains("保存できませんでした") && e.contains("User interaction is not allowed"), "{e}");
+        assert!(!e.contains(KEY), "エラーにキーを入れない");
+    }
+
+    #[test]
+    fn a_failing_exit_code_is_a_failure() {
+        let e = set_via("svc", "acct", KEY, |_| ran(false, ""), || panic!("読み戻さない")).unwrap_err();
+        assert!(e.contains("保存できませんでした"), "{e}");
+    }
+
+    #[test]
+    fn a_value_that_reads_back_differently_or_not_at_all_is_a_failure() {
+        for read in [Ok(None), Ok(Some("another-value-0123456789".to_string()))] {
+            let e = set_via("svc", "acct", KEY, |_| ran(true, ""), || read).unwrap_err();
+            assert!(e.contains("読み戻せませんでした"), "{e}");
+            assert!(!e.contains(KEY) && !e.contains("another-value"), "どちらの値も、エラーに入れない: {e}");
+        }
+    }
+
+    #[test]
+    fn a_failure_to_run_or_to_read_back_is_passed_on_as_it_is() {
+        let e = set_via("svc", "acct", KEY, |_| Err("security を起動できない: boom".into()), || panic!("読み戻さない")).unwrap_err();
+        assert!(e.contains("boom"), "{e}");
+        let e = set_via("svc", "acct", KEY, |_| ran(true, ""), || Err("キーチェーンから読めませんでした: denied".into())).unwrap_err();
+        assert!(e.contains("denied"), "{e}");
+    }
+
+    #[test]
+    fn a_value_that_cannot_be_quoted_is_refused_before_anything_runs() {
+        let e = set_via("svc", "acct", "bad key with spaces 0123456789", |_| panic!("実行しない"), || panic!("読み戻さない")).unwrap_err();
+        assert!(e.contains("使えない文字"), "{e}");
     }
 
     #[test]

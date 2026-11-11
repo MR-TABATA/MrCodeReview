@@ -37,6 +37,17 @@ pub struct HandoffFile {
     pub text: String,
 }
 
+/// `path` の実体（リンクを解いたもの）が、リポジトリの根（`root_canon`。実体のパス）の中にあることを確かめる。
+/// 書いたあとにも呼ぶ（確認と書き込みのすき間で、出力先が外へのリンクに差し替えられていないかを見る）。
+fn verify_inside(path: &Path, root_canon: &Path) -> Result<(), String> {
+    let real = path.canonicalize().map_err(|e| format!("一時ファイルを調べられません: {e}"))?;
+    if real.starts_with(root_canon) {
+        Ok(())
+    } else {
+        Err(format!("書き出し先が、リポジトリの外になりました: {}", real.display()))
+    }
+}
+
 /// CLI に貼る 1 行。
 pub fn prompt_for(rel: &str) -> String {
     format!("{rel} を読んで、そこに書いてある「直す」の指摘を直してください。「今回は直さない」は触らないでください。")
@@ -115,10 +126,7 @@ pub fn write(rec: &ReviewRecord, states: &[String], only: Option<usize>, app_nam
         f.write_all(text.as_bytes()).map_err(|e| format!("書き込めません: {e}"))?;
         drop(f);
         // 作ったものの実体が、リポジトリの中かを、書いたあとにも確かめる（すき間で差し替えられていたら、置き換えない）
-        let made = tmp.canonicalize().map_err(|e| format!("一時ファイルを調べられません: {e}"))?;
-        if !made.starts_with(&root_canon) {
-            return Err(format!("書き出し先が、リポジトリの外になりました: {}", made.display()));
-        }
+        verify_inside(&tmp, &root_canon)?;
         fs::rename(&tmp, out_canon.join(&file)).map_err(|e| format!("書き出せません（{}）: {e}", dest.display()))
     })();
     if let Err(e) = written {
@@ -352,5 +360,50 @@ mod tests {
         let err = write(&rec_in(&d), &st(&["fix", "new", "new"]), None, "MrCodeReview").unwrap_err();
         assert!(err.contains("消せません") && err.contains("handoff-security.md.tmp"), "消せなかった理由を言う: {err}");
         let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn verify_inside_accepts_a_file_in_the_repo_and_refuses_one_outside_or_reached_through_a_link() {
+        use std::os::unix::fs::symlink;
+        let d = repo("verify");
+        let root = d.canonicalize().unwrap();
+        let inside = d.join("in.txt");
+        fs::write(&inside, "x").unwrap();
+        assert!(verify_inside(&inside, &root).is_ok());
+        // リポジトリの外のファイル
+        let outside = std::env::temp_dir().join(format!("mrcr-handoff-verify-out-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&outside);
+        fs::create_dir_all(&outside).unwrap();
+        let victim = outside.join("o.txt");
+        fs::write(&victim, "x").unwrap();
+        let e = verify_inside(&victim, &root).unwrap_err();
+        assert!(e.contains("リポジトリの外"), "{e}");
+        // リポジトリの中のパスだが、実体は外（リンク経由。確認と書き込みのすき間に、差し替えられた状態）
+        symlink(&outside, d.join("swapped")).unwrap();
+        let e = verify_inside(&d.join("swapped").join("o.txt"), &root).unwrap_err();
+        assert!(e.contains("リポジトリの外"), "リンクを解いた実体で判定する: {e}");
+        // 無いファイル
+        assert!(verify_inside(&d.join("none.txt"), &root).unwrap_err().contains("調べられません"));
+        for p in [&d, &outside] {
+            let _ = fs::remove_dir_all(p);
+        }
+    }
+
+    #[test]
+    fn an_out_folder_that_is_a_link_to_outside_makes_write_fail_and_leaves_the_outside_empty() {
+        use std::os::unix::fs::symlink;
+        // 書き出し先（out）が、リポジトリの外へのリンク。エラーになり、外には何も作られない（全体の流れで確かめる）
+        let outside = std::env::temp_dir().join(format!("mrcr-handoff-whole-out-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&outside);
+        fs::create_dir_all(&outside).unwrap();
+        let d = repo("whole");
+        fs::create_dir_all(d.join(".mrcodereview")).unwrap();
+        symlink(&outside, d.join(".mrcodereview/out")).unwrap();
+        let e = write(&rec_in(&d), &st(&["fix", "new", "new"]), None, "MrCodeReview").unwrap_err();
+        assert!(e.contains("シンボリックリンク"), "{e}");
+        assert!(fs::read_dir(&outside).unwrap().next().is_none(), "外に、何も作られていない");
+        for p in [&d, &outside] {
+            let _ = fs::remove_dir_all(p);
+        }
     }
 }
