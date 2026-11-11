@@ -684,6 +684,30 @@ mod tests {
     }
 
     #[test]
+    fn a_settings_file_with_the_retired_linter_keys_still_loads_and_saving_drops_them() {
+        let d = scratch("retired-keys");
+        write(&d, r#"{"tool_timeout_secs": 5000, "max_tool_files": 10, "max_raw_bytes": 2000, "history_limit": 77}"#);
+        // 読める（`deny_unknown_fields` でも、廃止したキーは受け取る）。ほかの値は、そのまま生きる
+        let loaded = load(&d).expect("古い設定ファイルを読めなくしない");
+        assert_eq!(loaded.history_limit, 77);
+        // 廃止した値は、読んでも、画面に出る記録（to_record）には入らない
+        let rec = loaded.to_record();
+        for k in ["tool_timeout_secs", "max_tool_files", "max_raw_bytes"] {
+            assert!(rec.get(k).is_none(), "{k} は、記録に出さない");
+        }
+        // 保存し直すと、廃止したキーは、ファイルから消え、ほかの上書きは残る
+        save(&d, &rec).unwrap();
+        let text = std::fs::read_to_string(d.join("settings.json")).unwrap();
+        for k in ["tool_timeout_secs", "max_tool_files", "max_raw_bytes"] {
+            assert!(!text.contains(k), "{k} が、保存後のファイルに残っている: {text}");
+        }
+        assert!(text.contains("history_limit") && text.contains("77"), "{text}");
+        // 保存し直したあとも、読める
+        assert_eq!(load(&d).unwrap().history_limit, 77);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
     fn a_second_broken_file_does_not_overwrite_the_first_backup() {
         let d = scratch("bak-twice");
         write(&d, r#"{"max_file_byts": 5}"#);

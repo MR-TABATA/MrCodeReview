@@ -398,6 +398,24 @@ mod tests {
     }
 
     #[test]
+    fn stop_reason_boundaries_null_passes_and_every_other_reason_is_refused() {
+        let body = |reason: &str| format!(r#"{{"model":"m","content":[{{"type":"text","text":"{{}}"}}],"stop_reason":{reason}}}"#);
+        // 通る: 正常終了の 2 つと、null（印が無いのと同じ）
+        for ok in ["\"end_turn\"", "\"stop_sequence\"", "null"] {
+            assert!(parse_anthropic(&body(ok), 4096, "m").is_ok(), "{ok} は通る");
+        }
+        // 拒否する: max_tokens（専用の案内）と、それ以外のすべて
+        let e = parse_anthropic(&body("\"max_tokens\""), 4096, "m").unwrap_err();
+        assert!(e.contains("最大出力トークン"), "{e}");
+        for other in ["pause_turn", "tool_use", "refusal", "model_context_window_exceeded", "something_new"] {
+            let e = parse_anthropic(&body(&format!("\"{other}\"")), 4096, "m").unwrap_err();
+            assert!(e.contains("途中で終わりました") && e.contains(other), "{other}: {e}");
+        }
+        // 文字列でない値（数値など）は、理由として読めない＝印が無いのと同じ。本文があれば使う
+        assert!(parse_anthropic(&body("42"), 4096, "m").is_ok());
+    }
+
+    #[test]
     fn a_response_without_a_model_name_records_the_requested_one_and_says_so() {
         let body = r#"{"content":[{"type":"text","text":"{}"}],"stop_reason":"end_turn"}"#;
         let r = parse_anthropic(body, 4096, "claude-sonnet-5-5").unwrap();
