@@ -681,6 +681,13 @@ fn run_review_with_base_and_lang(
             })
         }
     };
+    // 設定で足した linter を読めないのに、「リンター」（足した linter も走るはずの実行）を、組み込みだけで走らせない。
+    // 走らせると、足した linter の指摘だけが無いまま、「実行できた」ように見える。壊れた設定の理由で止める（ほかのレビューは止めない）
+    if recipe.id == lint::LINT_ID {
+        if let Err(e) = &custom_loaded {
+            return Err(e.clone());
+        }
+    }
     if snap.files.is_empty() {
         return Err("送る差分がありません（HEAD からの変更が無い、または全部が対象外）".into());
     }
@@ -2706,6 +2713,35 @@ mod tests {
         let list = recipe_list(&data, Some(root));
         assert!(list.warnings.iter().any(|w| w.contains("linters.json")), "{:?}", list.warnings);
         assert!(list.recipes.iter().all(|r| !r.id.starts_with("lint-")), "linter ごとのボタンは無い");
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn a_broken_linters_json_stops_the_lint_button_and_a_misnamed_recipe_still_says_not_found() {
+        let repo = eslint_repo("broken-linters-json");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-broken-linters-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&data).unwrap();
+        let root = repo.to_str().unwrap();
+        std::fs::write(data.join("linters.json"), "{broken").unwrap();
+        // 「リンター」: 足した linter も走るはずの実行。組み込みだけで走らせて、成功に見せない。理由で止まり、記録は残らない
+        let before = store::load_all(&data).len();
+        let e = run_review_blocking(&data, root, "lint", "mock").unwrap_err();
+        assert!(e.contains("linters.json") && e.contains("正しくありません"), "{e}");
+        assert_eq!(store::load_all(&data).len(), before, "止めたレビューは、履歴に残さない");
+        // 存在しない普通の名前: 「見つからない」。設定の壊れ方に、すり替えない（原因を取り違えさせない）
+        let e2 = run_review_blocking(&data, root, "nonexistent", "mock").unwrap_err();
+        assert!(e2.contains("レシピが見つからない") && !e2.contains("linters.json"), "{e2}");
+        // lint- で始まる名前: 設定が壊れていることを言う
+        let e3 = run_review_blocking(&data, root, "lint-nonexistent", "mock").unwrap_err();
+        assert!(e3.contains("linters.json"), "{e3}");
+        // ほかのレビューは、止まらない
+        assert!(run_review_blocking(&data, root, "bugs", "mock").unwrap().error.is_none());
+        // 直す（ファイルを消す）と、「リンター」は、また動く（許可が要る ESLint だけなので、実行できなかった理由つきの記録になる）
+        std::fs::remove_file(data.join("linters.json")).unwrap();
+        let ok = run_review_blocking(&data, root, "lint", "mock").expect("設定が正しければ、止めない");
+        assert!(ok.error.is_some_and(|e| e.contains("許可")), "許可が要る linter だけなので、理由つきの失敗として残る");
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
     }
