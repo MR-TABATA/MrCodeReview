@@ -1,6 +1,6 @@
 [package]
 name = "mrcr-core"
-version = "1.6.0"
+version = "1.7.0"
 edition = "2021"
 description = "Core engine for MrCodeReview - snapshot, recipe prompts, LLM providers, and verification"
 license = "MIT"

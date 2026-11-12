@@ -1,4 +1,4 @@
-pub use mrcr_core::{agent_report, carry, db, findings, format, i18n, notes, proc, related, snapshot, store, triage, usage};
+pub use mrcr_core::{agent_report, carry, db, findings, format, i18n, notes, proc, related, snapshot, spec, store, triage, usage};
 
 mod applock;
 mod byok;
@@ -17,12 +17,31 @@ mod trust;
 
 use provider::ProviderInfo;
 use recipe::Recipe;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use store::{ReviewRecord, ReviewSummary, SnapshotRecord};
 use tauri::{Emitter, Manager};
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct SpecParam {
+    /// "file" | "paste"
+    pub source_type: String,
+    pub file_path: Option<String>,
+    pub section: Option<String>,
+    pub paste_text: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct SpecPreview {
+    pub display_name: String,
+    pub content: String,
+    pub char_count: usize,
+    pub estimated_tokens: usize,
+    pub content_hash: String,
+    pub sections: Vec<spec::SectionMeta>,
+}
 
 struct AppState {
     /// 履歴の保存先。`MRCR_DATA_DIR` があればそちら（試験用）、無ければアプリのデータ領域。
@@ -536,6 +555,148 @@ fn preview_checked(data_dir: &Path, repo: &str, base: Option<&str>) -> Result<sn
     snapshot::take_with_base(repo, &eff.settings.snapshot_limits(), base)
 }
 
+/// リポジトリ内の基準文書（.md / .txt）の一覧を取得する。
+#[tauri::command]
+async fn list_spec_files(
+    state: tauri::State<'_, AppState>,
+    repo: String,
+) -> Result<Vec<String>, String> {
+    let data_dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        repos::require_registered(&data_dir, &repo)?;
+        let top = snapshot::toplevel(&repo)?;
+        let mut out = Vec::new();
+        collect_spec_files_rec(Path::new(&top), Path::new(&top), 0, &mut out);
+        out.sort();
+        Ok(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn collect_spec_files_rec(root: &Path, current: &Path, depth: usize, out: &mut Vec<String>) {
+    if depth > 5 {
+        return;
+    }
+    let entries = match std::fs::read_dir(current) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        if name.starts_with('.') || name == "node_modules" || name == "target" || name == "vendor" {
+            continue;
+        }
+        if path.is_dir() {
+            collect_spec_files_rec(root, &path, depth + 1, out);
+        } else if spec::is_supported_spec_extension(&path) {
+            if let Ok(rel) = path.strip_prefix(root) {
+                out.push(rel.to_string_lossy().into_owned());
+            }
+        }
+    }
+}
+
+/// 指定した Markdown 文書の見出し一覧（節）を抽出する。
+#[tauri::command]
+async fn list_spec_sections(
+    state: tauri::State<'_, AppState>,
+    repo: String,
+    rel_path: String,
+) -> Result<Vec<spec::SectionMeta>, String> {
+    let data_dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        repos::require_registered(&data_dir, &repo)?;
+        let top = snapshot::toplevel(&repo)?;
+        let safe_path = spec::safe_repo_relative_path(Path::new(&top), Path::new(&rel_path))?;
+        if !spec::is_supported_spec_extension(&safe_path) {
+            return Err("基準の文書は .md または .txt のみ対応しています".into());
+        }
+        let content = std::fs::read_to_string(&safe_path)
+            .map_err(|e| format!("ファイルを読み込めません: {}: {e}", safe_path.display()))?;
+        Ok(spec::parse_markdown_sections(&content))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 基準文書の内容・文字数・推定トークン数のプレビューを取得する。
+#[tauri::command]
+async fn preview_spec(
+    state: tauri::State<'_, AppState>,
+    repo: String,
+    param: SpecParam,
+) -> Result<SpecPreview, String> {
+    let data_dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        repos::require_registered(&data_dir, &repo)?;
+        let top = snapshot::toplevel(&repo)?;
+        let ctx = build_spec_context(Path::new(&top), &param)?;
+        let sections = if let spec::SpecSource::File { .. } = &ctx.source {
+            spec::parse_markdown_sections(&ctx.content)
+        } else {
+            Vec::new()
+        };
+        Ok(SpecPreview {
+            display_name: ctx.display_name,
+            content: ctx.content,
+            char_count: ctx.char_count,
+            estimated_tokens: ctx.char_count / 3,
+            content_hash: ctx.content_hash,
+            sections,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn build_spec_context(repo_root: &Path, param: &SpecParam) -> Result<spec::SpecContext, String> {
+    match param.source_type.as_str() {
+        "file" => {
+            let rel = param.file_path.as_deref().unwrap_or("").trim();
+            if rel.is_empty() {
+                return Err("基準のファイルパスが指定されていません".into());
+            }
+            let safe_path = spec::safe_repo_relative_path(repo_root, Path::new(rel))?;
+            if !spec::is_supported_spec_extension(&safe_path) {
+                return Err("基準の文書は .md または .txt のみ対応しています".into());
+            }
+            let full_text = std::fs::read_to_string(&safe_path)
+                .map_err(|e| format!("基準文書を読み込めません: {}: {e}", safe_path.display()))?;
+            let (content, display_name) = match param.section.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                Some(sec) => {
+                    let sec_text = spec::extract_section_content(&full_text, sec)?;
+                    (sec_text, format!("{rel} # {sec}"))
+                }
+                None => (full_text, rel.to_string()),
+            };
+            spec::SpecContext::new(
+                spec::SpecSource::File {
+                    path: rel.to_string(),
+                    section: param.section.clone(),
+                },
+                display_name,
+                content,
+            )
+        }
+        "paste" => {
+            let text = param.paste_text.as_deref().unwrap_or("").trim().to_string();
+            if text.is_empty() {
+                return Err("貼り付けた基準の文書が空です".into());
+            }
+            let count = text.chars().count();
+            let display_name = format!("貼り付けた要件（{}文字）", count);
+            spec::SpecContext::new(
+                spec::SpecSource::DirectPaste,
+                display_name,
+                text,
+            )
+        }
+        other => Err(format!("未知の基準文書指定種別です: {other}")),
+    }
+}
+
 /// 実行の入口の確認（登録済みか）つき。
 #[allow(dead_code)]
 fn run_review_checked(
@@ -545,7 +706,7 @@ fn run_review_checked(
     provider_id: &str,
     base: Option<&str>,
 ) -> Result<ReviewRecord, String> {
-    run_review_checked_with_lang(data_dir, repo, recipe_id, provider_id, base, None)
+    run_review_checked_with_lang(data_dir, repo, recipe_id, provider_id, base, None, None)
 }
 
 fn run_review_checked_with_lang(
@@ -555,9 +716,10 @@ fn run_review_checked_with_lang(
     provider_id: &str,
     base: Option<&str>,
     lang: Option<&str>,
+    spec: Option<&SpecParam>,
 ) -> Result<ReviewRecord, String> {
     repos::require_registered(data_dir, repo)?;
-    run_review_with_base_and_lang(data_dir, repo, recipe_id, provider_id, base, lang)
+    run_review_with_base_and_lang(data_dir, repo, recipe_id, provider_id, base, lang, spec)
 }
 
 #[tauri::command]
@@ -568,11 +730,12 @@ async fn run_review(
     provider_id: String,
     base: Option<String>,
     lang: Option<String>,
+    spec: Option<SpecParam>,
 ) -> Result<ReviewView, String> {
     let data_dir = state.data_dir.clone();
     let rec = tauri::async_runtime::spawn_blocking({
         let data_dir = data_dir.clone();
-        move || run_review_checked_with_lang(&data_dir, &repo, &recipe_id, &provider_id, base.as_deref(), lang.as_deref())
+        move || run_review_checked_with_lang(&data_dir, &repo, &recipe_id, &provider_id, base.as_deref(), lang.as_deref(), spec.as_ref())
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -645,7 +808,7 @@ fn run_review_with_base(
     provider_id: &str,
     base: Option<&str>,
 ) -> Result<ReviewRecord, String> {
-    run_review_with_base_and_lang(data_dir, repo, recipe_id, provider_id, base, None)
+    run_review_with_base_and_lang(data_dir, repo, recipe_id, provider_id, base, None, None)
 }
 
 fn run_review_with_base_and_lang(
@@ -655,6 +818,7 @@ fn run_review_with_base_and_lang(
     provider_id: &str,
     base: Option<&str>,
     lang: Option<&str>,
+    spec_param: Option<&SpecParam>,
 ) -> Result<ReviewRecord, String> {
     // 設定が正しくなければ、黙って推奨値に戻さず、理由つきで止める。
     // 個人の設定に、このリポジトリ側の設定（.mrcodereview/settings.json）を重ねたものを使う
@@ -692,6 +856,15 @@ fn run_review_with_base_and_lang(
         return Err("送る差分がありません（HEAD からの変更が無い、または全部が対象外）".into());
     }
 
+    // 基準文書（設計書・仕様書）のコンテキスト構築
+    let spec_ctx = match spec_param {
+        Some(sp) => Some(build_spec_context(Path::new(&top), sp)?),
+        None if recipe.needs_spec => {
+            return Err("この観点には基準の文書（設計書・仕様書）が必要です。ファイルを選択するか、テキストを貼り付けてください。".into());
+        }
+        None => None,
+    };
+
     // ツール実行型（linter）は LLM を呼ばない。押したときの LLM の選択は使わない。
     let is_tool = recipe.kind == recipe::Kind::Tool;
     if is_tool {
@@ -726,7 +899,11 @@ fn run_review_with_base_and_lang(
             related = Some(r);
         }
         let block = related.as_ref().map(related::render).unwrap_or_default();
-        let prompt = recipe::compose_with_lang(&recipe, &block, &snap.diff_text, resolved_lang);
+        let spec_block = spec_ctx
+            .as_ref()
+            .map(|s| format!("# 基準の文書（{}）\n\n{}\n", s.display_name, s.content))
+            .unwrap_or_default();
+        let prompt = recipe::compose_with_lang_and_spec_checked(&recipe, &block, &spec_block, &snap.diff_text, resolved_lang)?;
         let result = provider.run(&prompt);
         let notes = related.as_ref().map(|r| r.notes.clone()).unwrap_or_default();
         (prompt, result, notes)
@@ -740,12 +917,15 @@ fn run_review_with_base_and_lang(
             notes.insert(0, format!("このリポジトリの設定（{}）で、次の項目を上書きしています: {}", file.display(), effective.repo_keys.join("、")));
         }
     }
+    if let Some(s) = &spec_ctx {
+        notes.push(format!("基準の文書: {}（{} 文字、ハッシュ: {}）", s.display_name, s.char_count, s.content_hash));
+    }
 
     let mut rec = ReviewRecord {
         id: format!("{}-{}", now_ms(), &snap.diff_hash[..8]),
         created_at: now_ms(),
         repo: snap.repo.clone(),
-        recipe,
+        recipe: recipe.clone(),
         provider: provider_info,
         snapshot: SnapshotRecord::from(&snap),
         prompt,
@@ -761,6 +941,7 @@ fn run_review_with_base_and_lang(
         notes,
         related,
         repo_overrides: effective.repo_keys,
+        spec: spec_ctx.clone(),
         settings: Some(settings.to_record()),
         parse_error: None,
         error: None,
@@ -775,6 +956,11 @@ fn run_review_with_base_and_lang(
             match findings::parse(&resp.text) {
                 Ok(mut f) => {
                     findings::verify(&mut f, &snap.files);
+                    if recipe.needs_spec {
+                        if let Some(s) = &spec_ctx {
+                            findings::verify_spec(&mut f, &s.content);
+                        }
+                    }
                     (rec.carries, rec.fates, inherited) = carry_over(data_dir, &rec.repo, &rec.recipe.id, &f, &settings);
                     rec.findings = f;
                 }
@@ -1380,6 +1566,9 @@ pub fn run() {
             report_save,
             print_page,
             list_bases,
+            list_spec_files,
+            list_spec_sections,
+            preview_spec,
             duration_stats,
             list_providers,
             repo_status,
@@ -1596,15 +1785,15 @@ mod tests {
 
         // language="auto" のとき、フロントエンドから渡された lang ("en" / "ja") に従う
         std::fs::write(settings::path(&data), r#"{"language": "auto"}"#).unwrap();
-        let rec_auto_en = run_review_with_base_and_lang(&data, repo.to_str().unwrap(), "security", "mock", None, Some("en")).unwrap();
+        let rec_auto_en = run_review_with_base_and_lang(&data, repo.to_str().unwrap(), "security", "mock", None, Some("en"), None).unwrap();
         assert_eq!(rec_auto_en.recipe.title, "Security");
         assert!(rec_auto_en.prompt.contains("## Output Format"));
-        let rec_auto_ja = run_review_with_base_and_lang(&data, repo.to_str().unwrap(), "security", "mock", None, Some("ja")).unwrap();
+        let rec_auto_ja = run_review_with_base_and_lang(&data, repo.to_str().unwrap(), "security", "mock", None, Some("ja"), None).unwrap();
         assert_eq!(rec_auto_ja.recipe.title, "セキュリティ");
         assert!(rec_auto_ja.prompt.contains("## 出力形式"));
 
         // 未知の言語値（"fr"）は黙って "ja" に落とさずエラーを返す
-        let bad_lang = run_review_with_base_and_lang(&data, repo.to_str().unwrap(), "security", "mock", None, Some("fr"));
+        let bad_lang = run_review_with_base_and_lang(&data, repo.to_str().unwrap(), "security", "mock", None, Some("fr"), None);
         assert!(bad_lang.is_err());
         assert!(bad_lang.unwrap_err().contains("不正な言語指定: fr"));
 
@@ -2846,6 +3035,103 @@ mod tests {
             ),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn spec_requires_spec_param_and_existing_recipe_works_without_spec() {
+        let repo = demo_repo("spec_req");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-spec-req-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        repos::add(&data, repo.to_str().unwrap(), None).unwrap();
+
+        // 1. spec観点を設計書なしで実行するとErrになる
+        let err = run_review_with_base_and_lang(&data, repo.to_str().unwrap(), "spec", "mock", None, Some("ja"), None).unwrap_err();
+        assert!(err.contains("基準の文書（設計書・仕様書）が必要です"), "{err}");
+
+        // 2. 既存観点（security）は設計書なしでOkになり、プロンプトに <!-- spec --> の残骸がない
+        let rec = run_review_with_base_and_lang(&data, repo.to_str().unwrap(), "security", "mock", None, Some("ja"), None).unwrap();
+        assert_eq!(rec.recipe.id, "security");
+        assert!(!rec.prompt.contains("<!-- spec -->"));
+        assert!(rec.spec.is_none());
+
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn spec_review_supports_both_import_and_paste_with_exact_quote_verification() {
+        let repo = std::env::temp_dir().join(format!("mrcr-e2e-spec-app-{}", std::process::id()));
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-spec-app-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        git(&repo, &["config", "user.name", "Test"]);
+        git(&repo, &["config", "user.email", "test@example.com"]);
+        repos::add(&data, repo.to_str().unwrap(), None).unwrap();
+
+        let docs = repo.join("docs");
+        std::fs::create_dir_all(&docs).unwrap();
+        let spec_file = docs.join("auth_spec.md");
+        std::fs::write(
+            &spec_file,
+            "# 認証システム仕様書\n\n## 認証トークン\nセッション有効期限は15分とする。\n自動延長は不可。\n\n## 権限管理\n管理者のみアクセス可能。\n",
+        )
+        .unwrap();
+
+        let src = repo.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        let code = src.join("main.rs");
+        std::fs::write(&code, "fn main() {}\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-m", "init"]);
+        std::fs::write(&code, "fn main() {\n    let timeout_hours = 24;\n}\n").unwrap();
+
+        // 1. ファイル指定
+        let param_file = SpecParam {
+            source_type: "file".into(),
+            file_path: Some("docs/auth_spec.md".into()),
+            section: Some("認証トークン".into()),
+            paste_text: None,
+        };
+        let rec = run_review_with_base_and_lang(
+            &data,
+            repo.to_str().unwrap(),
+            "spec",
+            "mock",
+            None,
+            Some("ja"),
+            Some(&param_file),
+        )
+        .unwrap();
+        assert_eq!(rec.recipe.id, "spec");
+        assert!(rec.prompt.contains("docs/auth_spec.md # 認証トークン"));
+        assert!(rec.prompt.contains("セッション有効期限は15分とする。"));
+        assert!(!rec.prompt.contains("## 権限管理"));
+        assert!(rec.spec.is_some());
+
+        // 2. 貼り付け指定
+        let param_paste = SpecParam {
+            source_type: "paste".into(),
+            file_path: None,
+            section: None,
+            paste_text: Some("要件メモ: ログイン試行回数は5回まで。".into()),
+        };
+        let rec_paste = run_review_with_base_and_lang(
+            &data,
+            repo.to_str().unwrap(),
+            "spec",
+            "mock",
+            None,
+            Some("ja"),
+            Some(&param_paste),
+        )
+        .unwrap();
+        assert!(rec_paste.prompt.contains("ログイン試行回数は5回まで。"));
+        assert!(rec_paste.spec.is_some());
+
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     const SHELLCHECK_PATTERN: &str = r"^(?P<file>.+?):(?P<line>\\d+):\\d+: (?P<severity>\\w+): (?P<message>.*?)(?: \\[(?P<rule>SC\\d+)\\])?$";

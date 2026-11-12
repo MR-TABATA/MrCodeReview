@@ -14,6 +14,7 @@ pub mod provider;
 pub mod recipe;
 pub mod related;
 pub mod snapshot;
+pub mod spec;
 pub mod store;
 pub mod triage;
 pub mod usage;

@@ -7,7 +7,7 @@ use crate::snapshot::FileDiff;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct Finding {
     pub file: String,
     pub line: Option<u32>,
@@ -21,6 +21,12 @@ pub struct Finding {
     /// linter の規則名（ツール実行型の指摘だけ）。LLM の指摘は None。
     #[serde(default)]
     pub rule: Option<String>,
+    /// 基準文書（設計書・仕様書）からの引用原文（設計書参照レビューのときだけ）。
+    #[serde(default)]
+    pub spec_quote: Option<String>,
+    /// spec_quote が、参照した基準文書の本文に実際にあるか。
+    #[serde(default)]
+    pub spec_verified: Option<bool>,
 }
 
 fn str_field(v: &Value, key: &str) -> String {
@@ -77,6 +83,8 @@ pub fn parse(text: &str) -> Result<Vec<Finding>, String> {
             evidence: str_field(f, "evidence"),
             verified: false,
             rule: Some(str_field(f, "rule")).filter(|r| !r.is_empty()),
+            spec_quote: Some(str_field(f, "spec_quote")).filter(|s| !s.is_empty()),
+            spec_verified: None,
         })
         .collect())
 }
@@ -102,6 +110,35 @@ pub fn verify(findings: &mut [Finding], files: &[FileDiff]) {
 
 fn contains_evidence(diff_text: &str, ev: &str) -> bool {
     diff_text.contains(ev) || ev.lines().map(str::trim).filter(|l| !l.is_empty()).all(|l| diff_text.contains(l))
+}
+
+/// 設計書からの引用（spec_quote）が、基準文書の本文に実在するかを確かめ、`spec_verified` を埋める。
+///
+/// 構想 §23: `spec_quote` も基準の文書の本文と文字列で照合し、無ければ「根拠不一致（Some(false)）」とする。
+/// 飛び飛びの行の寄せ集めは認めず、本文に連続して実在する部分文字列のみを完全一致とする。
+pub fn verify_spec(findings: &mut [Finding], spec_text: &str) {
+    let trimmed_spec = spec_text.trim();
+    for f in findings.iter_mut() {
+        if let Some(quote) = f.spec_quote.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            f.spec_verified = Some(contains_quote(trimmed_spec, quote));
+        } else {
+            f.spec_verified = Some(false);
+        }
+    }
+}
+
+fn contains_quote(spec_text: &str, quote: &str) -> bool {
+    let q = quote.trim();
+    if q.is_empty() {
+        return false;
+    }
+    if spec_text.contains(q) {
+        return true;
+    }
+    // CRLF と LF の改行コード差分を吸収した連続一致
+    let norm_spec = spec_text.replace("\r\n", "\n");
+    let norm_quote = q.replace("\r\n", "\n");
+    norm_spec.contains(&norm_quote)
 }
 
 #[cfg(test)]
@@ -144,11 +181,11 @@ mod tests {
     fn same_named_files_are_not_mixed_up_when_verifying() {
         // pkg_a/utils.ts と pkg_b/utils.ts。モデルが file: "utils.ts" とだけ返し、引用は pkg_b にある
         let files = vec![file("pkg_a/utils.ts", "+const a = 1;\n"), file("pkg_b/utils.ts", "+danger(x);\n")];
-        let mut v = vec![Finding { file: "utils.ts".into(), line: None, severity: "low".into(), title: "".into(), detail: "".into(), evidence: "danger(x);".into(), verified: false, rule: None }];
+        let mut v = vec![Finding { file: "utils.ts".into(), line: None, severity: "low".into(), title: "".into(), detail: "".into(), evidence: "danger(x);".into(), verified: false, rule: None, ..Default::default() }];
         verify(&mut v, &files);
         assert!(v[0].verified, "最初に見つかった pkg_a だけと照合して、根拠不一致にしない");
         // どちらにも無い引用は、これまでどおり根拠不一致
-        let mut w = vec![Finding { file: "utils.ts".into(), line: None, severity: "low".into(), title: "".into(), detail: "".into(), evidence: "nowhere();".into(), verified: false, rule: None }];
+        let mut w = vec![Finding { file: "utils.ts".into(), line: None, severity: "low".into(), title: "".into(), detail: "".into(), evidence: "nowhere();".into(), verified: false, rule: None, ..Default::default() }];
         verify(&mut w, &files);
         assert!(!w[0].verified);
     }
@@ -188,10 +225,10 @@ mod tests {
     fn verify_accepts_real_quote_and_rejects_invented() {
         let files = vec![file("src/db.js", "+  db.query(\"SELECT * FROM u WHERE id=\" + id);\n")];
         let mut v = vec![
-            Finding { file: "src/db.js".into(), line: Some(1), severity: "high".into(), title: "".into(), detail: "".into(), evidence: "db.query(\"SELECT * FROM u WHERE id=\" + id);".into(), verified: false, rule: None },
-            Finding { file: "src/db.js".into(), line: Some(1), severity: "high".into(), title: "".into(), detail: "".into(), evidence: "eval(userInput)".into(), verified: false, rule: None },
-            Finding { file: "src/db.js".into(), line: Some(1), severity: "high".into(), title: "".into(), detail: "".into(), evidence: "".into(), verified: false, rule: None },
-            Finding { file: "other.js".into(), line: Some(1), severity: "high".into(), title: "".into(), detail: "".into(), evidence: "db.query".into(), verified: false, rule: None },
+            Finding { file: "src/db.js".into(), line: Some(1), severity: "high".into(), title: "".into(), detail: "".into(), evidence: "db.query(\"SELECT * FROM u WHERE id=\" + id);".into(), verified: false, rule: None, ..Default::default() },
+            Finding { file: "src/db.js".into(), line: Some(1), severity: "high".into(), title: "".into(), detail: "".into(), evidence: "eval(userInput)".into(), verified: false, rule: None, ..Default::default() },
+            Finding { file: "src/db.js".into(), line: Some(1), severity: "high".into(), title: "".into(), detail: "".into(), evidence: "".into(), verified: false, rule: None, ..Default::default() },
+            Finding { file: "other.js".into(), line: Some(1), severity: "high".into(), title: "".into(), detail: "".into(), evidence: "db.query".into(), verified: false, rule: None, ..Default::default() },
         ];
         verify(&mut v, &files);
         assert!(v[0].verified);
@@ -204,10 +241,108 @@ mod tests {
     fn verify_matches_path_variants() {
         let files = vec![file("src/a.js", "+x = 1\n")];
         let mut v = vec![
-            Finding { file: "b/src/a.js".into(), line: None, severity: "low".into(), title: "".into(), detail: "".into(), evidence: "x = 1".into(), verified: false, rule: None },
-            Finding { file: "a.js".into(), line: None, severity: "low".into(), title: "".into(), detail: "".into(), evidence: "x = 1".into(), verified: false, rule: None },
+            Finding { file: "b/src/a.js".into(), line: None, severity: "low".into(), title: "".into(), detail: "".into(), evidence: "x = 1".into(), verified: false, rule: None, ..Default::default() },
+            Finding { file: "a.js".into(), line: None, severity: "low".into(), title: "".into(), detail: "".into(), evidence: "x = 1".into(), verified: false, rule: None, ..Default::default() },
         ];
         verify(&mut v, &files);
         assert!(v[0].verified && v[1].verified);
+    }
+
+    #[test]
+    fn verify_spec_checks_exact_quotes() {
+        let spec = "行A: 認証仕様\n行B: 中間の処理\n行C: 自動延長は行わない。";
+        let mut v = vec![
+            Finding {
+                file: "src/auth.rs".into(),
+                spec_quote: Some("行A: 認証仕様".into()),
+                ..Default::default()
+            },
+            Finding {
+                file: "src/auth.rs".into(),
+                spec_quote: Some("存在しない仕様の引用".into()),
+                ..Default::default()
+            },
+            Finding {
+                file: "src/auth.rs".into(),
+                spec_quote: None,
+                ..Default::default()
+            },
+            Finding {
+                file: "src/auth.rs".into(),
+                spec_quote: Some("   ".into()),
+                ..Default::default()
+            },
+            // 離れた行を並べた偽の引用（行A と 行C）は不一致（false）になること
+            Finding {
+                file: "src/auth.rs".into(),
+                spec_quote: Some("行A: 認証仕様\n行C: 自動延長は行わない。".into()),
+                ..Default::default()
+            },
+        ];
+        verify_spec(&mut v, spec);
+        assert_eq!(v[0].spec_verified, Some(true), "完全一致する引用は照合成功");
+        assert_eq!(v[1].spec_verified, Some(false), "設計書に無い引用は不一致");
+        assert_eq!(v[2].spec_verified, Some(false), "引用がないものは不一致");
+        assert_eq!(v[3].spec_verified, Some(false), "空白のみの引用は不一致");
+        assert_eq!(v[4].spec_verified, Some(false), "飛び飛びの行を合成した引用は不一致");
+    }
+
+    #[test]
+    fn parse_and_verify_spec_quotes_end_to_end() {
+        let json_text = r#"```json
+{
+  "findings": [
+    {
+      "file": "src/auth.rs",
+      "line": 10,
+      "severity": "high",
+      "title": "セッション延長の仕様違反",
+      "detail": "仕様では自動延長不可と規定されています",
+      "evidence": "session.extend()",
+      "spec_quote": "自動延長は不可とする。"
+    },
+    {
+      "file": "src/auth.rs",
+      "line": 20,
+      "severity": "medium",
+      "title": "でっち上げの引用",
+      "detail": "架空のルール",
+      "evidence": "let x = 1;",
+      "spec_quote": "設計書に存在しない架空の文言"
+    },
+    {
+      "file": "src/auth.rs",
+      "line": 30,
+      "severity": "low",
+      "title": "空の引用",
+      "detail": "引用なし",
+      "evidence": "let y = 2;",
+      "spec_quote": ""
+    },
+    {
+      "file": "src/auth.rs",
+      "line": 40,
+      "severity": "low",
+      "title": "引用欄なし",
+      "detail": "spec_quote フィールド自体がない",
+      "evidence": "let z = 3;"
+    }
+  ]
+}
+```"#;
+        let mut findings = parse(json_text).unwrap();
+        assert_eq!(findings.len(), 4);
+        assert_eq!(findings[0].spec_quote.as_deref(), Some("自動延長は不可とする。"));
+        assert_eq!(findings[1].spec_quote.as_deref(), Some("設計書に存在しない架空の文言"));
+        assert_eq!(findings[2].spec_quote, None, "空文字は None に正規化される");
+        assert_eq!(findings[3].spec_quote, None, "欄なしは None になる");
+
+        let spec_content = "# 認証仕様\nセッションは発行後15分で破棄し、自動延長は不可とする。\n";
+        verify_spec(&mut findings, spec_content);
+
+        assert_eq!(findings[0].spec_verified, Some(true), "実在する原文引用は true");
+        assert_eq!(findings[1].spec_verified, Some(false), "でっち上げ引用は false");
+        assert_eq!(findings[2].spec_verified, Some(false), "空引用は false");
+        assert_eq!(findings[3].spec_verified, Some(false), "引用欄なしは false");
     }
 }

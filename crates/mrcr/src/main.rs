@@ -231,6 +231,93 @@ fn run_review(args: ReviewArgs) -> i32 {
     let mut results: Vec<RecipeReviewResult> = Vec::new();
     let data_dir = resolve_data_dir();
 
+    // 設計書コンテキストの事前構築（標準入力の2重読み込み防止・ループ外で1度だけ解決）
+    let shared_spec_ctx = if let Some(spec_arg) = &args.spec {
+        let (rel_path, section) = if let Some((p, s)) = spec_arg.split_once(':') {
+            (p.trim(), Some(s.trim().trim_start_matches('#').trim().to_string()))
+        } else {
+            (spec_arg.trim(), None)
+        };
+        if rel_path == "-" {
+            use std::io::Read;
+            let mut buf = String::new();
+            if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
+                eprintln!("エラー: 標準入力からの読み込みに失敗しました: {e}");
+                return 2;
+            }
+            let count = buf.chars().count();
+            match mrcr_core::spec::SpecContext::new(
+                mrcr_core::spec::SpecSource::DirectPaste,
+                format!("標準入力の要件（{count}文字）"),
+                buf,
+            ) {
+                Ok(ctx) => Some(ctx),
+                Err(e) => {
+                    eprintln!("エラー: {e}");
+                    return 2;
+                }
+            }
+        } else {
+            let safe_path = match mrcr_core::spec::safe_repo_relative_path(&repo_path, Path::new(rel_path)) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("エラー: {e}");
+                    return 2;
+                }
+            };
+            if !mrcr_core::spec::is_supported_spec_extension(&safe_path) {
+                eprintln!("エラー: 基準の文書は .md または .txt のみ対応しています");
+                return 2;
+            }
+            let full_text = match std::fs::read_to_string(&safe_path) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("エラー: 基準文書を読み込めません: {}: {e}", safe_path.display());
+                    return 2;
+                }
+            };
+            let (content, display_name) = match section.as_deref().filter(|s| !s.is_empty()) {
+                Some(sec) => match mrcr_core::spec::extract_section_content(&full_text, sec) {
+                    Ok(sec_text) => (sec_text, format!("{rel_path} # {sec}")),
+                    Err(e) => {
+                        eprintln!("エラー: {e}");
+                        return 2;
+                    }
+                },
+                None => (full_text, rel_path.to_string()),
+            };
+            match mrcr_core::spec::SpecContext::new(
+                mrcr_core::spec::SpecSource::File {
+                    path: rel_path.to_string(),
+                    section,
+                },
+                display_name,
+                content,
+            ) {
+                Ok(ctx) => Some(ctx),
+                Err(e) => {
+                    eprintln!("エラー: {e}");
+                    return 2;
+                }
+            }
+        }
+    } else if let Some(text) = &args.spec_text {
+        let count = text.chars().count();
+        match mrcr_core::spec::SpecContext::new(
+            mrcr_core::spec::SpecSource::DirectPaste,
+            format!("貼り付けた要件（{count}文字）"),
+            text.clone(),
+        ) {
+            Ok(ctx) => Some(ctx),
+            Err(e) => {
+                eprintln!("エラー: {e}");
+                return 2;
+            }
+        }
+    } else {
+        None
+    };
+
     let cli_texts = &Lang::from_code(&args.lang).unwrap_or_default().texts().cli;
     eprintln!(
         "{}",
@@ -253,13 +340,33 @@ fn run_review(args: ReviewArgs) -> i32 {
 
         let started = Instant::now();
 
+        let spec_ctx = match &shared_spec_ctx {
+            Some(ctx) => Some(ctx.clone()),
+            None if r.needs_spec => {
+                eprintln!("エラー (観点: {}): この観点には設計書（基準の文書）が必要です。--spec <PATH> または --spec-text <TEXT> を指定してください。", r.id);
+                return 2;
+            }
+            None => None,
+        };
+
         let related_block = if r.needs_related {
             related::render(&related::collect(&repo_path, &snap, &related::Limits::default()))
         } else {
             String::new()
         };
 
-        let prompt = recipe::compose_with_lang(r, &related_block, &snap.diff_text, &args.lang);
+        let spec_block = spec_ctx
+            .as_ref()
+            .map(|s| format!("# 基準の文書（{}）\n\n{}\n", s.display_name, s.content))
+            .unwrap_or_default();
+
+        let prompt = match recipe::compose_with_lang_and_spec_checked(r, &related_block, &spec_block, &snap.diff_text, &args.lang) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("エラー (観点: {}): {e}", r.id);
+                return 2;
+            }
+        };
 
         let llm_res = match provider_box.run(&prompt) {
             Ok(res) => res,
@@ -277,6 +384,11 @@ fn run_review(args: ReviewArgs) -> i32 {
         };
 
         findings::verify(&mut findings, &snap.files);
+        if r.needs_spec {
+            if let Some(s) = &spec_ctx {
+                findings::verify_spec(&mut findings, &s.content);
+            }
+        }
 
         if !args.no_save {
             let rec = ReviewRecord {
@@ -303,6 +415,7 @@ fn run_review(args: ReviewArgs) -> i32 {
                 notes: Vec::new(),
                 related: None,
                 repo_overrides: Vec::new(),
+                spec: spec_ctx.clone(),
                 settings: None,
                 parse_error: parse_err,
                 error: None,

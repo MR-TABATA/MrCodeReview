@@ -944,6 +944,13 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 }
 
 
+
+
+/* 設定の「ライセンス」: キーの入力欄は、キーの長さ（約 42 文字）に合わせた幅にして、横に並べる。「登録」は折り返さない */
+.license .row { align-items: center; flex-wrap: wrap; }
+.license input.licensekey { flex: 0 1 30em; width: auto; min-width: 14em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.license .row button { flex: none; white-space: nowrap; }
+
 /* 指摘の番号（#3）と、識別子の行。エージェントの報告（mrcr:…#番号）と、照合するための印 */
 .fc-no { flex: 0 0 auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--muted); min-width: 2.4em; text-align: right; font-variant-numeric: tabular-nums; }
 .fc-tag { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; }
@@ -952,4 +959,223 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 
 /* 「対応」にした指摘の、状態の印。未対応は目立たせ、対応済みは落ち着いた緑 */
 .chip.open { background: var(--warn-bg); color: var(--warn); }
+
+/* 設定の「ライセンス」: ロゴ（Free はライム地、Pro は黒地に金）と、Free / Pro の見出し */
+.lic-head { display: flex; align-items: center; gap: 10px; }
+.lic-logo { width: 44px; height: 44px; flex: none; }
+
+/* ── 設計書参照レビュー（SpecView） ──────────────────────── */
+.spec-view-root {
+  margin: 6px 0 12px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid rgba(120, 135, 155, 0.22);
+  border-radius: 8px;
+}
+.spec-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.spec-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.01em;
+}
+.spec-tab-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+.spec-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  height: 26px;
+  box-sizing: border-box;
+  line-height: 1.3;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.spec-tab-btn:hover {
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.03);
+}
+.spec-tab-btn.active {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid rgba(120, 135, 155, 0.35);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.spec-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.spec-panel {
+  width: 100%;
+}
+.spec-file-panel {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.spec-file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 12px;
+  height: 30px;
+  box-sizing: border-box;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.spec-file-btn:hover {
+  background: var(--field);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.spec-file-path-display {
+  flex: 1 1 220px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+.spec-section-select {
+  flex: 0 1 200px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.spec-file-path-display:focus, .spec-section-select:focus, .spec-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+.spec-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  resize: vertical;
+  min-height: 88px;
+}
+.spec-paste-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  padding: 0 2px;
+}
+.spec-char-counter {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.spec-char-counter.over-limit {
+  color: var(--bad);
+  font-weight: 600;
+}
+.spec-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.spec-file-clear-btn {
+  height: 30px;
+  padding: 5px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.spec-paste-clear-btn {
+  height: 26px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+}
+.spec-clear-btn:hover {
+  color: var(--bad);
+  border-color: var(--bad);
+  background: var(--field);
+}
+
+/* 指摘カード内の設計書引用 */
+.fc-spec-box {
+  margin: 8px 0;
+  padding: 8px 12px;
+  background: rgba(56, 139, 253, 0.08);
+  border-left: 3px solid #388bfd;
+  border-radius: 0 4px 4px 0;
+}
+.f-spec-label {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #58a6ff;
+  margin-bottom: 4px;
+}
+.spec-quote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-normal, #e0e0e0);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chip.spec-ok {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.4);
+}
 

@@ -50,6 +50,7 @@ fn finding(n: usize) -> Finding {
         evidence: format!("let x{n} = 1;"),
         verified: true,
         rule: None,
+        ..Default::default()
     }
 }
 

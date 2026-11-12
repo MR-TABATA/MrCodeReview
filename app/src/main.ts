@@ -54,6 +54,7 @@ function unattributedNote(n: number): string {
   return n > 0 ? `（フォルダが無くなっていて、どの登録のものか分からない履歴が ${n} 件あります。消していません）` : '';
 }
 import { recipeBar } from './recipebar';
+import { SpecView } from './specview';
 import { fixAllBySeverity as runFixAllBySeverity, fixAllSeverityButtons } from './fixall';
 import { newReportState, reportFileName, reportOptions, reportPanel, reportRange, htmlNodes, type ReportState } from './reportview';
 import { periodSince, usagePanel, type Period, type UsageState } from './usageview';
@@ -82,8 +83,10 @@ import type {
   Related,
   ReviewSummary,
   ReviewView,
+  SectionMeta,
   SettingsView,
   SnapshotInfo,
+  SpecParam,
   TriageState,
   UsageSummary,
 } from './types';
@@ -210,6 +213,10 @@ const state = {
   /** 各リポジトリのデータの量（履歴など）。解除の可否と、削除の確認に使う */
   repoData: {} as Record<string, RepoDataRow>,
   repoMsg: { text: '', kind: '' as '' | 'ok' | 'err' },
+  /** 設計書参照レビューの入力パラメータ（ファイル選択または貼り付け） */
+  specParam: null as SpecParam | null,
+  specValid: true,
+  specFiles: [] as string[],
   /** 選んだレビューの「対応」を、CUI に貼る文面にしたもの。空ならコピーするものが無い。 */
   handoff: '',
   /** 「CLI に渡す」の、確認・書き出し後の状態 */
@@ -236,6 +243,67 @@ const state = {
 };
 
 const getRoot = (): HTMLElement | null => (typeof document !== 'undefined' ? document.getElementById('app') : null);
+
+const specViewInstance =
+  typeof document !== 'undefined'
+    ? new SpecView({
+        messages: msg(getAppLang()),
+        onChange: (param, valid) => {
+          state.specParam = param;
+          state.specValid = valid;
+          render();
+        },
+        onFileSelect: async (filePath: string) => {
+          if (!state.repo || !filePath) return [];
+          try {
+            return await invoke<SectionMeta[]>('list_spec_sections', { repo: state.repo, relPath: filePath });
+          } catch (e) {
+            console.error('Failed to list spec sections', e);
+            return [];
+          }
+        },
+        onPickFile: async () => {
+          try {
+            const selected = await open({
+              title: '設計書・仕様書ファイルを選択',
+              multiple: false,
+              directory: false,
+              filters: [{ name: 'Markdown / Text', extensions: ['md', 'markdown', 'txt'] }],
+              defaultPath: state.repo || undefined,
+            });
+            if (typeof selected === 'string') {
+              if (state.repo && selected.startsWith(state.repo)) {
+                let rel = selected.slice(state.repo.length);
+                if (rel.startsWith('/')) rel = rel.slice(1);
+                return rel;
+              }
+              return selected;
+            }
+            return null;
+          } catch (e) {
+            console.error('Failed to open file picker', e);
+            return null;
+          }
+        },
+      })
+    : null;
+
+async function refreshSpecFiles(): Promise<void> {
+  if (!state.repo) {
+    state.specFiles = [];
+    specViewInstance?.setFiles([]);
+    return;
+  }
+  try {
+    const files = await invoke<string[]>('list_spec_files', { repo: state.repo });
+    state.specFiles = files;
+    specViewInstance?.setFiles(files);
+  } catch (e) {
+    console.error('Failed to list spec files', e);
+    state.specFiles = [];
+    specViewInstance?.setFiles([]);
+  }
+}
 
 // ── 整形 ──────────────────────────────────────────────────────────────────────
 const nf = new Intl.NumberFormat('ja-JP');
@@ -431,6 +499,7 @@ async function applyLangChange(langSetting: string): Promise<string | null> {
       }
     },
   });
+  specViewInstance?.setMessages(msg(getAppLang()));
   return langErr;
 }
 
@@ -778,6 +847,7 @@ async function runRecipe(recipeId: string): Promise<void> {
       providerId: state.providerId,
       base: state.base,
       lang: getAppLang(),
+      spec: state.specParam,
     });
     // 設定を開いたまま、未保存の変更があるなら、閉じずに、設定の中で聞く（結果は、そのあとに出る）。黙って捨てない
     if (canLeaveSettings()) state.settings = null;
@@ -1566,12 +1636,17 @@ function headerView(): HTMLElement {
 
 // ── レビューの実行と制御 ──────────────────────────────────────────────────────
 /** 実行できない理由（無ければ空）。実行ボタンも、「まとめて実行」も、同じ理由を使う。 */
-function runBlockReason(needsLlm: boolean): string {
+function runBlockReason(needsLlm: boolean, needsSpec: boolean = false): string {
   const p = state.preview;
   if (!state.repo) return 'リポジトリを選んでください（左サイドバー）';
   if (!p) return '';
   if (!p.files.length) return state.base === HEAD ? '送る差分がありません（未コミットの変更が無い）' : '送る差分がありません（この範囲に、変更が無い）';
-  return needsLlm && !state.providerId ? 'LLM を選んでください（右上の設定から）' : '';
+  if (needsLlm && !state.providerId) return 'LLM を選んでください（右上の設定から）';
+  if (needsSpec) {
+    if (!state.specParam) return '設計書を指定してください（ファイル選択または貼り付け）';
+    if (!state.specValid) return '設計書の内容を確認してください（文字数上限を超えているか無効です）';
+  }
+  return '';
 }
 
 /** 「まとめて実行」で選んだ観点の、過去の実績を引く（まだ読んでいないものだけ）。 */
@@ -1661,7 +1736,17 @@ function recipeBarSection(): HTMLElement {
   const active = activeChecked();
   const chosen = pickedRecipes(state.recipes, active);
   const needsLlm = chosen.some((r) => r.kind !== 'tool');
-  const disabledReason = runBlockReason(needsLlm);
+  const needsSpec = active.has('spec') || chosen.some((r) => r.id === 'spec' || r.needs_spec);
+  if (specViewInstance) {
+    if (needsSpec && !specViewInstance.isEnabled()) {
+      specViewInstance.setEnabled(true);
+    } else if (!needsSpec && specViewInstance.isEnabled()) {
+      specViewInstance.setEnabled(false);
+    }
+    specViewInstance.setDisabled(busy);
+  }
+  const specSlot = needsSpec && specViewInstance ? specViewInstance.root : null;
+  const disabledReason = runBlockReason(needsLlm, needsSpec);
 
   let currentTitle = state.running;
   let runIdx = 0;
@@ -1693,6 +1778,7 @@ function recipeBarSection(): HTMLElement {
       estimatedTokens: p && chosen.length ? p.estimated_input_tokens * chosen.filter((r) => r.kind !== 'tool').length : null,
       estimatedTimeText: est.timeText,
       runError: state.runError,
+      specSlot,
     },
     {
       onToggle: toggleRecipeCheck,
@@ -2107,6 +2193,11 @@ function findingChips(f: Finding, status: TriageState, carry: Carry | null | und
       ),
     );
   }
+  if (f.spec_verified === false) {
+    out.push(chip('warn', m.chipSpecMismatch, m.specQuoteMismatch));
+  } else if (f.spec_verified === true) {
+    out.push(chip('ok', m.chipSpecVerified, m.specQuoteVerified));
+  }
   if (f.rule) out.push(chip('rule', f.rule));
   if (agent) {
     const verdictText = agent.verdict === 'did' ? m.chipAgentDid : m.chipAgentSkipped;
@@ -2195,6 +2286,22 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
             h('code', { class: 'fc-loc' }, loc),
           ),
           h('pre', { class: 'evidence' }, f.evidence || msg(getAppLang()).mainUi.noQuote),
+          f.spec_quote
+            ? h(
+                'div',
+                { class: 'fc-spec-box' },
+                h(
+                  'div',
+                  { class: 'f-ev-label' },
+                  f.spec_verified === true
+                    ? msg(getAppLang()).mainUi.specQuoteVerified
+                    : f.spec_verified === false
+                      ? msg(getAppLang()).mainUi.specQuoteMismatch
+                      : msg(getAppLang()).mainUi.specQuoteLabel,
+                ),
+                h('pre', { class: 'spec-quote' }, f.spec_quote),
+              )
+            : null,
           carryNote(carry),
           hand ? agentBox(agent, when, showNowDiff) : null,
           handlingBox(index, status, note, byAgent),
@@ -2240,12 +2347,19 @@ function findingCard(reviewId: string, f: Finding, index: number, status: Triage
       h('strong', {}, f.title || '(見出しなし)'),
       f.rule ? h('span', { class: 'badge rule' }, f.rule) : null,
       h('span', { class: `badge ${f.verified ? 'ok' : 'bad'}` }, f.verified ? '根拠あり' : '根拠不一致'),
+      f.spec_verified === true
+        ? h('span', { class: 'badge ok' }, '設計書一致')
+        : f.spec_verified === false
+          ? h('span', { class: 'badge bad' }, '設計書不一致')
+          : null,
       done ? h('span', { class: 'foldcaret' }, '▾') : null,
     ),
     compact ? null : h('div', { class: 'f-loc' }, h('code', {}, `${f.file || '(ファイル不明)'}${f.line === null ? '' : `:${f.line}`}`)),
     h('p', {}, f.detail),
     compact ? null : h('div', { class: 'f-ev-label' }, f.verified ? '引用（差分に実在）' : '引用（この差分には見つからない）'),
     compact ? null : h('pre', { class: 'evidence' }, f.evidence || '(引用なし)'),
+    compact ? null : (f.spec_quote ? h('div', { class: 'f-ev-label' }, f.spec_verified ? '設計書の引用（原文に実在）' : '設計書の引用（原文と不一致）') : null),
+    compact ? null : (f.spec_quote ? h('pre', { class: 'spec-quote' }, f.spec_quote) : null),
     carryNote(carry),
     // 「対応した」と申告された指摘は、読むだけ（仕分けと「CLI に渡す」は、出さない）。やり直すなら、もう一度レビューを実行する
     done ? null : triage,
@@ -2845,6 +2959,7 @@ async function boot(): Promise<void> {
 
   render();
   loadAllRepoIcons();
+  await refreshSpecFiles();
   await refreshHistory();
   await refreshPreview();
   void refreshStats();

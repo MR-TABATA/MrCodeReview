@@ -273,6 +273,7 @@ mod tests {
             evidence: "db.query(x)".into(),
             verified,
             rule: None,
+            ..Default::default()
         }
     }
 
@@ -281,7 +282,7 @@ mod tests {
             id: "r1".into(),
             created_at: 0,
             repo: "/r".into(),
-            recipe: Recipe { id: "security".into(), title: "セキュリティ".into(), source: "builtin".into(), prompt: "".into(), kind: crate::recipe::Kind::Llm, needs_related: false },
+            recipe: Recipe { id: "security".into(), title: "セキュリティ".into(), source: "builtin".into(), prompt: "".into(), kind: crate::recipe::Kind::Llm, needs_related: false, needs_spec: false },
             provider: ProviderInfo { id: "mock".into(), label: "m".into(), note: "".into() },
             snapshot: SnapshotRecord { head: "216b161ddb5c".into(), base: Default::default(), diff_hash: "ce494d6b09234".into(), diff_bytes: 1, files: vec![], excluded: vec![] },
             prompt: "".into(),
@@ -297,6 +298,7 @@ mod tests {
             notes: vec![],
             related: None,
             repo_overrides: vec![],
+            spec: None,
             settings: None,
             parse_error: None,
             error: None,

@@ -43,6 +43,25 @@ export interface Messages {
     openTitle: string;
   };
 
+  // specview.ts & detailview.ts
+  specView: {
+    toggleLabel: string;
+    tabFile: string;
+    tabPaste: string;
+    fileSelectPlaceholder: string;
+    noFilesFound: string;
+    allSections: string;
+    sectionSelectPlaceholder: string;
+    pastePlaceholder: string;
+    charCount: (chars: number, tokens: number) => string;
+    charCountOver: (chars: number, max: number) => string;
+    clearButton: string;
+    specBadge: string;
+    specQuoteLabel: string;
+    specUnverifiedBadge: string;
+    specVerifiedBadge: string;
+  };
+
   // recipeinfo.ts
   recipeSummaryMap: Record<string, string>;
   recipeGroupLlm: string;
@@ -355,6 +374,11 @@ export interface Messages {
     triageResetTitle: string;
     chipEvidenceMismatch: string;
     chipEvidenceMismatchTitle: (groundingNote: string) => string;
+    chipSpecVerified: string;
+    chipSpecMismatch: string;
+    specQuoteVerified: string;
+    specQuoteMismatch: string;
+    specQuoteLabel: string;
     chipAgentDid: string;
     chipAgentSkipped: string;
     chipAgentTitle: string;
@@ -431,6 +455,24 @@ export const MESSAGES: Record<Lang, Messages> = {
       openTitle: 'これから直す指摘です（まだ直していません）。直したら、開いて「対応済みにする」を押します',
     },
 
+    specView: {
+      toggleLabel: '設計書・要件を参照する',
+      tabFile: '📄 ファイルから選択',
+      tabPaste: '📝 直接貼り付け',
+      fileSelectPlaceholder: 'ファイルを選択（.md / .txt）',
+      noFilesFound: '参照できる仕様書ファイル（.md / .txt）が見つかりません',
+      allSections: '（ファイル全体を参照）',
+      sectionSelectPlaceholder: '対象の節・見出しを選択',
+      pastePlaceholder: 'GitHub Issue、Notionの要件、仕様メモなどを貼り付けてください...',
+      charCount: (chars, tokens) => `${chars.toLocaleString()} 文字（推定 ${tokens.toLocaleString()} トークン）`,
+      charCountOver: (chars, max) => `⚠ 上限超過: ${chars.toLocaleString()} / 最大 ${max.toLocaleString()} 文字（節を絞り込むか削ってください）`,
+      clearButton: 'クリア',
+      specBadge: '設計書参照',
+      specQuoteLabel: '設計書の要求（原文引用）',
+      specUnverifiedBadge: '根拠不一致（設計書に原文なし）',
+      specVerifiedBadge: '設計書照合済',
+    },
+
     recipeSummaryMap: {
       bugs: '動かすと壊れる書き方（境界・null・競合など）を探す',
       errors: '握りつぶし・握り損ね・失敗の見落としを探す',
@@ -438,6 +480,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       performance: '無駄な繰り返し・重い処理・N+1 などを探す',
       tests: 'テストが足りない所・弱い検証を探す',
       consistency: '変えた所と、変えていない他の場所の食い違いを探す',
+      spec: '設計書・仕様書と差分を見比べ、矛盾や要求への逆行を探す',
       lint: '差分に合う linter を、全部まとめて実行（LLM なし）',
     },
     recipeGroupLlm: 'LLM でレビュー',
@@ -774,6 +817,11 @@ export const MESSAGES: Record<Lang, Messages> = {
       triageResetTitle: 'もう一度押すと未仕分けに戻る',
       chipEvidenceMismatch: '⚠ 根拠不一致',
       chipEvidenceMismatchTitle: (groundingNote) => `引用が、この差分に見つかりません。${groundingNote}`,
+      chipSpecVerified: '設計書照合済',
+      chipSpecMismatch: '根拠不一致（設計書に原文なし）',
+      specQuoteVerified: '設計書の要求（原文引用・照合済）',
+      specQuoteMismatch: '設計書の要求（原文引用・不一致）',
+      specQuoteLabel: '設計書の要求（原文引用）',
       chipAgentDid: '対応した',
       chipAgentSkipped: '対応しなかった',
       chipAgentTitle: 'エージェントの申告・判断です。MCR が、コードを確かめたものではありません',
@@ -845,6 +893,24 @@ export const MESSAGES: Record<Lang, Messages> = {
       openTitle: 'Pending fix',
     },
 
+    specView: {
+      toggleLabel: 'Refer to Spec / Requirements',
+      tabFile: '📄 Select File',
+      tabPaste: '📝 Paste Directly',
+      fileSelectPlaceholder: 'Select file (.md / .txt)',
+      noFilesFound: 'No specification files (.md / .txt) found',
+      allSections: '(Entire file)',
+      sectionSelectPlaceholder: 'Select section / heading',
+      pastePlaceholder: 'Paste requirements from GitHub Issues, Notion, or spec notes...',
+      charCount: (chars, tokens) => `${chars.toLocaleString()} chars (~${tokens.toLocaleString()} tokens)`,
+      charCountOver: (chars, max) => `⚠ Limit exceeded: ${chars.toLocaleString()} / max ${max.toLocaleString()} chars (narrow down sections or shorten)`,
+      clearButton: 'Clear',
+      specBadge: 'Spec Match',
+      specQuoteLabel: 'Specification Requirement',
+      specUnverifiedBadge: 'Quote Not Found in Spec',
+      specVerifiedBadge: 'Verified against Spec',
+    },
+
     recipeSummaryMap: {
       bugs: 'Find patterns that cause runtime bugs (boundaries, null, concurrency, etc.)',
       errors: 'Find swallowed errors, missed exceptions, and overlooked failures',
@@ -852,6 +918,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       performance: 'Find redundant loops, expensive operations, N+1 queries, etc.',
       tests: 'Find missing test coverage and weak assertions',
       consistency: 'Find inconsistencies between changed parts and untouched code',
+      spec: 'Check the diff against a specification or requirements doc for contradictions',
       lint: 'Run all matching linters for the diff at once (no LLM)',
     },
     recipeGroupLlm: 'Review with LLM',
@@ -1377,6 +1444,11 @@ export const MESSAGES: Record<Lang, Messages> = {
       triageResetTitle: 'Click again to reset to new',
       chipEvidenceMismatch: '⚠ Evidence mismatch',
       chipEvidenceMismatchTitle: () => 'Quoted line was not found in this diff.',
+      chipSpecVerified: '📋 Spec Verified',
+      chipSpecMismatch: '⚠ Spec Mismatch',
+      specQuoteVerified: '📋 Specification Quote (Verified)',
+      specQuoteMismatch: '⚠ Specification Quote (Mismatch)',
+      specQuoteLabel: '📋 Specification Quote',
       chipAgentDid: 'Agent: Did',
       chipAgentSkipped: 'Agent: Skipped',
       chipAgentTitle: 'Reported by coding agent',

@@ -82,6 +82,7 @@ const BUILTIN_JA: &[(&str, &str)] = &[
     ("doc-claims", include_str!("../../../recipes/doc-claims.md")),
     ("doc-reality", include_str!("../../../recipes/doc-reality.md")),
     ("doc-steps", include_str!("../../../recipes/doc-steps.md")),
+    ("spec", include_str!("../../../recipes/spec.md")),
 ];
 
 const BUILTIN_EN: &[(&str, &str)] = &[
@@ -99,6 +100,7 @@ const BUILTIN_EN: &[(&str, &str)] = &[
     ("doc-claims", include_str!("../../../recipes/en/doc-claims.md")),
     ("doc-reality", include_str!("../../../recipes/en/doc-reality.md")),
     ("doc-steps", include_str!("../../../recipes/en/doc-steps.md")),
+    ("spec", include_str!("../../../recipes/en/spec.md")),
 ];
 
 /// macOS が自動挿入するメニュー項目の既知タイトルと、言語ごとの翻訳先。
@@ -158,6 +160,9 @@ const BUILTIN_TITLE_ALIASES: &[(&str, &str)] = &[
     ("Reality & Currency Check", "doc-reality"),
     ("手順・前提・決定の抜け", "doc-steps"),
     ("Gaps in Steps, Assumptions & Decisions", "doc-steps"),
+    ("設計書・仕様書との一致", "spec"),
+    ("基準の文書との一致", "spec"),
+    ("Specification Compliance", "spec"),
     ("リンター", "lint"),
     ("Linters", "lint"),
 ];
@@ -252,6 +257,7 @@ pub struct Texts {
     pub recipe_title_doc_claims: &'static str,
     pub recipe_title_doc_reality: &'static str,
     pub recipe_title_doc_steps: &'static str,
+    pub recipe_title_spec: &'static str,
     pub recipe_title_lint: &'static str,
 
     // ── 比較元（snapshot） ──
@@ -476,6 +482,7 @@ impl Texts {
             "doc-claims" => self.recipe_title_doc_claims,
             "doc-reality" => self.recipe_title_doc_reality,
             "doc-steps" => self.recipe_title_doc_steps,
+            "spec" => self.recipe_title_spec,
             "lint" => self.recipe_title_lint,
             _ => title,
         }
@@ -782,7 +789,7 @@ pub const OUTPUT_FORMAT_JA: &str = r#"## 出力形式
 
 次の JSON だけを返してください。前後に説明文やコードフェンスを付けないでください。
 
-{"findings":[{"file":"差分に出ているファイルのパス","line":新しい側の行番号（不明なら null）,"severity":"high|medium|low","title":"件名","detail":"本文","evidence":"差分からそのまま引用した 1 行"}]}
+{"findings":[{"file":"差分に出ているファイルのパス","line":新しい側の行番号（不明なら null）,"severity":"high|medium|low","title":"件名","detail":"本文","evidence":"差分からそのまま引用した 1 行","spec_quote":"基準の文書からそのまま引用した 1 行またはフレーズ（基準文書を参照する観点のみ）"}]}
 
 `title`（件名）と `detail`（本文）は、平易な日本語で、読む人が「つまり何？」と迷わないように書いてください。
 - `title`: メールの件名のように、読むだけで中身が分かる 1 文にする。「何をすると・どうなる」を言い切る。30 字前後。
@@ -791,6 +798,7 @@ pub const OUTPUT_FORMAT_JA: &str = r#"## 出力形式
 - `detail`: 「どんなとき（入力や状況）」「どうなる（誤った結果）」「どう直す」の 3 点を、短い文で書く。1 文ごとに改行する（JSON の文字列の中では `\n`）。1 文は 40 字前後、全体で 3〜4 文まで。専門用語は、できるだけ使わない。
   - 変数名・関数名・型名・列名・内部の用語（`i64`、`findings_count` など）は、`title` に書かない。`detail` に書くときも、短い言い換えを添える。
   - 「ユーザーの画面や結果で、何が起きるか」を、必ず 1 文入れる（例: 「左の件数が、20 桁の数字になる」）。コードの中の話だけで終わらせない。
+- 基準の文書を参照する観点（spec）のときは、基準の記述から一字一句違わずに抜き出した原文フレーズを `spec_quote` に必ず含めてください。
 
 指摘が無ければ {"findings":[]} を返してください。"#;
 
@@ -798,7 +806,7 @@ pub const OUTPUT_FORMAT_EN: &str = r#"## Output Format
 
 Return only the following JSON. Do not include any explanations or markdown code fences before or after.
 
-{"findings":[{"file":"path of the file in the diff","line":line number on the new side (or null if unknown),"severity":"high|medium|low","title":"subject line","detail":"body","evidence":"an exact line quoted from the diff"}]}
+{"findings":[{"file":"path of the file in the diff","line":line number on the new side (or null if unknown),"severity":"high|medium|low","title":"subject line","detail":"body","evidence":"an exact line quoted from the diff","spec_quote":"an exact line or phrase quoted from the specification (spec recipe only)"}]}
 
 Write `title` and `detail` in plain language so the reader never has to ask "so what is this about?".
 - `title`: Like an email subject, one sentence that tells the content on its own: what happens, under what action. About 12 words.
@@ -807,6 +815,7 @@ Write `title` and `detail` in plain language so the reader never has to ask "so 
 - `detail`: Cover three points in short sentences: when (input or situation), what goes wrong (the wrong result), and how to fix it. Put each sentence on its own line (`\n` inside the JSON string). At most 3-4 sentences, about 20 words each. Avoid jargon where possible.
   - Never put variable, function, type or column names or internal terms (`i64`, `findings_count`, ...) in `title`. In `detail`, add a short plain-language gloss next to any you must use.
   - Always include one sentence on what the user sees or gets (e.g. "the count on the left becomes a 20-digit number"). Do not stop at what happens inside the code.
+- When reviewing against a specification (spec recipe), include the exact quoted phrase from the specification in `spec_quote`.
 
 If there are no findings, return {"findings":[]}."#;
 
@@ -849,6 +858,7 @@ pub static TEXTS_JA: Texts = Texts {
     recipe_title_doc_claims: "根拠のない主張・数字",
     recipe_title_doc_reality: "実在性・最新性の要確認",
     recipe_title_doc_steps: "手順・前提・決定の抜け",
+    recipe_title_spec: "設計書・仕様書との一致",
     recipe_title_lint: "リンター",
 
     base_uncommitted: "未コミットの変更",
@@ -1065,6 +1075,7 @@ pub static TEXTS_EN: Texts = Texts {
     recipe_title_doc_claims: "Unsupported Claims & Numbers",
     recipe_title_doc_reality: "Reality & Currency Check",
     recipe_title_doc_steps: "Gaps in Steps, Assumptions & Decisions",
+    recipe_title_spec: "Specification Compliance",
     recipe_title_lint: "Linters",
 
     base_uncommitted: "Uncommitted changes",

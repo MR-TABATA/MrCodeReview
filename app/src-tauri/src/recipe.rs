@@ -21,6 +21,7 @@ fn parse_recipe(id: &str, source: &str, text: &str) -> Recipe {
         prompt: text.trim().to_string(),
         kind: Kind::Llm,
         needs_related: text.contains(RELATED_MARKER),
+        needs_spec: text.contains(mrcr_core::recipe::SPEC_MARKER),
     }
 }
 

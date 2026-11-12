@@ -654,6 +654,7 @@ mod tests {
             evidence: format!("let x{n} = 1;"),
             verified: true,
             rule: None,
+            ..Default::default()
         }
     }
 

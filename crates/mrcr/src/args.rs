@@ -143,6 +143,14 @@ pub struct ReviewArgs {
     #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(10..=3600))]
     pub timeout: u64,
 
+    /// 設計書・仕様書のファイルパス（例: docs/spec.md または docs/spec.md:##認証仕様）
+    #[arg(long, value_name = "PATH[:SECTION]")]
+    pub spec: Option<String>,
+
+    /// 設計書・要件のテキスト直接入力（貼り付け・標準入力相当）
+    #[arg(long, value_name = "TEXT")]
+    pub spec_text: Option<String>,
+
     /// 試験用: 外部 API を呼ばずにモック応答を使用する
     #[arg(long, hide = true)]
     pub mock: bool,

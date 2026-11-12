@@ -21,6 +21,7 @@ export interface RecipeBarState {
   estimatedTokens?: number | null;
   estimatedTimeText?: string;
   runError?: string;
+  specSlot?: HTMLElement | null;
 }
 
 export interface RecipeBarActions {
@@ -167,6 +168,7 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
     ...(plainChips.length || !groups.length
       ? [h('div', { class: 'recipe-chips' }, ...plainChips, groups.length ? null : runGroup)]
       : []),
+    st.specSlot ?? null,
     ...groups.map((g, i) =>
       h(
         'div',

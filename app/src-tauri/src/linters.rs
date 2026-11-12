@@ -266,6 +266,7 @@ impl Custom {
             source: "user".into(),
             kind: Kind::Tool,
             needs_related: false,
+            needs_spec: false,
             prompt,
         }
     }

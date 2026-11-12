@@ -1074,7 +1074,7 @@ mod tests {
     }
 
     fn finding(title: &str, detail: &str, evidence: &str, verified: bool) -> Finding {
-        Finding { file: "src/lib.rs".into(), line: Some(120), severity: "high".into(), title: title.into(), detail: detail.into(), evidence: evidence.into(), verified, rule: None }
+        Finding { file: "src/lib.rs".into(), line: Some(120), severity: "high".into(), title: title.into(), detail: detail.into(), evidence: evidence.into(), verified, rule: None, ..Default::default() }
     }
 
     /// A（3 件の指摘）→ B（A の 1 件目が「解消」と分かる。トークン報告なし）→ C（失敗）。別のリポジトリの D。
@@ -1533,8 +1533,8 @@ mod tests {
     fn recipe_title_lang_and_base_label_match_builtin_recipes_in_both_directions() {
         let ja_recipes = crate::recipe::list_with_lang(None, &[], "ja");
         let en_recipes = crate::recipe::list_with_lang(None, &[], "en");
-        assert_eq!(ja_recipes.len(), 14);
-        assert_eq!(en_recipes.len(), 14);
+        assert_eq!(ja_recipes.len(), 15);
+        assert_eq!(en_recipes.len(), 15);
         for (ja, en) in ja_recipes.iter().zip(en_recipes.iter()) {
             assert_eq!(ja.id, en.id);
             assert_eq!(

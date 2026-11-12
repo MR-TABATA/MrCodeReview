@@ -8,6 +8,8 @@ export interface Recipe {
   prompt: string;
   /** tool = LLM を使わず linter を実行する */
   kind: 'llm' | 'tool';
+  /** 基準文書（設計書・仕様書）を参照する観点か */
+  needs_spec?: boolean;
 }
 
 /** ボタンにするレシピと、気づいてほしいこと（設定の間違い、読まなかったファイルなど）。 */
@@ -130,6 +132,39 @@ export interface Finding {
   verified: boolean;
   /** linter の規則名（linter の指摘だけ） */
   rule: string | null;
+  /** 基準文書（設計書・仕様書）からの引用原文 */
+  spec_quote?: string | null;
+  /** spec_quote が基準文書に実在するか */
+  spec_verified?: boolean | null;
+}
+
+export interface SectionMeta {
+  level: number;
+  title: string;
+  line_start: number;
+}
+
+export interface SpecParam {
+  source_type: 'file' | 'paste';
+  file_path?: string | null;
+  section?: string | null;
+  paste_text?: string | null;
+}
+
+export interface SpecContext {
+  display_name: string;
+  content: string;
+  content_hash: string;
+  char_count: number;
+}
+
+export interface SpecPreview {
+  display_name: string;
+  content: string;
+  char_count: number;
+  estimated_tokens: number;
+  content_hash: string;
+  sections: SectionMeta[];
 }
 
 /** この指摘が、過去のどの指摘から仕分けを引き継いだか。 */
@@ -214,6 +249,8 @@ export interface ReviewRecord {
   notes: string[];
   /** 送った関連コード。関連コードを使う観点のときだけ */
   related: Related | null;
+  /** 参照した基準文書（設計書・仕様書）の情報 */
+  spec?: SpecContext | null;
   parse_error: string | null;
   error: string | null;
 }

@@ -253,6 +253,7 @@ mod tests {
             evidence: evidence.into(),
             verified: true,
             rule: None,
+            ..Default::default()
         }
     }
 

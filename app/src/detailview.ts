@@ -31,12 +31,19 @@ export function resultText(r: ReviewView): string {
 }
 
 export function detailPanel(r: ReviewView, fmt: DetailFmt): HTMLElement {
-  const table = (...rows: [string, string][]) => h('table', { class: 'kvt' }, ...rows.map(([k, v]) => h('tr', {}, h('th', {}, k), h('td', {}, v))));
+  const table = (...rows: ([string, string] | null)[]) =>
+    h(
+      'table',
+      { class: 'kvt' },
+      ...rows.filter((x): x is [string, string] => x !== null).map(([k, v]) => h('tr', {}, h('th', {}, k), h('td', {}, v))),
+    );
   const u = r.usage;
   const total = u.input_tokens === null && u.output_tokens === null ? null : (u.input_tokens ?? 0) + (u.output_tokens ?? 0);
 
   const count = (s: string) => r.triage.filter((x) => x === s).length;
   const verified = r.findings.filter((f) => f.verified).length;
+  const specVerified = r.findings.filter((f) => f.spec_verified === true).length;
+  const hasSpec = !!r.spec || r.findings.some((f) => f.spec_quote);
   const done = (r.finding_notes ?? []).filter((n) => n.done_at !== null).length;
   const reports = r.agent_reports ?? [];
   const did = reports.filter((a) => a?.verdict === 'did').length;
@@ -62,6 +69,7 @@ export function detailPanel(r: ReviewView, fmt: DetailFmt): HTMLElement {
     table(
       ['見る範囲', fmt.base || '未コミットの変更（HEAD から）'],
       ['HEAD', r.snapshot.head],
+      r.spec ? ['基準の文書', `${r.spec.display_name}（${nf.format(r.spec.char_count)} 文字）`] : null,
       ['差分の識別子', r.snapshot.diff_hash],
       ['差分の大きさ', `${nf.format(r.snapshot.diff_bytes)} B`],
       ['送ったファイル', `${r.snapshot.files.length} 件`],
@@ -83,6 +91,7 @@ export function detailPanel(r: ReviewView, fmt: DetailFmt): HTMLElement {
     table(
       ['件数', `${r.findings.length} 件`],
       ['根拠あり／根拠不一致', `${verified} 件／${r.findings.length - verified} 件`],
+      hasSpec ? ['設計書の根拠照合', `${specVerified} 件照合済／${r.findings.filter((f) => f.spec_verified === false).length} 件不一致`] : null,
       ['仕分け', `対応 ${count('fix')} ・待ち ${count('wait')} ・無視 ${count('dismiss')} ・未仕分け ${count('new')}`],
       ['対応済み（あなたの操作）', `${done} 件`],
       ['エージェントの申告', reports.some(Boolean) ? `対応した ${did} 件 ・対応しなかった ${skipped} 件（${sources}。どれも、エージェントの申告・判断で、MCR が確かめたものではありません）` : '（申告はありません）'],

@@ -188,6 +188,7 @@ mod tests {
                     evidence: "x".into(),
                     verified,
                     rule: None,
+                    ..Default::default()
                 }],
                 usage: Usage::default(),
                 model: "m".into(),

@@ -81,6 +81,9 @@ pub struct ReviewRecord {
     /// そのレビューを実行したときに有効だった設定（型を持たない JSON。項目が増減しても、古い記録が読める）。
     #[serde(default)]
     pub settings: Option<serde_json::Value>,
+    /// 参照した基準文書（設計書・仕様書）の情報。基準文書を参照するレビューのときだけ。
+    #[serde(default)]
+    pub spec: Option<crate::spec::SpecContext>,
     /// 応答から指摘を読めなかった理由。
     pub parse_error: Option<String>,
     /// 実行そのものが失敗した理由。
@@ -437,7 +440,7 @@ pub fn sample_record(id: &str, at: u64) -> ReviewRecord {
         id: id.into(),
         created_at: at,
         repo: "/r".into(),
-        recipe: Recipe { id: "security".into(), title: "セキュリティ".into(), source: "builtin".into(), prompt: "p".into(), kind: crate::recipe::Kind::Llm, needs_related: false },
+        recipe: Recipe { id: "security".into(), title: "セキュリティ".into(), source: "builtin".into(), prompt: "p".into(), kind: crate::recipe::Kind::Llm, needs_related: false, needs_spec: false },
         provider: ProviderInfo { id: "mock".into(), label: "m".into(), note: "n".into() },
         snapshot: SnapshotRecord { head: "h".into(), base: Default::default(), diff_hash: "d".into(), diff_bytes: 1, files: vec![], excluded: vec![] },
         prompt: "p".into(),
@@ -454,6 +457,7 @@ pub fn sample_record(id: &str, at: u64) -> ReviewRecord {
         related: None,
         repo_overrides: vec![],
         settings: None,
+        spec: None,
         parse_error: None,
         error: None,
     }
@@ -565,7 +569,7 @@ mod tests {
     #[test]
     fn history_rows_carry_triage_counts_that_add_up_to_the_findings() {
         let d = scratch("triage-counts");
-        let f = |t: &str| Finding { file: "a.rs".into(), line: Some(1), severity: "high".into(), title: t.into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None };
+        let f = |t: &str| Finding { file: "a.rs".into(), line: Some(1), severity: "high".into(), title: t.into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None, ..Default::default() };
         let mut r = rec("r1", 10);
         r.findings = (0..6).map(|i| f(&format!("f{i}"))).collect();
         append(&d, &r).unwrap();
@@ -602,7 +606,7 @@ mod tests {
     fn history_counts_are_none_not_zero_when_triage_cannot_be_read() {
         let d = scratch("triage-counts-broken");
         let mut r = rec("r1", 10);
-        r.findings = vec![Finding { file: "a.rs".into(), line: None, severity: "low".into(), title: "t".into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None }];
+        r.findings = vec![Finding { file: "a.rs".into(), line: None, severity: "low".into(), title: "t".into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None, ..Default::default() }];
         append(&d, &r).unwrap();
         let c = db::open(&d).unwrap();
         c.execute_batch("DROP TABLE triage; CREATE TABLE triage (x INTEGER);").unwrap();
@@ -730,7 +734,7 @@ mod tests {
         let dir = scratch("summ");
         let mut r = rec("a", 1);
         r.findings = vec![crate::findings::Finding {
-            file: "a".into(), line: None, severity: "low".into(), title: "t".into(), detail: "".into(), evidence: "e".into(), verified: true, rule: None,
+            file: "a".into(), line: None, severity: "low".into(), title: "t".into(), detail: "".into(), evidence: "e".into(), verified: true, rule: None, ..Default::default()
         }];
         let mut failed = rec("f", 2);
         failed.usage = Usage::default();
@@ -811,7 +815,7 @@ mod tests {
     #[test]
     fn deleting_reviews_removes_their_related_rows_only_and_the_open_count_follows() {
         let d = scratch("delete-reviews");
-        let f = |t: &str| Finding { file: "a.rs".into(), line: Some(1), severity: "high".into(), title: t.into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None };
+        let f = |t: &str| Finding { file: "a.rs".into(), line: Some(1), severity: "high".into(), title: t.into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None, ..Default::default() };
         for id in ["a", "b", "c"] {
             let mut r = rec(id, 10);
             r.findings = (0..3).map(|i| f(&format!("f{i}"))).collect();
@@ -867,7 +871,7 @@ mod tests {
     }
 
     fn review_with_findings(d: &Path, id: &str, at: u64, n: usize) {
-        let f = |t: &str| Finding { file: "a.rs".into(), line: Some(1), severity: "high".into(), title: t.into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None };
+        let f = |t: &str| Finding { file: "a.rs".into(), line: Some(1), severity: "high".into(), title: t.into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None, ..Default::default() };
         let mut r = rec(id, at);
         r.findings = (0..n).map(|i| f(&format!("f{i}"))).collect();
         append(d, &r).unwrap();

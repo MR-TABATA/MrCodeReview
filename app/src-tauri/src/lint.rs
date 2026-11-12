@@ -290,6 +290,7 @@ pub fn recipe(tool: Tool, root: &Path) -> Recipe {
         source: "builtin".into(),
         kind: Kind::Tool,
         needs_related: false,
+        needs_spec: false,
         prompt: format!(
             "LLM を使わず、差分に出ている {exts} のファイルに {} を実行します。トークンは使いません。\n\n\
              実行するコマンド:\n  {}\n  （作業ディレクトリ: リポジトリの根）\n\n\
@@ -518,6 +519,7 @@ pub fn to_findings_titled(title: &str, mut issues: Vec<Issue>, changed: &Changed
                 evidence: text.trim().to_string(),
                 verified: false, // 呼び出し側の `findings::verify` が、差分との一致を確かめて埋める
                 rule: Some(i.rule),
+                ..Default::default()
             }),
             None => dropped += 1,
         }
@@ -751,6 +753,7 @@ pub fn lint_recipe(plan: &Plan) -> Recipe {
         source: "builtin".into(),
         kind: Kind::Tool,
         needs_related: false,
+        needs_spec: false,
         prompt: format!(
             "LLM を使わず、差分に出ているファイルに合う linter を、全部実行します。トークンは使いません。\n\n\
              このリポジトリで使える linter（実行するコマンド）:\n{}\n\n\

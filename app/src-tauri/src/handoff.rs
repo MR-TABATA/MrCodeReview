@@ -168,7 +168,7 @@ mod tests {
         r.snapshot.head = "abcdef1234567890".into();
         r.findings = ["最初の欠陥", "次の欠陥", "見送る欠陥"]
             .iter()
-            .map(|t| Finding { file: "src/a.rs".into(), line: Some(3), severity: "high".into(), title: (*t).into(), detail: format!("{t}の理由"), evidence: format!("let x = {t};"), verified: true, rule: None })
+            .map(|t| Finding { file: "src/a.rs".into(), line: Some(3), severity: "high".into(), title: (*t).into(), detail: format!("{t}の理由"), evidence: format!("let x = {t};"), verified: true, rule: None, ..Default::default() })
             .collect();
         r
     }
