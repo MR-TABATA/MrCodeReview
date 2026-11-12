@@ -47,6 +47,7 @@ fn spec_recipe_without_spec_argument_exits_with_code_2() {
     let o = Command::new(env!("CARGO_BIN_EXE_mrcr"))
         .args(["review", "--recipe", "spec"])
         .env("MRCR_DATA_DIR", &data.0)
+        .env("ANTHROPIC_API_KEY", "sk-ant-test-dummy")
         .current_dir(&repo.0)
         .output()
         .unwrap();
@@ -62,6 +63,7 @@ fn spec_with_path_traversal_is_rejected_with_code_2() {
     let o = Command::new(env!("CARGO_BIN_EXE_mrcr"))
         .args(["review", "--recipe", "spec", "--spec", "../outside.md"])
         .env("MRCR_DATA_DIR", &data.0)
+        .env("ANTHROPIC_API_KEY", "sk-ant-test-dummy")
         .current_dir(&repo.0)
         .output()
         .unwrap();
@@ -81,6 +83,7 @@ fn spec_with_unsupported_extension_is_rejected_with_code_2() {
     let o = Command::new(env!("CARGO_BIN_EXE_mrcr"))
         .args(["review", "--recipe", "spec", "--spec", "docs/spec.rs"])
         .env("MRCR_DATA_DIR", &data.0)
+        .env("ANTHROPIC_API_KEY", "sk-ant-test-dummy")
         .current_dir(&repo.0)
         .output()
         .unwrap();
