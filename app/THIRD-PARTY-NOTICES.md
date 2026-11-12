@@ -24,7 +24,7 @@ This product includes the open-source software listed below. Each license text i
 - alloc-stdlib 0.2.4
 - block2 0.6.2
 - dispatch2 0.3.1
-- mrcr-core 1.6.0
+- mrcr-core 1.7.0
 - objc2 0.6.4
 - objc2-app-kit 0.3.2
 - objc2-core-foundation 0.3.2
@@ -10034,7 +10034,7 @@ SOFTWARE.
 
 <details><summary>ライブラリの一覧</summary>
 
-- mrcr-core 1.6.0（MIT。ソースに文面のファイルが無いため、標準の文面で補った）
+- mrcr-core 1.7.0（MIT。ソースに文面のファイルが無いため、標準の文面で補った）
 
 </details>
 
