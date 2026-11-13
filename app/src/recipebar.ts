@@ -2,7 +2,17 @@ import { h } from './dom';
 import { displayRecipeTitle } from './historyview';
 import { DEFAULT_LANG, msg, type Lang } from './i18n';
 import { DOC_IDS, TERRAFORM_IDS, TERRAFORM_LABEL } from './recipescope';
+import type { SkipWhy } from './runplan';
 import type { Recipe } from './types';
+
+/** 今回の実行から外した観点（理由ごとにまとめたもの）。 */
+export interface SkippedGroup {
+  reason: string;
+  why: SkipWhy;
+  titles: string[];
+  /** カードに「今回は実行しない」の印を付ける観点の id */
+  ids: string[];
+}
 
 export interface RecipeBarState {
   recipes: Recipe[];
@@ -11,6 +21,12 @@ export interface RecipeBarState {
   runIndex?: number; // 複数実行中のインデックス（0始まり）
   totalRuns?: number;
   disabledReason?: string;
+  /** 今回走らせる件数。チェックした件数より少ないときは、外した観点がある（無ければ、チェックした件数） */
+  runCount?: number;
+  /** 今回の実行から外した観点 */
+  skipped?: SkippedGroup[];
+  /** 「前回のレビューの続き」を選んでいて、前回の実行に含まれない観点があるときの注記（事実だけ。無ければ空） */
+  baseNote?: string;
   collapsed?: boolean;
   /** まとめて実行中に、すでに終わった観点の id */
   doneIds?: Set<string>;
@@ -54,6 +70,15 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
   } else {
     runLabel = m.runMultiple(checkedCount);
   }
+  // 実行できない観点を外すときは、走る件数と、外すものを、ボタンに出す（チェックの数と食い違うので、黙らない）
+  // 全体を止めているときは、止める理由だけを出す（外した観点の注記は、同じ理由の重複になる）
+  const skippedGroups = st.disabledReason ? [] : (st.skipped ?? []);
+  const runCount = st.runCount ?? checkedCount;
+  if (!isBusy && skippedGroups.length > 0 && runCount > 0) {
+    const kinds = new Set(skippedGroups.map((g) => g.why));
+    const what = kinds.size > 1 ? m.skipWhatMixed : kinds.has('spec') ? m.skipWhatSpec : m.skipWhatLlm;
+    runLabel = m.runSkipping(runCount, what);
+  }
 
   const canRun = !isBusy && checkedCount > 0 && !st.disabledReason;
 
@@ -64,6 +89,8 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
     const isCurrentRunning = isBusy && (st.running === r.title || st.running === r.id);
     const isDone = isBusy && !!st.doneIds?.has(r.id);
     const isWaiting = isBusy && isChecked && !isCurrentRunning && !isDone;
+    // 実行できなくて、今回は外す観点（チェックは残る）。理由は、カードのツールチップと、ボタンの下の注記に出す
+    const skipReason = isChecked && !isBusy ? skippedGroups.find((g) => g.ids.includes(r.id))?.reason : undefined;
 
     const cb = h('input', {
       type: 'checkbox',
@@ -80,13 +107,15 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
     const label = h(
       'label',
       {
-        class: `recipe-chip ${isChecked ? 'checked' : ''} ${isCurrentRunning ? 'running' : ''} ${isDone ? 'done' : ''} ${isWaiting ? 'waiting' : ''}`,
+        class: `recipe-chip ${isChecked ? 'checked' : ''} ${isCurrentRunning ? 'running' : ''} ${isDone ? 'done' : ''} ${isWaiting ? 'waiting' : ''} ${skipReason ? 'skipped' : ''}`,
+        ...(skipReason ? { title: skipReason } : {}),
       },
       cb,
       h('span', { class: 'recipe-title' }, displayRecipeTitle(r.title, lang)),
       isCurrentRunning ? h('span', { class: 'chip-spin', role: 'status', 'aria-label': m.runningLabel('') }) : null,
       isDone ? h('span', { class: 'chip-done', 'aria-hidden': 'true' }, '✓') : null,
       isTool ? h('span', { class: 'badge tool' }, 'Tool') : null,
+      skipReason ? h('span', { class: 'badge skip' }, m.skipBadge) : null,
     );
 
     return label;
@@ -129,11 +158,18 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
         )
       : null;
 
+  // ボタンのすぐ下に出す注記: 全体を止める理由／外した観点と理由／前回の続きの事実
+  const notes: string[] = [];
+  if (st.disabledReason) notes.push(st.disabledReason);
+  for (const g of skippedGroups) notes.push(m.skipNotice(g.titles, g.reason));
+  if (st.baseNote) notes.push(st.baseNote);
+
   const runBtn = h(
     'button',
     {
       class: 'run main-run-btn',
       disabled: !canRun,
+      title: notes.join('\n'),
       onclick: acts.onRun,
     },
     runLabel,
@@ -180,11 +216,19 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
     st.specSlot ?? null,
     // 実行ボタンは常に右寄せで配置（観点数やフォーム有無によらず右端に揃える）
     h('div', { class: 'recipe-run-row' }, runGroup),
+    notes.length
+      ? h(
+          'div',
+          { class: 'recipe-run-notes', role: 'status' },
+          ...(st.disabledReason ? [h('div', { class: 'disabled-reason' }, st.disabledReason)] : []),
+          ...skippedGroups.map((g) => h('div', { class: 'disabled-reason skip-note' }, m.skipNotice(g.titles, g.reason))),
+          ...(st.baseNote ? [h('div', { class: 'muted hint' }, st.baseNote)] : []),
+        )
+      : null,
     h(
       'div',
       { class: 'recipe-bar-meta' },
       h('span', { class: 'recipe-chips-tools' }, selectAllBtn, clearAllBtn, showAllBtn),
-      st.disabledReason ? h('span', { class: 'disabled-reason' }, st.disabledReason) : null,
       hints.length ? h('span', { class: 'muted hint' }, hints.join(' ・ ')) : null,
       st.runError ? h('span', { class: 'err' }, st.runError) : null,
     ),

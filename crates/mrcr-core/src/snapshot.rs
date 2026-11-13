@@ -103,6 +103,23 @@ fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// `git` を実行して、終了コードと出力を返す。**終了コードが 0 でなくても、エラーにしない**（コードで「該当なし」と「失敗」を分けるため）。
+/// `git` を起動できないときだけ `Err`。
+fn git_code(repo: &Path, args: &[&str]) -> Result<(i32, String, String), String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["-c", "core.quotepath=false"])
+        .args(args)
+        .output()
+        .map_err(|e| format!("git を起動できません: {e}"))?;
+    Ok((
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).trim().to_string(),
+    ))
+}
+
 /// FNV-1a 64。標準ライブラリの Hasher は版をまたいで値が変わりうるので使わない。
 pub fn fnv1a64(data: &[u8]) -> String {
     let mut h: u64 = 0xcbf29ce484222325;
@@ -415,6 +432,67 @@ pub struct BaseOption {
     pub value: String,
     pub label: String,
     pub hint: String,
+    /// 「前回のレビューの続き」のときだけ。画面が、日付と、選んだ観点との突き合わせに使う。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last: Option<LastInfo>,
+}
+
+/// 「前回のレビューの続き」の材料。履歴（`store::last_review`）が作る。DB には触れない（このモジュールは、履歴を知らない）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LastReview {
+    /// 前回（成功した最新の 1 件）の、レビュー時点の HEAD。
+    pub head: String,
+    /// 前回の実行時刻（UNIX ミリ秒）。
+    pub created_at: u64,
+    /// 前回と同じ HEAD で、そのリポジトリの最新のレビューが取られている観点。ここに無い観点は、前回より前の変更を見ていない。
+    pub covered: Vec<String>,
+}
+
+/// 画面に渡す、前回の情報。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LastInfo {
+    pub created_at: u64,
+    pub head_short: String,
+    pub covered: Vec<String>,
+}
+
+/// 「前回のレビューの続き」の選択肢。
+///
+/// - **使えないとき（該当なし）は `Ok(None)`**（黙って全体を送らない。選択肢を出さないだけ）: 前回の HEAD がいまの履歴に無い（rebase・amend・gc）／いまの HEAD の祖先でない（別のブランチ）。
+/// - **git 自体の失敗は `Err`（原因つき）。** 「該当なし」と同じ「出さない」にして、理由を失わせない（呼ぶ側が、原因を残す）。
+///
+/// 値は、解決したコミットのハッシュ（`fork_point` と同じ型）。差分は、これまでどおり、そのハッシュからいまの作業ツリーまで。
+pub fn last_review_option(root: &Path, last: &LastReview, lang: &str) -> Result<Option<BaseOption>, String> {
+    let head = last.head.trim();
+    if head.is_empty() || check_spec(head).is_err() {
+        return Ok(None);
+    }
+    // `--verify --quiet` は、無いとき、何も出さずに終了コード 1。それ以外の失敗（リポジトリを開けない、など）は、無いのではなく、エラー
+    let (code, out, err) = git_code(root, &["rev-parse", "--verify", "--quiet", &format!("{head}^{{commit}}")])?;
+    match code {
+        0 => {}
+        1 => return Ok(None),
+        c => return Err(format!("git rev-parse が失敗しました（終了コード {c}）: {err}")),
+    }
+    let hash = out.trim().to_string();
+    if hash.is_empty() {
+        return Ok(None);
+    }
+    // 終了コード 1 = 祖先でない（別のブランチ）。それ以外の失敗は、エラー
+    let (code, _, err) = git_code(root, &["merge-base", "--is-ancestor", &hash, "HEAD"])?;
+    match code {
+        0 => {}
+        1 => return Ok(None),
+        c => return Err(format!("git merge-base が失敗しました（終了コード {c}）: {err}")),
+    }
+    let short: String = hash.chars().take(7).collect();
+    let t = crate::i18n::Lang::from_code(lang).unwrap_or_default().texts();
+    Ok(Some(BaseOption {
+        value: hash,
+        label: t.base_last_review.into(),
+        hint: t.base_last_review_hint(&short),
+        last: Some(LastInfo { created_at: last.created_at, head_short: short, covered: last.covered.clone() }),
+    }))
 }
 
 fn default_branch(root: &Path) -> Option<String> {
@@ -455,6 +533,11 @@ pub fn list_bases(repo: &str) -> Result<Vec<BaseOption>, String> {
 }
 
 pub fn list_bases_with_lang(repo: &str, lang: &str) -> Result<Vec<BaseOption>, String> {
+    list_bases_with_last(repo, lang, None)
+}
+
+/// `list_bases_with_lang` に、「前回のレビューの続き」（`last`）を差し込む版。`last` が使えないときは、差し込まない。
+pub fn list_bases_with_last(repo: &str, lang: &str, last: Option<&LastReview>) -> Result<Vec<BaseOption>, String> {
     let top = toplevel(repo)?;
     let root = Path::new(&top);
     let t = crate::i18n::Lang::from_code(lang).unwrap_or_default().texts();
@@ -462,6 +545,7 @@ pub fn list_bases_with_lang(repo: &str, lang: &str) -> Result<Vec<BaseOption>, S
         value: "HEAD".into(),
         label: t.base_uncommitted.into(),
         hint: t.base_uncommitted_hint.into(),
+        last: None,
     }];
     // %x1f: 区切り文字（件名に何が入っても、壊れない）
     let log = git(root, &["log", "-n", "11", "--format=%H%x1f%h%x1f%P%x1f%s"]).unwrap_or_default();
@@ -478,7 +562,16 @@ pub fn list_bases_with_lang(repo: &str, lang: &str) -> Result<Vec<BaseOption>, S
                 value: "HEAD~1".into(),
                 label: t.base_latest.into(),
                 hint: t.base_latest_hint(short, subject),
+                last: None,
             });
+        }
+    }
+    if let Some(l) = last {
+        match last_review_option(root, l, lang) {
+            Ok(Some(o)) => out.push(o),
+            Ok(None) => {}
+            // git の失敗は、「該当なし」と同じ「出さない」にしつつ、原因を残す（ほかの選択肢は出す）
+            Err(e) => eprintln!("前回のレビューの続きを出せません（ほかの選択肢だけを出します）: {e}"),
         }
     }
     if let Some((name, hash, what)) = fork_point(root) {
@@ -486,6 +579,7 @@ pub fn list_bases_with_lang(repo: &str, lang: &str) -> Result<Vec<BaseOption>, S
             value: hash,
             label: t.base_fork_label(&name),
             hint: t.base_fork_hint(&what, &name),
+            last: None,
         });
     }
     // 最初のコミットの内容も含めて、全部。コミットが 1 つだけのリポジトリでも、使える
@@ -494,6 +588,7 @@ pub fn list_bases_with_lang(repo: &str, lang: &str) -> Result<Vec<BaseOption>, S
             value: ROOT_SPEC.into(),
             label: t.base_root.into(),
             hint: t.base_root_hint.into(),
+            last: None,
         });
     }
     for (hash, short, has_parent, subject) in commits.iter().skip(1) {
@@ -502,6 +597,7 @@ pub fn list_bases_with_lang(repo: &str, lang: &str) -> Result<Vec<BaseOption>, S
                 value: format!("{hash}^"),
                 label: format!("{short} {subject}"),
                 hint: t.base_commit_hint.into(),
+                last: None,
             });
         }
     }
@@ -724,6 +820,82 @@ mod tests {
         assert!(list_bases(d).unwrap().iter().all(|x| !x.label.contains("分岐点")));
         let _ = h2;
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn last_review_option_comes_after_the_latest_commit_and_diffs_from_the_previous_head() {
+        let dir = base_repo("last-ok");
+        let d = dir.to_str().unwrap();
+        let prev_head = run_git(&dir, &["rev-parse", "HEAD"]);
+        // 前回のレビューのあとに、1 つコミットする
+        std::fs::write(dir.join("d.txt"), "d\n").unwrap();
+        run_git(&dir, &["add", "d.txt"]);
+        run_git(&dir, &["commit", "-q", "-m", "d を足す"]);
+        let last = LastReview { head: prev_head.clone(), created_at: 1_700_000_000_000, covered: vec!["security".into()] };
+
+        let o = list_bases_with_last(d, "ja", Some(&last)).unwrap();
+        assert_eq!(o[1].value, "HEAD~1");
+        assert_eq!(o[2].value, prev_head, "直近のコミットの次。値は、解決したコミットのハッシュ");
+        assert_eq!(o[2].label, "前回のレビューの続き");
+        assert!(o[2].hint.contains(&prev_head[..7]), "{:?}", o[2]);
+        let info = o[2].last.as_ref().unwrap();
+        assert_eq!((info.created_at, info.head_short.as_str(), info.covered.as_slice()), (1_700_000_000_000, &prev_head[..7], &["security".to_string()][..]));
+        assert!(o.iter().filter(|b| b.last.is_some()).count() == 1, "他の選択肢には、前回の情報を付けない");
+
+        // 英語
+        let en = list_bases_with_last(d, "en", Some(&last)).unwrap();
+        assert_eq!(en[2].label, "Since the last review");
+
+        // 差分は、前回の HEAD から作業ツリーまで: 前回より前のコミット（b.txt）は入らず、前回のあとの変更（d.txt）は入る。
+        // 前回のレビュー時に未コミットだった変更（a.txt・c.txt）は、また出る（見落とす側ではなく、重複する側）
+        let snap = take_with_base(d, &Limits::default(), Some(&o[2].value)).unwrap();
+        let names: Vec<&str> = snap.files.iter().map(|f| f.path.as_str()).collect();
+        assert!(names.contains(&"d.txt"), "{names:?}");
+        assert!(!names.contains(&"b.txt"), "{names:?}");
+        assert!(names.contains(&"a.txt") && names.contains(&"c.txt"), "{names:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn last_review_option_is_not_offered_when_it_cannot_be_used() {
+        let dir = base_repo("last-unusable");
+        let d = dir.to_str().unwrap();
+        let root = Path::new(d);
+        let mk = |head: &str| LastReview { head: head.into(), created_at: 1, covered: vec![] };
+        // 履歴に無い（rebase・amend・gc で消えた）
+        assert!(last_review_option(root, &mk("0123456789abcdef0123456789abcdef01234567"), "ja").unwrap().is_none());
+        // 空・オプションに読まれる値
+        assert!(last_review_option(root, &mk(""), "ja").unwrap().is_none());
+        assert!(last_review_option(root, &mk("-x"), "ja").unwrap().is_none());
+        // 祖先でない（別のブランチ）
+        run_git(&dir, &["stash", "-u", "-q"]);
+        let first = run_git(&dir, &["rev-list", "--max-parents=0", "HEAD"]);
+        run_git(&dir, &["switch", "-q", "-c", "side", &first]);
+        std::fs::write(dir.join("side.txt"), "s\n").unwrap();
+        run_git(&dir, &["add", "."]);
+        run_git(&dir, &["commit", "-q", "-m", "side"]);
+        let side = run_git(&dir, &["rev-parse", "HEAD"]);
+        run_git(&dir, &["switch", "-q", "main"]);
+        assert!(last_review_option(root, &mk(&side), "ja").unwrap().is_none(), "別のブランチの HEAD は、続きにならない");
+        // 祖先なら出る（同じ地点でも）
+        assert!(last_review_option(root, &mk(&first), "ja").unwrap().is_some());
+        let here = run_git(&dir, &["rev-parse", "HEAD"]);
+        assert!(last_review_option(root, &mk(&here), "ja").unwrap().is_some(), "前回と同じ地点（未コミットの変更だけが続き）");
+        // 前回が無いとき、選択肢は従来と同じ
+        assert_eq!(list_bases_with_last(d, "ja", None).unwrap(), list_bases_with_lang(d, "ja").unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn last_review_option_tells_a_git_failure_apart_from_not_applicable() {
+        let mk = |head: &str| LastReview { head: head.into(), created_at: 1, covered: vec![] };
+        // 該当なし（履歴に無い）は Ok(None)。リポジトリを開けない（git の失敗）は Err で、原因が残る
+        let dir = base_repo("last-git-fail");
+        assert!(last_review_option(Path::new(dir.to_str().unwrap()), &mk("0123456789abcdef0123456789abcdef01234567"), "ja").unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+        let gone = std::env::temp_dir().join(format!("mrcr-no-such-dir-{}", std::process::id()));
+        let e = last_review_option(&gone, &mk("0123456789abcdef0123456789abcdef01234567"), "ja").unwrap_err();
+        assert!(e.contains("git rev-parse が失敗しました"), "{e}");
     }
 
     #[test]

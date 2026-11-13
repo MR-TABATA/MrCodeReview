@@ -109,6 +109,18 @@ export interface BaseOption {
   value: string;
   label: string;
   hint: string;
+  /** 「前回のレビューの続き」のときだけ */
+  last?: LastReviewInfo;
+}
+
+/** 前回のレビューの情報（バックエンドの `LastInfo`）。 */
+export interface LastReviewInfo {
+  /** 前回の実行時刻（UNIX ミリ秒） */
+  created_at: number;
+  /** 前回のレビュー時点の HEAD（短いハッシュ） */
+  head_short: string;
+  /** 前回と同じ HEAD で、最新のレビューが取られている観点の id。ここに無い観点は、前回より前の変更を見ていない */
+  covered: string[];
 }
 
 export interface SnapshotInfo {

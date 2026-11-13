@@ -144,6 +144,17 @@ export interface Messages {
     runSingle: (title: string) => string;
     runFallback: string;
     runMultiple: (count: number) => string;
+    /** 実行できない観点を外して走らせるときの、ボタンの文言 */
+    runSkipping: (count: number, what: string) => string;
+    skipWhatSpec: string;
+    skipWhatLlm: string;
+    skipWhatMixed: string;
+    /** 外した観点のカードに付ける印 */
+    skipBadge: string;
+    /** 外した観点の注記（理由つき） */
+    skipNotice: (titles: string[], reason: string) => string;
+    /** 「前回のレビューの続き」を選んでいて、前回の実行に含まれない観点があるとき */
+    lastReviewNote: (titles: string[]) => string;
     expandNewReview: string;
     showAllRecipes: (hidden: number) => string;
     showFitOnly: string;
@@ -177,6 +188,9 @@ export interface Messages {
     customItemDesc: string;
     translateBaseHint: (desc: string) => string;
     normalizeBaseTitle: (value: string, label: string) => { title: string; desc?: string } | null;
+    lastReviewTitle: (when: string) => string;
+    lastReviewDesc: (short: string, ran: string) => string;
+    allChangesSinceLastReview: (when: string, scope: string) => string;
   };
 
   // historyview.ts
@@ -572,6 +586,13 @@ export const MESSAGES: Record<Lang, Messages> = {
       runSingle: (title) => `「${title}」を実行`,
       runFallback: '実行',
       runMultiple: (count) => `選択した ${count} 件を実行`,
+      runSkipping: (count, what) => `${count} 件を実行（${what}は除く）`,
+      skipWhatSpec: '設計書の観点',
+      skipWhatLlm: 'LLM が要る観点',
+      skipWhatMixed: '実行できない観点',
+      skipBadge: '今回は実行しない',
+      skipNotice: (titles, reason) => `${titles.map((t) => `「${t}」`).join('')}は、今回は実行しません。${reason}`,
+      lastReviewNote: (titles) => `${titles.map((t) => `「${t}」`).join('')}は、前回の実行に含まれていないので、前回より前の変更は見ません。`,
       expandNewReview: '▸ 新しいレビュー',
       showAllRecipes: (hidden) => `すべての観点を見る（他に ${hidden} 件）`,
       showFitOnly: 'この差分に向く観点だけ',
@@ -604,6 +625,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       customItemDesc: 'コミット・ブランチ・タグの名前を入力する',
       translateBaseHint: (desc) => desc,
       normalizeBaseTitle: () => null,
+      lastReviewTitle: (when) => `前回のレビューの続き（${when}）`,
+      lastReviewDesc: (short, ran) => `${short} から、いまの作業ツリーまで。前回の実行: ${ran}。前回のレビュー時に未コミットだった変更は、また出ます`,
+      allChangesSinceLastReview: (when, scope) => `前回のレビュー（${when}）から、いままでの変更すべて${scope}`,
     },
 
     builtinRecipeTitles: {},
@@ -1140,6 +1164,13 @@ export const MESSAGES: Record<Lang, Messages> = {
       runSingle: (title) => `Run "${title}"`,
       runFallback: 'Run',
       runMultiple: (count) => `Run ${count} selected angles`,
+      runSkipping: (count, what) => `Run ${count} (excluding ${what})`,
+      skipWhatSpec: 'spec-based angles',
+      skipWhatLlm: 'angles that need an LLM',
+      skipWhatMixed: 'angles that cannot run',
+      skipBadge: 'Not running',
+      skipNotice: (titles, reason) => `Not running ${titles.map((t) => `"${t}"`).join(', ')} this time. ${reason}`,
+      lastReviewNote: (titles) => `${titles.map((t) => `"${t}"`).join(', ')}: not part of the last run, so changes made before it are not reviewed.`,
       expandNewReview: '▸ New review',
       showAllRecipes: (hidden) => `Show all angles (${hidden} more)`,
       showFitOnly: 'Only angles that fit this diff',
@@ -1170,6 +1201,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       customDesc: 'Custom location',
       customItemTitle: 'Custom location…',
       customItemDesc: 'Enter commit, branch, or tag name',
+      lastReviewTitle: (when) => `Since the last review (${when})`,
+      lastReviewDesc: (short, ran) => `From ${short} to the current working tree. Last run: ${ran}. Changes that were uncommitted at the last review appear again.`,
+      allChangesSinceLastReview: (when, scope) => `All changes since the last review (${when})${scope}`,
       translateBaseHint: (desc) => {
         if (desc.includes('最後のコミットと、コミットしていない変更')) {
           return desc.replace('（最後のコミットと、コミットしていない変更）', ' (Last commit and uncommitted changes)');

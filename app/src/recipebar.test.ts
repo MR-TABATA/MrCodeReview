@@ -249,4 +249,138 @@ describe('recipeBar', () => {
     const runIdxGroup = childrenGroup.indexOf(runContainerGroup);
     expect(runIdxGroup).toBe(specIdxGroup + 1);
   });
+
+  describe('実行できない観点を外して走らせる', () => {
+    const recipes: Recipe[] = [
+      ...sampleRecipes,
+      { id: 'spec', title: '設計書・仕様書との一致', kind: 'llm', source: 'builtin', prompt: '', needs_spec: true },
+    ];
+    const skippedSpec = [{ reason: '設計書を指定してください（ファイル選択または貼り付け）', why: 'spec' as const, titles: ['設計書・仕様書との一致'], ids: ['spec'] }];
+
+    it('外した観点があるとき、ボタンは走る件数と、外すものを言う。押せる', () => {
+      const st: RecipeBarState = {
+        recipes,
+        checkedIds: new Set(['bugs', 'security', 'lint', 'spec']),
+        running: '',
+        runCount: 3,
+        skipped: skippedSpec,
+      };
+      const el = recipeBar(st, acts());
+      const runBtn = el.querySelector('.main-run-btn') as HTMLButtonElement;
+      expect(runBtn.disabled).toBe(false);
+      expect(runBtn.textContent).toBe('3 件を実行（設計書の観点は除く）');
+      expect(runBtn.title).toContain('「設計書・仕様書との一致」は、今回は実行しません。設計書を指定してください');
+    });
+
+    it('外した観点と理由は、ボタンのすぐ下に出る（チェックは残る）', () => {
+      const st: RecipeBarState = {
+        recipes,
+        checkedIds: new Set(['bugs', 'spec']),
+        running: '',
+        runCount: 1,
+        skipped: skippedSpec,
+      };
+      const el = recipeBar(st, acts());
+      const note = el.querySelector('.recipe-run-notes .skip-note');
+      expect(note?.textContent).toBe('「設計書・仕様書との一致」は、今回は実行しません。設計書を指定してください（ファイル選択または貼り付け）');
+      expect(el.querySelector('.recipe-run-row')!.nextElementSibling).toBe(el.querySelector('.recipe-run-notes'));
+      const boxes = [...el.querySelectorAll('input[type=checkbox]')] as HTMLInputElement[];
+      const specBox = boxes[boxes.length - 1];
+      expect(specBox.checked).toBe(true);
+    });
+
+    it('LLM が要る観点を外すときは、そう言う。両方なら、一般的に言う', () => {
+      const llm = [{ reason: 'LLM を選んでください（右上の設定から）', why: 'llm' as const, titles: ['潜在バグ'], ids: ['bugs'] }];
+      const a = recipeBar({ recipes, checkedIds: new Set(['bugs', 'lint']), running: '', runCount: 1, skipped: llm }, acts());
+      expect((a.querySelector('.main-run-btn') as HTMLButtonElement).textContent).toBe('1 件を実行（LLM が要る観点は除く）');
+      const b = recipeBar({ recipes, checkedIds: new Set(['bugs', 'lint', 'spec']), running: '', runCount: 1, skipped: [...llm, ...skippedSpec] }, acts());
+      expect((b.querySelector('.main-run-btn') as HTMLButtonElement).textContent).toBe('1 件を実行（実行できない観点は除く）');
+    });
+
+    it('外すものが無いときは、従来のラベルのまま', () => {
+      const st: RecipeBarState = { recipes, checkedIds: new Set(['bugs', 'security']), running: '', runCount: 2, skipped: [] };
+      expect((recipeBar(st, acts()).querySelector('.main-run-btn') as HTMLButtonElement).textContent).toBe('選択した 2 件を実行');
+    });
+
+    it('全体を止めるとき（残りが無い）は、ボタンが無効で、理由が出る。ラベルは従来どおり', () => {
+      const st: RecipeBarState = {
+        recipes,
+        checkedIds: new Set(['spec']),
+        running: '',
+        disabledReason: '設計書を指定してください（ファイル選択または貼り付け）',
+        skipped: [],
+      };
+      const el = recipeBar(st, acts());
+      const runBtn = el.querySelector('.main-run-btn') as HTMLButtonElement;
+      expect(runBtn.disabled).toBe(true);
+      expect(el.querySelector('.recipe-run-notes .disabled-reason')?.textContent).toContain('設計書を指定してください');
+      expect(el.querySelectorAll('.skip-note')).toHaveLength(0);
+    });
+
+    it('全体を止める理由と、外した観点と、前回の続きの注記が全部あっても、同じ理由を 2 回出さない（止める理由 + 前回の事実の 2 行・ツールチップは 2 文）', () => {
+      const reason = '設計書を指定してください（ファイル選択または貼り付け）';
+      const st: RecipeBarState = {
+        recipes,
+        checkedIds: new Set(['spec']),
+        running: '',
+        disabledReason: reason,
+        skipped: skippedSpec, // 呼ぶ側が渡し忘れても、重複しない
+        baseNote: '「設計書・仕様書との一致」は、前回の実行に含まれていないので、前回より前の変更は見ません。',
+      };
+      const el = recipeBar(st, acts());
+      const lines = [...el.querySelectorAll('.recipe-run-notes > div')].map((d) => d.textContent);
+      expect(lines).toEqual([reason, st.baseNote]);
+      const tip = (el.querySelector('.main-run-btn') as HTMLButtonElement).title.split('\n');
+      expect(tip).toEqual([reason, st.baseNote]);
+      expect(el.querySelectorAll('.recipe-chip .badge.skip')).toHaveLength(0); // 止めているときは、カードにも印を出さない
+    });
+
+    it('外した観点のカードには、「今回は実行しない」の印と、理由のツールチップが付く（チェックは残る）', () => {
+      const st: RecipeBarState = {
+        recipes,
+        checkedIds: new Set(['bugs', 'spec']),
+        running: '',
+        runCount: 1,
+        skipped: skippedSpec,
+      };
+      const el = recipeBar(st, acts());
+      const chips = [...el.querySelectorAll('label.recipe-chip')] as HTMLElement[];
+      const specChip = chips.find((c) => c.textContent?.includes('設計書・仕様書との一致'))!;
+      const bugsChip = chips.find((c) => c.textContent?.includes('潜在バグ'))!;
+      expect(specChip.querySelector('.badge.skip')?.textContent).toBe('今回は実行しない');
+      expect(specChip.title).toContain('設計書を指定してください');
+      expect(specChip.classList.contains('skipped')).toBe(true);
+      expect((specChip.querySelector('input') as HTMLInputElement).checked).toBe(true);
+      expect(bugsChip.querySelector('.badge.skip')).toBeNull();
+      expect(bugsChip.title).toBe('');
+    });
+
+    it('チェックを外した観点には、印を付けない', () => {
+      const st: RecipeBarState = { recipes, checkedIds: new Set(['bugs']), running: '', runCount: 1, skipped: skippedSpec };
+      const el = recipeBar(st, acts());
+      expect(el.querySelectorAll('.badge.skip')).toHaveLength(0);
+    });
+
+    it('実行中は、印を出さない', () => {
+      const st: RecipeBarState = { recipes, checkedIds: new Set(['bugs', 'spec']), running: 'bugs', runCount: 1, skipped: skippedSpec };
+      expect(recipeBar(st, acts()).querySelectorAll('.badge.skip')).toHaveLength(0);
+    });
+
+    it('前回の続きで、前回の実行に含まれない観点があれば、事実だけを注記に出す', () => {
+      const st: RecipeBarState = {
+        recipes,
+        checkedIds: new Set(['bugs']),
+        running: '',
+        baseNote: '「潜在バグ」は、前回の実行に含まれていないので、前回より前の変更は見ません。',
+      };
+      const el = recipeBar(st, acts());
+      expect(el.querySelector('.recipe-run-notes .hint')?.textContent).toContain('前回より前の変更は見ません');
+      expect((el.querySelector('.main-run-btn') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('注記が何も無いときは、注記の欄を出さない', () => {
+      const el = recipeBar({ recipes, checkedIds: new Set(['bugs']), running: '' }, acts());
+      expect(el.querySelector('.recipe-run-notes')).toBeNull();
+    });
+  });
 });

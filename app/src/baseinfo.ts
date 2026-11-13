@@ -9,6 +9,13 @@ export const HEAD = 'HEAD';
 /** 「最初から（リポジトリ全体）」。何も無い状態から、いままで。バックエンドの `ROOT_SPEC` と同じ値。 */
 export const ROOT = ':root';
 
+/** 前回のレビューの時刻の表示（「11/13 09:42」）。言語に依らない。 */
+export function whenText(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** 「未コミットの変更」「b869afd 画面を組み替え… から」。古い記録（比較元が無い）は空。 */
 export function baseLabel(b: Base | null | undefined, lang: Lang = getAppLang()): string {
   if (!b || !b.hash) return '';
@@ -30,6 +37,7 @@ export function rangeText(b: Base | null | undefined, bases: BaseOption[], lang:
   if (b.spec === ROOT) return m.entireRepo;
   if (b.spec === 'HEAD~1') return m.lastCommitAndUncommitted;
   const opt = bases.find((o) => o.value === b.spec);
+  if (opt?.last) return m.allChangesSinceLastReview(whenText(opt.last.created_at), scope);
   if (b.spec.endsWith('^')) {
     const name = opt?.label ?? b.spec.slice(0, 7);
     return m.allChangesFromForward(name, scope);
@@ -45,7 +53,7 @@ export function rangeText(b: Base | null | undefined, bases: BaseOption[], lang:
  * コンボに出す項目。いま選んでいる値が一覧に無いとき（自分で入力した場所）は、先頭に足す。
  * 最後に、自分で入力する項目を付ける。
  */
-export function baseItems(bases: BaseOption[], current: string, lang: Lang = getAppLang()): ComboItem[] {
+export function baseItems(bases: BaseOption[], current: string, lang: Lang = getAppLang(), recipeTitle: (id: string) => string = (id) => id): ComboItem[] {
   const m = msg(lang).baseInfo;
   const items: ComboItem[] = bases.map((b) => {
     let title = b.label;
@@ -54,6 +62,11 @@ export function baseItems(bases: BaseOption[], current: string, lang: Lang = get
     if (norm) {
       title = norm.title;
       if (norm.desc !== undefined) desc = norm.desc;
+    }
+    // 「前回のレビューの続き」: いつ・どの観点を走らせたかを出す（言語は、画面の言語で組み立てる）
+    if (b.last) {
+      title = m.lastReviewTitle(whenText(b.last.created_at));
+      desc = m.lastReviewDesc(b.last.head_short, b.last.covered.map(recipeTitle).join(' / ') || '—');
     }
     return {
       value: b.value,

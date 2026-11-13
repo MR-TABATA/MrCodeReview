@@ -325,6 +325,55 @@ pub fn recent_ok(dir: &Path, repo: &str, recipe_id: &str, limit: usize) -> Vec<R
     )
 }
 
+/// 「前回のレビューの続き」の材料。同じリポジトリの、成功した最新のレビュー 1 件（観点は問わない）の、レビュー時点の HEAD。
+/// あわせて、その HEAD で最新のレビューが取られている観点を返す（それ以外の観点は、前回より前の変更を見ていない）。
+///
+/// - 成功したレビューが無い → `Ok(None)`。
+/// - **最新の記録に HEAD が無いときも `Ok(None)`**（その前の別のレビューを、黙って「前回」にしない）。
+/// - **履歴を開けない・行や記録を読めない → `Err`（原因つき）。「前回が無い」と「読めない」を区別する。**
+///
+/// 記録の全文は解析しない（`record` は、送った差分と応答の全文を含む大きな JSON）。まず列だけで「最新の 1 件」と「観点ごとの最新の 1 件」を決め、
+/// HEAD は、その行（観点の数だけ）からだけ取り出す。履歴が何件あっても、上限で切らない（古い観点の判定が欠けない）。
+pub fn last_review(dir: &Path, repo: &str) -> Result<Option<crate::snapshot::LastReview>, String> {
+    let conn = db::open(dir)?;
+    let w = |e: rusqlite::Error| format!("履歴を読めません: {e}");
+    let mut stmt = conn
+        .prepare("SELECT rowid, recipe_id, created_at FROM reviews WHERE repo = ?1 AND ok = 1 ORDER BY created_at DESC, rowid DESC")
+        .map_err(w)?;
+    let rows = stmt
+        .query_map([repo], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))
+        .map_err(w)?;
+    let mut latest: Option<(i64, u64)> = None;
+    // 観点ごとの、最新の行（新しい順に読むので、最初に出たものが最新）
+    let mut per_recipe: Vec<(String, i64)> = Vec::new();
+    for row in rows {
+        let (rowid, recipe_id, created_at) = row.map_err(w)?; // 行の読み取りに失敗したら、飛ばさずに返す
+        if latest.is_none() {
+            latest = Some((rowid, created_at.max(0) as u64));
+        }
+        if !per_recipe.iter().any(|(r, _)| *r == recipe_id) {
+            per_recipe.push((recipe_id, rowid));
+        }
+    }
+    let Some((latest_rowid, created_at)) = latest else { return Ok(None) };
+    let head_of = |rowid: i64| -> Result<String, String> {
+        conn.query_row("SELECT json_extract(record, '$.snapshot.head') FROM reviews WHERE rowid = ?1", [rowid], |r| r.get::<_, Option<String>>(0))
+            .map(|h| h.unwrap_or_default().trim().to_string())
+            .map_err(|e| format!("履歴の記録を読めません: {e}"))
+    };
+    let head = head_of(latest_rowid)?;
+    if head.is_empty() {
+        return Ok(None);
+    }
+    let mut covered = Vec::new();
+    for (recipe_id, rowid) in per_recipe {
+        if head_of(rowid)? == head {
+            covered.push(recipe_id);
+        }
+    }
+    Ok(Some(crate::snapshot::LastReview { head, created_at, covered }))
+}
+
 /// 履歴の一覧。記録の全文は読まず、列だけで作る。新しい順。
 /// 所要時間（ミリ秒）。同じ LLM・同じ観点で、新しい順に `limit` 件まで。
 /// 数えるのは、実行が最後まで行った（実行中のエラーが無い）もの。答えが返ったが、中身の JSON が読めなかったものも、時間は実際にかかっているので数える。
@@ -506,6 +555,88 @@ mod tests {
         assert!(recent_durations(&dir, "agy-cli", "tests", 10).is_empty());
         assert!(recent_durations(&scratch("durations-empty"), "agy-cli", "bugs", 10).is_empty(), "履歴が無ければ、空");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn mk_last(id: &str, at: u64, recipe: &str, head: &str, repo: &str) -> ReviewRecord {
+        let mut r = rec(id, at);
+        r.repo = repo.into();
+        r.recipe.id = recipe.into();
+        r.snapshot.head = head.into();
+        r
+    }
+
+    #[test]
+    fn last_review_is_the_latest_ok_review_of_the_repo_and_lists_the_recipes_run_at_that_head() {
+        let d = scratch("last-review");
+        let mut failed = mk_last("f", 90, "bugs", "H9", "/r");
+        failed.error = Some("タイムアウト".into()); // 失敗は「前回」に数えない
+        for r in [
+            mk_last("a", 10, "tests", "H1", "/r"),
+            mk_last("b", 20, "bugs", "H2", "/r"),
+            mk_last("c", 30, "security", "H2", "/r"),
+            mk_last("o", 40, "bugs", "HX", "/other"), // 別のリポジトリ
+            failed,
+        ] {
+            append(&d, &r).unwrap();
+        }
+        let l = last_review(&d, "/r").unwrap().unwrap();
+        assert_eq!((l.head.as_str(), l.created_at), ("H2", 30), "成功した最新の 1 件");
+        assert_eq!(l.covered, ["security", "bugs"], "H2 で最新のレビューが取られている観点（新しい順）。tests は前回より前（H1）にしか走っていない");
+        assert!(last_review(&d, "/nothing").unwrap().is_none(), "履歴が無いリポジトリは、前回なし（エラーではない）");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn last_review_breaks_a_tie_on_the_same_time_by_insertion_order() {
+        let d = scratch("last-review-tie");
+        for r in [mk_last("t1", 50, "security", "HA", "/r"), mk_last("t2", 50, "bugs", "HB", "/r")] {
+            append(&d, &r).unwrap();
+        }
+        let l = last_review(&d, "/r").unwrap().unwrap();
+        assert_eq!(l.head, "HB", "同じ時刻なら、あとから入れた方が前回");
+        assert_eq!(l.covered, ["bugs"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn last_review_does_not_cut_old_recipes_off_even_with_many_reviews() {
+        let d = scratch("last-review-many");
+        // いちばん古い 1 件（観点 tests）だけが、600 件より古い位置にある。同じ HEAD なので、前回に含まれるのが正しい
+        append(&d, &mk_last("old", 1, "tests", "H2", "/r")).unwrap();
+        for i in 0..600u64 {
+            append(&d, &mk_last(&format!("n{i}"), 100 + i, "bugs", "H2", "/r")).unwrap();
+        }
+        let l = last_review(&d, "/r").unwrap().unwrap();
+        assert_eq!(l.head, "H2");
+        assert!(l.covered.contains(&"tests".to_string()), "件数の上限で、古い観点が欠けない: {:?}", l.covered);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn last_review_does_not_fall_back_to_an_older_review_when_the_newest_has_no_head() {
+        let d = scratch("last-review-nohead");
+        append(&d, &mk_last("older", 10, "bugs", "H1", "/r")).unwrap();
+        append(&d, &mk_last("newest", 20, "bugs", "", "/r")).unwrap(); // HEAD が記録されていない最新
+        assert!(last_review(&d, "/r").unwrap().is_none(), "最新が HEAD 不明なら、その前の別のレビューを、黙って「前回」にしない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn last_review_returns_an_error_when_a_record_cannot_be_read() {
+        let d = scratch("last-review-broken");
+        append(&d, &mk_last("good", 10, "bugs", "H1", "/r")).unwrap();
+        db::open(&d)
+            .unwrap()
+            .execute(
+                "INSERT INTO reviews (id, created_at, repo, recipe_id, recipe_title, provider_id, provider_label, model, ok, findings_count, verified_count, duration_ms, record) \
+                 VALUES ('BAD', 20, '/r', 'x', 'x', 'p', 'p', 'm', 1, 0, 0, 1, 'broken')",
+                [],
+            )
+            .unwrap();
+        // 最新の記録が壊れている: 古い良い記録を「前回」にせず、読めなかったことを返す
+        let e = last_review(&d, "/r").unwrap_err();
+        assert!(e.contains("履歴の記録を読めません"), "{e}");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

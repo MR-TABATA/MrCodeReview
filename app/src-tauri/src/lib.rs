@@ -524,7 +524,19 @@ async fn list_bases(state: tauri::State<'_, AppState>, repo: String) -> Result<V
 /// 実行の入口の確認（登録済みか）つき。コマンドは、この関数だけを呼ぶ（配線の抜けを、テストで見つけるため）。
 fn list_bases_checked(data_dir: &Path, repo: &str) -> Result<Vec<snapshot::BaseOption>, String> {
     repos::require_registered(data_dir, repo)?;
-    snapshot::list_bases(repo)
+    // 「前回のレビューの続き」。履歴が読めない・前回が無い・前回の HEAD がいまの履歴に無いときは、出さない（黙って全体を送らない）
+    // 「履歴が無い」（None）と「履歴を読めない」（Err）は区別する。後者は、原因を残して、ほかの選択肢だけを出す
+    let last = match snapshot::toplevel(repo) {
+        Ok(top) => match store::last_review(data_dir, &top) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("前回のレビューを読めません（「前回のレビューの続き」は出しません）: {e}");
+                None
+            }
+        },
+        Err(_) => None, // リポジトリを解決できない理由は、この後の一覧の取得が、エラーとして返す
+    };
+    snapshot::list_bases_with_last(repo, i18n::Lang::default().code(), last.as_ref())
 }
 
 /// 押す前の確認。何を送り、何を送らないか。
@@ -1644,6 +1656,32 @@ mod tests {
         let id = repos::list(&data).unwrap().repos[0].id.clone();
         repos::unlink(&data, &id).unwrap();
         assert!(run_review_checked(&data, repo_s, "security", "mock", None).unwrap_err().contains("解除されています"));
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn list_bases_offers_the_last_review_only_after_a_review() {
+        let repo = demo_repo("last-review");
+        let repo_s = repo.to_str().unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-last-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        repos::add(&data, repo_s, None).unwrap();
+        let last_of = |o: Vec<snapshot::BaseOption>| o.into_iter().find(|b| b.last.is_some());
+        assert!(last_of(list_bases_checked(&data, repo_s).unwrap()).is_none(), "レビューをする前は、出さない");
+
+        let rec = run_review_checked(&data, repo_s, "security", "mock", None).unwrap();
+        assert!(rec.error.is_none());
+        let first = last_of(list_bases_checked(&data, repo_s).unwrap()).expect("レビューのあとに出る");
+        assert_eq!(first.value, rec.snapshot.head, "値は、前回のレビュー時点の HEAD のハッシュ");
+        assert_eq!(first.last.as_ref().unwrap().covered, ["security"]);
+
+        // コミットを 1 つ進めても、続きの起点は、前回の HEAD のまま
+        std::fs::write(repo.join("later.txt"), "x\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-q", "-m", "later"]);
+        let later = last_of(list_bases_checked(&data, repo_s).unwrap()).expect("コミットを進めても出る");
+        assert_eq!(later.value, rec.snapshot.head);
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
     }

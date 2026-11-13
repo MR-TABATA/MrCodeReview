@@ -54,6 +54,7 @@ function unattributedNote(n: number): string {
   return n > 0 ? `（フォルダが無くなっていて、どの登録のものか分からない履歴が ${n} 件あります。消していません）` : '';
 }
 import { recipeBar } from './recipebar';
+import { groupSkipped, launchOf, notCovered, planRun, type RunPlan } from './runplan';
 import { SpecView } from './specview';
 import { fixAllBySeverity as runFixAllBySeverity, fixAllSeverityButtons } from './fixall';
 import { newReportState, reportFileName, reportOptions, reportPanel, reportRange, htmlNodes, type ReportState } from './reportview';
@@ -755,15 +756,16 @@ function activeChecked(): Set<string> {
 
 /** 「リンター」を含む実行。許可が要る linter が今回の対象にあれば、先に確認する。 */
 function startCheckedRecipes(): void {
-  const checked = [...activeChecked()];
-  if (checked.length === 0) return;
-  if (checked.length === 1) {
-    const id = checked[0];
-    state.recipeId = id;
-    void runRecipe(id);
+  // 実行できない観点は外す（設計書が未指定の「設計書・仕様書との一致」など）。外したものは、画面に理由を出している。
+  // 何を始めるかは、`launchOf` の結果だけに従う（外した観点は、1 つの実行にも、まとめての実行にも入らない）
+  const launch = launchOf(currentRunPlan());
+  if (launch.kind === 'none') return;
+  if (launch.kind === 'single') {
+    state.recipeId = launch.id;
+    void runRecipe(launch.id);
     return;
   }
-  state.batch.picked = new Set(checked);
+  state.batch.picked = new Set(launch.ids);
   void runBatch();
 }
 
@@ -1551,7 +1553,10 @@ function baseChip(): HTMLElement | null {
     compact: true,
     prefix: msg(lang).mainUi.rangePrefix,
     placeholder: msg(lang).baseInfo.uncommitted,
-    items: baseItems(state.bases, state.base, lang),
+    items: baseItems(state.bases, state.base, lang, (id) => {
+      const r = state.recipes.find((x) => x.id === id);
+      return r ? displayRecipeTitle(r.title, lang) : id;
+    }),
     value: state.base,
     rerender: render,
     onChange: (v: string) => {
@@ -1635,18 +1640,20 @@ function headerView(): HTMLElement {
 }
 
 // ── レビューの実行と制御 ──────────────────────────────────────────────────────
-/** 実行できない理由（無ければ空）。実行ボタンも、「まとめて実行」も、同じ理由を使う。 */
-function runBlockReason(needsLlm: boolean, needsSpec: boolean = false): string {
+/**
+ * いま押したら何が走るか。実行できない観点（設計書が未指定・LLM が未選択）は、今回の実行から外して、できるものを走らせる。
+ * 実行ボタンも、実行の入口も、同じ計画を使う。全体を止めるのは、リポジトリ未選択・差分なし・外したら 1 つも残らないとき。
+ */
+function currentRunPlan(): RunPlan {
   const p = state.preview;
-  if (!state.repo) return 'リポジトリを選んでください（左サイドバー）';
-  if (!p) return '';
-  if (!p.files.length) return state.base === HEAD ? '送る差分がありません（未コミットの変更が無い）' : '送る差分がありません（この範囲に、変更が無い）';
-  if (needsLlm && !state.providerId) return 'LLM を選んでください（右上の設定から）';
-  if (needsSpec) {
-    if (!state.specParam) return '設計書を指定してください（ファイル選択または貼り付け）';
-    if (!state.specValid) return '設計書の内容を確認してください（文字数上限を超えているか無効です）';
-  }
-  return '';
+  return planRun(pickedRecipes(state.recipes, activeChecked()), {
+    hasRepo: !!state.repo,
+    filesCount: p ? p.files.length : null,
+    baseIsHead: state.base === HEAD,
+    hasProvider: !!state.providerId,
+    hasSpec: !!state.specParam,
+    specValid: state.specValid,
+  });
 }
 
 /** 「まとめて実行」で選んだ観点の、過去の実績を引く（まだ読んでいないものだけ）。 */
@@ -1718,9 +1725,9 @@ function clearAllRecipes(): void {
 }
 
 function runCheckedRecipes(): void {
-  const checked = [...activeChecked()];
-  if (checked.length === 0) return;
-  if (checked.includes('lint') && needsTrustNow().length > 0) {
+  const plan = currentRunPlan();
+  if (plan.block || plan.run.length === 0) return;
+  if (plan.run.some((r) => r.id === 'lint') && needsTrustNow().length > 0) {
     state.lintConfirm = true;
     render();
     return;
@@ -1735,7 +1742,6 @@ function recipeBarSection(): HTMLElement {
   const collapsed = !state.recipeBarExpanded && !busy && !!state.selected && !state.runError;
   const active = activeChecked();
   const chosen = pickedRecipes(state.recipes, active);
-  const needsLlm = chosen.some((r) => r.kind !== 'tool');
   const needsSpec = active.has('spec') || chosen.some((r) => r.id === 'spec' || r.needs_spec);
   if (specViewInstance) {
     if (needsSpec && !specViewInstance.isEnabled()) {
@@ -1746,7 +1752,15 @@ function recipeBarSection(): HTMLElement {
     specViewInstance.setDisabled(busy);
   }
   const specSlot = needsSpec && specViewInstance ? specViewInstance.root : null;
-  const disabledReason = runBlockReason(needsLlm, needsSpec);
+  const plan = currentRunPlan();
+  const disabledReason = plan.block;
+  const lang = getAppLang();
+  // 見積もりは、実際に走らせる観点だけで出す（全部が外れるときは、0 件）
+  const toRun = plan.run;
+  // 「前回のレビューの続き」を選んでいるとき、前回の実行に含まれない観点があれば、事実だけを出す
+  const lastOpt = state.bases.find((b) => b.value === state.base && b.last);
+  const missed = notCovered(toRun, lastOpt?.last?.covered);
+  const baseNote = !busy && missed.length ? msg(lang).recipeBar.lastReviewNote(missed.map((r) => displayRecipeTitle(r.title, lang))) : '';
 
   let currentTitle = state.running;
   let runIdx = 0;
@@ -1761,7 +1775,7 @@ function recipeBarSection(): HTMLElement {
     if (curRecipe) currentTitle = curRecipe.title;
   }
 
-  const est = batchEstimate(chosen, state.batchStats, p?.estimated_input_tokens ?? null, state.providerId === 'mock');
+  const est = batchEstimate(toRun, state.batchStats, p?.estimated_input_tokens ?? null, state.providerId === 'mock');
 
   return recipeBar(
     {
@@ -1771,11 +1785,15 @@ function recipeBarSection(): HTMLElement {
       runIndex: runIdx,
       totalRuns,
       disabledReason,
+      runCount: plan.block ? undefined : plan.run.length,
+      // 全体を止めるときは、止める理由だけを出す（同じ理由を 2 回出さない）
+      skipped: plan.block ? [] : groupSkipped(plan.skipped, (r) => displayRecipeTitle(r.title, lang)),
+      baseNote,
       collapsed,
       doneIds,
       hiddenCount: state.showAllRecipes ? 0 : state.recipes.length - shownRecipes().length,
       showAll: state.showAllRecipes,
-      estimatedTokens: p && chosen.length ? p.estimated_input_tokens * chosen.filter((r) => r.kind !== 'tool').length : null,
+      estimatedTokens: p && toRun.length ? p.estimated_input_tokens * toRun.filter((r) => r.kind !== 'tool').length : null,
       estimatedTimeText: est.timeText,
       runError: state.runError,
       specSlot,
