@@ -164,19 +164,22 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
   return h(
     'section',
     { class: 'recipe-bar-top' },
-    // 観点のチップと実行ボタンを、同じ格子に並べる。Terraform・文書の観点は、見出しつきの別の塊にする（実行ボタンは、いちばん後ろの塊に置く）
+    // 観点のチップ一覧（一般観点およびTerraform・文書グループ）
     ...(plainChips.length || !groups.length
-      ? [h('div', { class: 'recipe-chips' }, ...plainChips, groups.length ? null : runGroup)]
+      ? [h('div', { class: 'recipe-chips' }, ...plainChips)]
       : []),
-    st.specSlot ?? null,
-    ...groups.map((g, i) =>
+    ...groups.map((g) =>
       h(
         'div',
         { class: 'recipe-group' },
         h('div', { class: 'recipe-group-label' }, g.label),
-        h('div', { class: 'recipe-chips' }, ...g.chips, i === groups.length - 1 ? runGroup : null),
+        h('div', { class: 'recipe-chips' }, ...g.chips),
       ),
     ),
+    // 参照する設計書・仕様書の指定フォーム（あれば）
+    st.specSlot ?? null,
+    // 実行ボタンは常に右寄せで配置（観点数やフォーム有無によらず右端に揃える）
+    h('div', { class: 'recipe-run-row' }, runGroup),
     h(
       'div',
       { class: 'recipe-bar-meta' },

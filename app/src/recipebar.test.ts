@@ -162,20 +162,21 @@ describe('recipeBar', () => {
     expect(open.textContent).toContain('この差分に向く観点だけ');
   });
 
-  it('Terraform の観点は、見出し「Terraform」つきの別の塊にし、実行ボタンはその塊に入る', () => {
+  it('Terraform の観点は、見出し「Terraform」つきの別の塊にし、実行ボタンは右寄せの recipe-run-row に配置される', () => {
     const recipes = [...sampleRecipes, { id: 'tf-state', title: '状態・アドレス', source: 'builtin' as const, prompt: '', kind: 'llm' as const }];
     const el = recipeBar({ recipes, checkedIds: new Set(), running: '' }, acts());
     const group = el.querySelector('.recipe-group') as HTMLElement;
     expect(group.querySelector('.recipe-group-label')?.textContent).toBe('Terraform');
     expect(group.querySelectorAll('.recipe-chip')).toHaveLength(1);
-    expect(group.querySelector('.main-run-btn')).not.toBeNull();
+    expect(group.querySelector('.main-run-btn')).toBeNull(); // チップグリッド内には入らない
+    expect(el.querySelector('.recipe-run-row .main-run-btn')).not.toBeNull();
     expect(el.querySelectorAll('.recipe-chip')).toHaveLength(recipes.length);
     const only = recipeBar({ recipes: recipes.slice(-1), checkedIds: new Set(), running: '' }, acts());
     expect(only.querySelectorAll('.recipe-chips')).toHaveLength(1);
     expect(only.querySelectorAll('.main-run-btn')).toHaveLength(1);
   });
 
-  it('文書の観点は、見出し「文書」（英語は Documents）つきの別の塊にし、Terraform もあれば、実行ボタンはいちばん後ろの塊に入る', () => {
+  it('文書の観点は、見出し「文書」（英語は Documents）つきの別の塊にし、実行ボタンは右寄せの recipe-run-row に配置される', () => {
     const doc = (id: string, title: string): Recipe => ({ id, title, source: 'builtin', prompt: '', kind: 'llm' });
     const tf: Recipe = { id: 'tf-state', title: '状態・アドレス', source: 'builtin', prompt: '', kind: 'llm' };
     const recipes = [...sampleRecipes, doc('doc-claims', '根拠のない主張・数字'), doc('doc-steps', '手順・前提・決定の抜け')];
@@ -184,17 +185,19 @@ describe('recipeBar', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].querySelector('.recipe-group-label')?.textContent).toBe('文書');
     expect(groups[0].querySelectorAll('.recipe-chip')).toHaveLength(2);
-    expect(groups[0].querySelector('.main-run-btn')).not.toBeNull();
+    expect(groups[0].querySelector('.main-run-btn')).toBeNull(); // チップグリッド内には入らない
+    expect(el.querySelector('.recipe-run-row .main-run-btn')).not.toBeNull();
     expect(el.querySelectorAll('.main-run-btn')).toHaveLength(1);
     expect(el.querySelectorAll('.recipe-chip')).toHaveLength(recipes.length);
     expect(recipeBar({ recipes, checkedIds: new Set(), running: '' }, acts(), 'en').querySelector('.recipe-group-label')?.textContent).toBe('Documents');
 
-    // Terraform と文書の両方: 塊は Terraform → 文書の順で、実行ボタンは、最後（文書）の塊だけに入る
+    // Terraform と文書の両方: 塊は Terraform → 文書の順で、実行ボタンは右寄せの recipe-run-row に出る
     const both = recipeBar({ recipes: [...recipes, tf], checkedIds: new Set(), running: '' }, acts());
     const g = both.querySelectorAll('.recipe-group');
     expect([...g].map((x) => x.querySelector('.recipe-group-label')?.textContent)).toEqual(['Terraform', '文書']);
     expect(g[0].querySelector('.main-run-btn')).toBeNull();
-    expect(g[1].querySelector('.main-run-btn')).not.toBeNull();
+    expect(g[1].querySelector('.main-run-btn')).toBeNull();
+    expect(both.querySelector('.recipe-run-row .main-run-btn')).not.toBeNull();
     expect(both.querySelectorAll('.main-run-btn')).toHaveLength(1);
 
     // 文書の観点だけ（ほかが無い）でも、実行ボタンが 1 つ出る
@@ -213,5 +216,37 @@ describe('recipeBar', () => {
     expect(chip(1).classList.contains('running')).toBe(true);
     expect(chip(1).querySelector('.chip-spin')).not.toBeNull();
     expect(chip(2).classList.contains('waiting')).toBe(true);
+  });
+
+  it('specSlot（仕様書フォーム）があるときは、フォームの直下に右寄せで実行ボタンを配置する', () => {
+    const specSlot = document.createElement('div');
+    specSlot.className = 'test-spec-slot';
+
+    // 1. グループなし（コード観点のみ）の場合
+    const elPlain = recipeBar(
+      { recipes: sampleRecipes, checkedIds: new Set(['bugs']), running: '', specSlot },
+      acts(),
+    );
+    expect(elPlain.querySelector('.recipe-chips .main-run-btn')).toBeNull();
+    const childrenPlain = Array.from(elPlain.children);
+    const specIdxPlain = childrenPlain.indexOf(specSlot);
+    const runContainerPlain = elPlain.querySelector('.recipe-run-row') as HTMLElement;
+    const runIdxPlain = childrenPlain.indexOf(runContainerPlain);
+    expect(specIdxPlain).toBeGreaterThanOrEqual(0);
+    expect(runIdxPlain).toBe(specIdxPlain + 1); // フォームの直後に実行ボタン
+
+    // 2. グループあり（文書観点など）の場合
+    const doc = (id: string, title: string): Recipe => ({ id, title, source: 'builtin', prompt: '', kind: 'llm' });
+    const recipesWithDoc = [...sampleRecipes, doc('doc-claims', '根拠のない主張・数字')];
+    const elGroup = recipeBar(
+      { recipes: recipesWithDoc, checkedIds: new Set(['bugs']), running: '', specSlot },
+      acts(),
+    );
+    expect(elGroup.querySelector('.recipe-group .main-run-btn')).toBeNull();
+    const childrenGroup = Array.from(elGroup.children);
+    const specIdxGroup = childrenGroup.indexOf(specSlot);
+    const runContainerGroup = elGroup.querySelector('.recipe-run-row') as HTMLElement;
+    const runIdxGroup = childrenGroup.indexOf(runContainerGroup);
+    expect(runIdxGroup).toBe(specIdxGroup + 1);
   });
 });
