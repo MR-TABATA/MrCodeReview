@@ -1192,3 +1192,10 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
   border: 1px solid rgba(46, 160, 67, 0.4);
 }
 
+
+/* 実行ボタンの直下の注記（止める理由・外した観点・前回の続きの事実）。右寄せのボタンに合わせて、右端に揃える */
+.recipe-run-notes { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; margin-top: 4px; text-align: right; }
+
+/* 実行できなくて、今回は外す観点のカード（チェックは残る）。薄くして、印を付ける */
+.recipe-chip.skipped { opacity: 0.7; border-style: dashed; }
+.badge.skip { font-size: 10px; color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 0 5px; margin-left: 6px; white-space: nowrap; }

@@ -268,6 +268,7 @@ pub struct Texts {
     pub base_root: &'static str,
     pub base_root_hint: &'static str,
     pub base_commit_hint: &'static str,
+    pub base_last_review: &'static str,
 
     // ── レポート・Excel 共通ラベル ──
     pub list_sep: &'static str,
@@ -415,6 +416,13 @@ impl Texts {
         match self.lang {
             Lang::Ja => format!("{what}（{name} から分かれたあとの変更すべて）"),
             Lang::En => format!("{what} (All changes since branching from {name})"),
+        }
+    }
+
+    pub fn base_last_review_hint(&self, short: &str) -> String {
+        match self.lang {
+            Lang::Ja => format!("{short} から、いまの作業ツリーまで（前回のレビュー時に未コミットだった変更は、また出る）"),
+            Lang::En => format!("From {short} to the current working tree (changes that were uncommitted at the last review appear again)"),
         }
     }
 
@@ -868,6 +876,7 @@ pub static TEXTS_JA: Texts = Texts {
     base_root: "最初から（リポジトリ全体）",
     base_root_hint: "最初のコミットの内容も含めて、何も無い状態から、いままでの全部。大きいと、送る量の上限で切れる",
     base_commit_hint: "このコミット以降すべて（このコミットを含む）",
+    base_last_review: "前回のレビューの続き",
 
     list_sep: "、",
     state_fix: "対応",
@@ -1085,6 +1094,7 @@ pub static TEXTS_EN: Texts = Texts {
     base_root: "Entire repository (from start)",
     base_root_hint: "From the initial commit to current state. If large, limits may truncate.",
     base_commit_hint: "All changes from this commit forward (including this commit)",
+    base_last_review: "Since the last review",
 
     list_sep: ", ",
     state_fix: "Fix",

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { baseItems, baseLabel, hasLastCommit, rangeText, CUSTOM } from './baseinfo';
+import { baseItems, baseLabel, hasLastCommit, rangeText, whenText, CUSTOM } from './baseinfo';
 import type { Base, BaseOption } from './types';
 
 const B = (over: Partial<Base>): Base => ({ spec: 'HEAD~1', hash: 'b869afd0123456789012345678901234567890ab', subject: '画面を組み替え', ...over });
@@ -133,5 +133,57 @@ describe('rangeText（「送る内容」の、見る範囲の 1 行）', () => {
       group: 'From Recent Commits',
     });
     expect(items[items.length - 1]).toMatchObject({ value: CUSTOM, title: 'Custom location…', group: 'Other' });
+  });
+});
+
+describe('前回のレビューの続き', () => {
+  const at = new Date(2026, 10, 13, 9, 42).getTime();
+  const LAST: BaseOption = {
+    value: 'f00dbabe0123456789012345678901234567890a',
+    label: '前回のレビューの続き',
+    hint: 'f00dbab から、いまの作業ツリーまで',
+    last: { created_at: at, head_short: 'f00dbab', covered: ['bugs', 'security'] },
+  };
+  const WITH = [...OPTS.slice(0, 2), LAST, ...OPTS.slice(2)];
+  const titles = (id: string): string => ({ bugs: '潜在バグ', security: 'セキュリティ' } as Record<string, string>)[id] ?? id;
+
+  it('時刻の表示は「月/日 時:分」', () => {
+    expect(whenText(at)).toBe('11/13 09:42');
+  });
+
+  it('一覧には、時刻と、前回に走らせた観点と、未コミットがまた出る注意を出す（日本語）', () => {
+    const it_ = baseItems(WITH, 'HEAD', 'ja', titles).find((i) => i.value === LAST.value)!;
+    expect(it_.title).toBe('前回のレビューの続き（11/13 09:42）');
+    expect(it_.desc).toContain('f00dbab から、いまの作業ツリーまで');
+    expect(it_.desc).toContain('前回の実行: 潜在バグ / セキュリティ');
+    expect(it_.desc).toContain('また出ます');
+    expect(it_.group).toBe('範囲を選ぶ');
+  });
+
+  it('英語の画面では、英語で組み立てる', () => {
+    const it_ = baseItems(WITH, 'HEAD', 'en', titles).find((i) => i.value === LAST.value)!;
+    expect(it_.title).toBe('Since the last review (11/13 09:42)');
+    expect(it_.desc).toContain('Last run: 潜在バグ / セキュリティ');
+  });
+
+  it('前回の観点が無いときは、ダッシュで埋める（空にしない）', () => {
+    const none: BaseOption = { ...LAST, last: { ...LAST.last!, covered: [] } };
+    const it_ = baseItems([none], 'HEAD', 'ja', titles).find((i) => i.value === none.value)!;
+    expect(it_.desc).toContain('前回の実行: —');
+  });
+
+  it('他の選択肢の表示は変わらない', () => {
+    const base = baseItems(OPTS, 'HEAD', 'ja');
+    const withLast = baseItems(WITH, 'HEAD', 'ja', titles).filter((i) => i.value !== LAST.value);
+    expect(withLast).toEqual(base);
+  });
+
+  it('見る範囲の 1 行は、前回のレビューの時刻で言う（選んだ値はハッシュ）', () => {
+    expect(rangeText(B({ spec: LAST.value, hash: LAST.value }), WITH, 'ja')).toBe('前回のレビュー（11/13 09:42）から、いままでの変更すべて（コミット済み・未コミット・新規ファイル）');
+    expect(rangeText(B({ spec: LAST.value, hash: LAST.value }), WITH, 'en')).toContain('All changes since the last review (11/13 09:42)');
+  });
+
+  it('一覧に無い値（前回が使えなくなった）は、これまでどおりの表示', () => {
+    expect(rangeText(B({ spec: LAST.value, hash: LAST.value }), OPTS, 'ja')).toContain('から、いままでの変更すべて');
   });
 });
