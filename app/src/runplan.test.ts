@@ -140,3 +140,33 @@ describe('notCovered: 前回の実行に含まれない観点', () => {
     expect(notCovered(run, []).map((x) => x.id)).toEqual(['bugs', 'security']);
   });
 });
+
+describe('planRun の理由は、言語に従う', () => {
+  const JAPANESE = /[぀-ヿ一-鿿]/;
+  const base: RunInputs = { hasRepo: true, filesCount: 3, baseIsHead: true, hasProvider: true, hasSpec: true, specValid: true };
+  const rec = (id: string, over: Record<string, unknown> = {}) => ({ id, title: id, ...over }) as never;
+
+  it('英語では、止める理由も外す理由も英語。日本語は混ざらない', () => {
+    const reasons = [
+      planRun([rec('a')], { ...base, hasRepo: false }, 'en').block,
+      planRun([rec('a')], { ...base, filesCount: 0 }, 'en').block,
+      planRun([rec('a')], { ...base, filesCount: 0, baseIsHead: false }, 'en').block,
+      planRun([rec('spec', { needs_spec: true })], { ...base, hasSpec: false }, 'en').block,
+      planRun([rec('spec', { needs_spec: true })], { ...base, specValid: false }, 'en').block,
+      planRun([rec('a')], { ...base, hasProvider: false }, 'en').block,
+      planRun([rec('spec', { needs_spec: true })], { ...base, hasProvider: false, hasSpec: false }, 'en').block,
+    ];
+    for (const r of reasons) {
+      expect(r).not.toBe('');
+      expect(r).not.toMatch(JAPANESE);
+    }
+    // 未コミットの変更が無いときと、範囲に変更が無いときは、別の文
+    expect(reasons[1]).not.toBe(reasons[2]);
+  });
+
+  it('日本語では、これまでどおり日本語。言語を渡さなければ、アプリの言語（既定は日本語）', () => {
+    expect(planRun([rec('a')], { ...base, filesCount: 0 }, 'ja').block).toBe('送る差分がありません（未コミットの変更が無い）');
+    expect(planRun([rec('a')], { ...base, filesCount: 0, baseIsHead: false }, 'ja').block).toBe('送る差分がありません（この範囲に、変更が無い）');
+    expect(planRun([rec('a')], { ...base, hasRepo: false }).block).toBe(REASON_NO_REPO);
+  });
+});

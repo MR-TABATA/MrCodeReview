@@ -33,7 +33,9 @@ export function reviewName(title: string, seq: number | null | undefined, lang: 
   return seq ? `${t}_${seq}` : t;
 }
 
-const when = (ms: number, lang: Lang): string => new Date(ms).toLocaleString(msg(lang).bcp47);
+/** 日時の表示。言語（`bcp47`）に合わせる。 */
+export const formatWhen = (ms: number, lang: Lang = getAppLang()): string => new Date(ms).toLocaleString(msg(lang).bcp47);
+const when = formatWhen;
 
 /** 履歴に、いつも出す件数（新しいほうから）。これより古いものは、「未」が残っていなければ、日付ごとにまとめる */
 export const RECENT_KEEP = 5;

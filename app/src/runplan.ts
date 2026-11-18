@@ -4,6 +4,7 @@
 // チェックは勝手に外さない（見えない変更をしない）。全体が実行できないとき（リポジトリ未選択・差分なし）と、
 // 外したら 1 つも残らないときだけ、従来どおり、全体を止める。
 
+import { getAppLang, msg, type Lang } from './i18n';
 import type { Recipe } from './types';
 
 /** 画面の状態から取り出す、判断に要る値。 */
@@ -38,32 +39,34 @@ export interface RunPlan {
   skipped: SkippedRecipe[];
 }
 
-export const REASON_NO_REPO = 'リポジトリを選んでください（左サイドバー）';
-export const REASON_NO_LLM = 'LLM を選んでください（右上の設定から）';
-export const REASON_NO_SPEC = '設計書を指定してください（ファイル選択または貼り付け）';
-export const REASON_BAD_SPEC = '設計書の内容を確認してください（文字数上限を超えているか無効です）';
+/** 理由の文言は、`locales.ts`（日英）。これらは、日本語の文言（テストが、既定の言語で比べる）。 */
+export const REASON_NO_REPO = msg('ja').mainUi.runPlan.noRepo;
+export const REASON_NO_LLM = msg('ja').mainUi.runPlan.noLlm;
+export const REASON_NO_SPEC = msg('ja').mainUi.runPlan.noSpec;
+export const REASON_BAD_SPEC = msg('ja').mainUi.runPlan.badSpec;
 
 /** 設計書（基準文書）が要る観点か。 */
 export const needsSpecOf = (r: Recipe): boolean => r.id === 'spec' || !!r.needs_spec;
 
-export function planRun(chosen: Recipe[], i: RunInputs): RunPlan {
-  if (!i.hasRepo) return { block: REASON_NO_REPO, run: chosen, skipped: [] };
+export function planRun(chosen: Recipe[], i: RunInputs, lang: Lang = getAppLang()): RunPlan {
+  const t = msg(lang).mainUi.runPlan;
+  if (!i.hasRepo) return { block: t.noRepo, run: chosen, skipped: [] };
   // 差分をまだ読めていないあいだは、止めない（読めたら判断する）
   if (i.filesCount === null) return { block: '', run: chosen, skipped: [] };
   if (i.filesCount === 0) {
-    const block = i.baseIsHead ? '送る差分がありません（未コミットの変更が無い）' : '送る差分がありません（この範囲に、変更が無い）';
+    const block = i.baseIsHead ? t.noDiffUncommitted : t.noDiffRange;
     return { block, run: chosen, skipped: [] };
   }
 
   const run: Recipe[] = [];
   const skipped: SkippedRecipe[] = [];
-  const specReason = !i.hasSpec ? REASON_NO_SPEC : REASON_BAD_SPEC;
+  const specReason = !i.hasSpec ? t.noSpec : t.badSpec;
   for (const recipe of chosen) {
     const specMissing = needsSpecOf(recipe) && (!i.hasSpec || !i.specValid);
     const llmMissing = recipe.kind !== 'tool' && !i.hasProvider;
     if (llmMissing) {
       // 設計書も足りないなら、両方を出す（設計書だけを直しても、LLM が無ければ、まだ走らない）
-      skipped.push({ recipe, why: 'llm', reason: specMissing ? `${REASON_NO_LLM} ／ ${specReason}` : REASON_NO_LLM });
+      skipped.push({ recipe, why: 'llm', reason: specMissing ? `${t.noLlm} ／ ${specReason}` : t.noLlm });
     } else if (specMissing) {
       skipped.push({ recipe, why: 'spec', reason: specReason });
     } else {

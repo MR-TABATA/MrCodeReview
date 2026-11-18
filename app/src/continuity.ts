@@ -1,6 +1,6 @@
 // 結果画面の「前回 → 今回」の内訳と、絞り込み。画面の状態には触れない（テストできるように、main.ts から切り出した）。
 
-import type { Fate, ReviewView } from './types';
+import type { Fate, ReviewSummary, ReviewView } from './types';
 
 export type ContinuityKind = 'persist' | 'gone' | 'new' | 'other';
 
@@ -55,4 +55,39 @@ export function shownByContinuity(c: Continuity | null, kind: ContinuityKind | n
 export function filteredFates(r: ReviewView, c: Continuity | null, kind: ContinuityKind | null): Fate[] {
   if (!kind || !c) return r.fates ?? [];
   return kind === 'gone' ? c.gone : kind === 'other' ? c.other : [];
+}
+
+/** 流れの行の 1 つ。 */
+export interface FlowItem {
+  id: string;
+  /** 連番（番号の無い記録は、流れに入れない） */
+  seq: number;
+  failed: boolean;
+  findings: number;
+  created_at: number;
+  /** いま開いているレビュー */
+  now: boolean;
+}
+
+export interface Flow {
+  items: FlowItem[];
+  /** 表示した分より前（古いほう）が、まだある */
+  hasBefore: boolean;
+  /** 表示した分より後（新しいほう）が、まだある */
+  hasAfter: boolean;
+}
+
+/**
+ * 同じリポジトリ・同じ観点の流れ（「1 → 2 → [3]」）。履歴にある分だけで、番号の無い記録は入れない（「0」などと出さない）。
+ * 長いときは、いまのレビューの近くの `max` 件だけ。2 件に満たなければ null（出さない）。
+ */
+export function flowOf(history: readonly ReviewSummary[], r: { id: string; repo: string; recipe: { title: string } }, max = 8): Flow | null {
+  const all = history
+    .filter((s): s is ReviewSummary & { seq: number } => s.repo === r.repo && s.recipe_title === r.recipe.title && typeof s.seq === 'number' && s.seq > 0)
+    .sort((a, b) => a.seq - b.seq);
+  if (all.length < 2) return null;
+  const at = Math.max(0, all.findIndex((s) => s.id === r.id));
+  const from = Math.max(0, Math.min(at - Math.floor(max / 2), all.length - max));
+  const items = all.slice(from, from + max).map((s) => ({ id: s.id, seq: s.seq, failed: s.failed, findings: s.findings, created_at: s.created_at, now: s.id === r.id }));
+  return { items, hasBefore: from > 0, hasAfter: from + max < all.length };
 }

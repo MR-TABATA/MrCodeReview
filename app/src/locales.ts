@@ -403,6 +403,44 @@ export interface Messages {
     chipNewTitle: string;
     chipPersist: (no: number) => string;
     chipPersistTitle: string;
+    /** 結果の先頭の「前回 → 今回」の帯・流れの行・前回の指摘の行方・「前回の続きから」の文言 */
+    /** 実行の計画（`runplan.ts`）が、実行できない理由として出す文言 */
+    runPlan: {
+      noRepo: string;
+      noLlm: string;
+      noSpec: string;
+      badSpec: string;
+      noDiffUncommitted: string;
+      noDiffRange: string;
+    };
+    continuity: {
+      stateLabel: Record<TriageState, string>;
+      carryNote: (stateLabel: string, exact: boolean) => string;
+      prev: string;
+      prevTitle: (when: string) => string;
+      prevRun: (name: string, findings: number) => string;
+      thisRun: (name: string, findings: number) => string;
+      persist: string;
+      gone: string;
+      fresh: string;
+      other: string;
+      chipOnTitle: string;
+      chipOffTitle: string;
+      note: string;
+      flowLabel: (title: string) => string;
+      flowItem: (seq: number, failed: boolean, findings: number) => string;
+      flowNowTitle: string;
+      flowOpenTitle: (when: string) => string;
+      panelTitle: (name: string) => string;
+      panelTitleDefault: string;
+      noTitle: string;
+      fateBefore: (stateLabel: string, file: string) => string;
+      fateNote: string;
+      fate: Record<'persists' | 'gone' | 'not_reraised' | 'file_missing' | 'unknown', { badge: string; text: string }>;
+      continueBtn: (name: string, findings: number) => string;
+      continueTitle: (when: string) => string;
+      continueFailed: (reason: string) => string;
+    };
     resultEmpty: string;
     tabFindings: (count: number) => string;
     tabDiff: string;
@@ -860,6 +898,48 @@ export const MESSAGES: Record<Lang, Messages> = {
       chipNewTitle: '前回のレビューには無かった指摘です',
       chipPersist: (no) => `継続（前回 #${no}）`,
       chipPersistTitle: '前回の指摘と同じと判定しました。押すと、前回のレビューのその指摘へ移ります',
+      runPlan: {
+        noRepo: 'リポジトリを選んでください（左サイドバー）',
+        noLlm: 'LLM を選んでください（右上の設定から）',
+        noSpec: '設計書を指定してください（ファイル選択または貼り付け）',
+        badSpec: '設計書の内容を確認してください（文字数上限を超えているか無効です）',
+        noDiffUncommitted: '送る差分がありません（未コミットの変更が無い）',
+        noDiffRange: '送る差分がありません（この範囲に、変更が無い）',
+      },
+      continuity: {
+        stateLabel: { new: '未仕分け', fix: '対応', wait: '待ち', dismiss: '無視' },
+        carryNote: (stateLabel, exact) => `前回までの仕分け「${stateLabel}」を引き継ぎました` + (exact ? '' : '（引用がほぼ同じ）'),
+        prev: '前回 ',
+        prevTitle: (when) => `${when} に実行。押すと、そのレビューを開きます`,
+        prevRun: (name, findings) => `${name}（指摘 ${findings} 件）`,
+        thisRun: (name, findings) => `今回 ${name}（指摘 ${findings} 件）`,
+        persist: '継続',
+        gone: '解消',
+        fresh: '新規',
+        other: '再指摘なし・不明',
+        chipOnTitle: 'もう一度押すと、絞り込みを外します',
+        chipOffTitle: 'この種類だけに絞ります',
+        note: '「解消」は、引用した行がコードから消えたことだけを根拠にした推定です。「再指摘なし・不明」は、今回は指摘されなかったが引用の行はまだある・ファイルが無い・引用が空、のいずれかです。',
+        flowLabel: (title) => `${title} の流れ `,
+        flowItem: (seq, failed, findings) => `${seq}（${failed ? '失敗' : `${findings} 件`}）`,
+        flowNowTitle: 'いま開いているレビュー',
+        flowOpenTitle: (when) => `${when} に実行。押すと、開きます`,
+        panelTitle: (name) => `${name} からの変化`,
+        panelTitleDefault: '前回のレビューからの変化',
+        noTitle: '(見出しなし)',
+        fateBefore: (stateLabel, file) => `（前回は「${stateLabel}」・${file}）`,
+        fateNote: '「解消」は、引用した行がファイルの現在の内容から消えたことだけを根拠にした推定です。直ったことの証明ではありません。',
+        fate: {
+          persists: { badge: '継続', text: '今回も指摘されました（まだ直っていません）' },
+          gone: { badge: '解消', text: '引用した行がコードから消えました（変更されたと見られます）' },
+          not_reraised: { badge: '再指摘なし', text: '今回は指摘されませんでしたが、引用した行はまだコードにあります' },
+          file_missing: { badge: 'ファイルなし', text: 'このファイルが見つかりません（削除・移動の可能性）' },
+          unknown: { badge: '不明', text: '引用が空などで、調べられませんでした' },
+        },
+        continueBtn: (name, findings) => `前回の続きから（${name}・${findings} 件）`,
+        continueTitle: (when) => `${when} に実行したレビューの続きから、この観点を実行します`,
+        continueFailed: (reason) => `前回の続きを調べられませんでした: ${reason}`,
+      },
       resultEmpty: '上で観点を選んで実行するか、右の履歴を選ぶと、ここに結果（指摘・差分・記録）が出ます。',
       tabFindings: (count) => `指摘（${count}）`,
       tabDiff: '差分',
@@ -1501,6 +1581,48 @@ export const MESSAGES: Record<Lang, Messages> = {
       chipNewTitle: 'Not in the previous review',
       chipPersist: (no) => `Still open (prev #${no})`,
       chipPersistTitle: 'Judged to be the same finding as in the previous review. Click to jump to it',
+      runPlan: {
+        noRepo: 'Select a repository (left sidebar)',
+        noLlm: 'Select an LLM (from Settings, top right)',
+        noSpec: 'Specify a specification document (choose a file or paste text)',
+        badSpec: 'Check the specification document (it exceeds the size limit or is invalid)',
+        noDiffUncommitted: 'Nothing to send (no uncommitted changes)',
+        noDiffRange: 'Nothing to send (no changes in this range)',
+      },
+      continuity: {
+        stateLabel: { new: 'Unsorted', fix: 'Fix', wait: 'Wait', dismiss: 'Dismiss' },
+        carryNote: (stateLabel, exact) => `Carried the previous status "${stateLabel}"` + (exact ? '' : ' (quote nearly identical)'),
+        prev: 'Previous ',
+        prevTitle: (when) => `Run at ${when}. Click to open it`,
+        prevRun: (name, findings) => `${name} (${findings} ${findings === 1 ? 'finding' : 'findings'})`,
+        thisRun: (name, findings) => `This run ${name} (${findings} ${findings === 1 ? 'finding' : 'findings'})`,
+        persist: 'Still open',
+        gone: 'Resolved',
+        fresh: 'New',
+        other: 'Not re-raised / unknown',
+        chipOnTitle: 'Click again to remove the filter',
+        chipOffTitle: 'Show only this kind',
+        note: '"Resolved" is only an estimate: the quoted line is no longer in the code. "Not re-raised / unknown" means the finding was not raised this time but the quoted line is still there, the file is missing, or the quote is empty.',
+        flowLabel: (title) => `${title}: `,
+        flowItem: (seq, failed, findings) => `${seq} (${failed ? 'failed' : findings})`,
+        flowNowTitle: 'The review that is open now',
+        flowOpenTitle: (when) => `Run at ${when}. Click to open it`,
+        panelTitle: (name) => `Changes since ${name}`,
+        panelTitleDefault: 'Changes since the previous review',
+        noTitle: '(no title)',
+        fateBefore: (stateLabel, file) => `(was "${stateLabel}" · ${file})`,
+        fateNote: '"Resolved" is only an estimate: the quoted line is no longer in the file. It is not proof that the problem was fixed.',
+        fate: {
+          persists: { badge: 'Still open', text: 'Raised again this time (not fixed yet)' },
+          gone: { badge: 'Resolved', text: 'The quoted line is gone from the code (it seems to have been changed)' },
+          not_reraised: { badge: 'Not re-raised', text: 'Not raised this time, but the quoted line is still in the code' },
+          file_missing: { badge: 'File missing', text: 'This file cannot be found (it may have been deleted or moved)' },
+          unknown: { badge: 'Unknown', text: 'Could not be checked (for example, the quote is empty)' },
+        },
+        continueBtn: (name, findings) => `Continue from previous (${name}, ${findings})`,
+        continueTitle: (when) => `Runs this angle from the review run at ${when}`,
+        continueFailed: (reason) => `Could not check the previous run: ${reason}`,
+      },
       resultEmpty:
         'Select review angles above to run, or choose a review from History on the right to view results (findings, diff, logs).',
       tabFindings: (count) => `Findings (${count})`,
