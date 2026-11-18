@@ -2033,8 +2033,8 @@ mod tests {
         // 差分から消えただけで「解消」とは言わない。ファイルには引用の行がまだある。
         assert_eq!(r2.fates.len(), 2, "前回の指摘は、仕分けを問わず全件が対象");
         assert_eq!(r2.fates[0].fate, "not_reraised");
-        // 未仕分けだった架空の指摘は、引用がファイルに無い（モックの見本）ので、「消えた」と判定される
-        assert_eq!((r2.fates[1].from_index, r2.fates[1].fate.as_str(), r2.fates[1].state_before.as_str()), (1, "gone", "new"));
+        // 未仕分けだった架空の指摘は、引用が差分に無かった（根拠不一致の見本）。引用の行が、もともと無いので、「消えた」とは言わない（不明）
+        assert_eq!((r2.fates[1].from_index, r2.fates[1].fate.as_str(), r2.fates[1].state_before.as_str()), (1, "unknown", "new"));
 
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);

@@ -22,6 +22,7 @@ import { findingOrder, isDoneFinding } from './findingorder';
 import { agentBox, agentDone, agentNotice, agentStatus, agentStatusBar, foldedRow, newAgentUi, refreshAgentReportsOnFocus, type AgentActions } from './agentview';
 import { handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffActions, type HandoffTarget } from './handoffview';
 import { displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
+import { providerLabel, providerNote } from './providertext';
 import { continuityOf, filteredFates, flowOf, shownByContinuity, type ContinuityKind } from './continuity';
 import { icon, type IconName } from './icons';
 import { debounced } from './debounce';
@@ -1936,7 +1937,7 @@ function llmConfigSection(lang: Lang = getAppLang()): HTMLElement {
         void loadBatchStats();
       },
     },
-    ...state.providers.map((p) => h('option', { value: p.id, ...(p.id === state.providerId ? { selected: true } : {}) }, p.label)),
+    ...state.providers.map((p) => h('option', { value: p.id, ...(p.id === state.providerId ? { selected: true } : {}) }, providerLabel(p, lang))),
   );
 
   return h(
@@ -1945,7 +1946,7 @@ function llmConfigSection(lang: Lang = getAppLang()): HTMLElement {
     h('h3', {}, m.llmHeading),
     h('p', { class: 'muted', style: 'font-size: 12px; margin-bottom: 8px;' }, m.llmSubtitle),
     select_,
-    current?.note ? noteBox(current.note) : null,
+    current?.note ? noteBox(providerNote(current, lang)) : null,
     byokSection(lang),
   );
 }
@@ -2347,7 +2348,6 @@ function fatesPanel(fates: Fate[], title?: string): HTMLElement | null {
         );
       }),
     ),
-    h('p', { class: 'note' }, t.fateNote),
   );
 }
 
@@ -2989,7 +2989,7 @@ function resultView(): HTMLElement {
     body = h(
       'div',
       {},
-      h('p', { class: 'note' }, r.provider.note),
+      h('p', { class: 'note' }, providerNote(r.provider, getAppLang())),
       h('h3', {}, `送ったファイル（${r.snapshot.files.length}）`),
       h('ul', { class: 'files' }, ...r.snapshot.files.map((f) => h('li', {}, h('code', {}, f.path), ` ${nf.format(f.bytes)} B`))),
       h('h3', {}, `送らなかったもの（${r.snapshot.excluded.length}）`),

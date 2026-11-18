@@ -99,7 +99,7 @@ export function handoffResult(target: HandoffTarget, ui: HandoffUi, act: Handoff
  * 仕分けを始める前だけ、ヒントを出す。`extra` は、右端に置く部品（「すべて開く」「対応内容を取り込む」）。
  */
 export function handoffTop(info: HandoffInfo, extra?: HTMLElement | null): HTMLElement {
-  const hint = info.fix === 0 && info.done === 0 && info.wait === 0 && info.dismiss === 0 ? h('span', { class: 'muted hint' }, '指摘を「対応」にすると、各指摘の横に「CLI に渡す」が出ます。') : null;
+  const hint = info.fix === 0 && info.done === 0 && info.wait === 0 && info.dismiss === 0 ? h('span', { class: 'muted hint' }, msg(getAppLang()).mainUi.handoffHint) : null;
   return h('div', { class: 'handoff' }, h('div', { class: 'row' }, hint, extra ?? null));
 }
 

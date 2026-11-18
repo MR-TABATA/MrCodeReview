@@ -41,7 +41,7 @@ pub struct Fate {
     /// "gone" 引用の行がファイルから消えた（コードが変わった）
     /// "not_reraised" 引用の行はまだあるが、今回は指摘されなかった
     /// "file_missing" ファイルが無い
-    /// "unknown" 引用が空などで調べられない
+    /// "unknown" 引用が空・引用がそもそも差分に見つからなかった（根拠不一致）などで、調べられない
     pub fate: String,
 }
 
@@ -209,7 +209,8 @@ pub fn fates(
         let state = prev_triage.get(i).map(String::as_str).unwrap_or(crate::triage::NEW);
         let fate = if carried.contains(&i) {
             "persists"
-        } else if norm(&f.evidence).is_empty() {
+        } else if norm(&f.evidence).is_empty() || !f.verified {
+            // 引用が差分に見つからなかった指摘（根拠不一致）は、引用の行が、もともとコードに無い。「消えた」と言えない
             "unknown"
         } else {
             match read_in_repo(root, &f.file) {
@@ -240,6 +241,11 @@ pub fn fates(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn unverified(mut x: Finding) -> Finding {
+        x.verified = false;
+        x
+    }
 
     fn f(file: &str, line: Option<u32>, evidence: &str) -> Finding {
         Finding {
@@ -431,9 +437,11 @@ mod tests {
             f("../etc/passwd", Some(1), "root"),           // 7: 外のパスは読まない → unknown
             f("src/a.js", Some(2), "danger( x );"),        // 8: 前回は未仕分け・今回も指摘された → persists
             f("src/a.js", Some(2), "gone_line();"),        // 9: 前回は未仕分け・引用が消えた → gone
+            unverified(f("src/a.js", Some(2), "never_existed();")), // 10: 前回から、根拠不一致（引用が差分に無かった）→ 消えたと言えない → unknown
+            unverified(f("src/a.js", Some(2), "danger( x );")),     // 11: 根拠不一致でも、今回も指摘された → persists
         ];
-        let triage: Vec<String> = ["fix", "wait", "fix", "wait", "fix", "fix", "dismiss", "fix", "new", "new"].map(String::from).to_vec();
-        let carried: HashSet<usize> = [5, 8].into_iter().collect();
+        let triage: Vec<String> = ["fix", "wait", "fix", "wait", "fix", "fix", "dismiss", "fix", "new", "new", "new", "new"].map(String::from).to_vec();
+        let carried: HashSet<usize> = [5, 8, 11].into_iter().collect();
         let out = fates("r0", &prev, &triage, &carried, &dir);
         let by = |i: usize| out.iter().find(|x| x.from_index == i).map(|x| x.fate.as_str());
         assert_eq!(by(0), Some("gone"));
@@ -448,7 +456,9 @@ mod tests {
         assert_eq!(by(8), Some("persists"));
         assert_eq!(by(9), Some("gone"));
         assert_eq!(out.iter().find(|x| x.from_index == 9).unwrap().state_before, "new");
-        assert_eq!(out.len(), 10, "前回の指摘は、仕分けを問わず全件が対象");
+        assert_eq!(by(10), Some("unknown"), "根拠不一致だった指摘は、コードに無かった行を、「消えた」とは言わない");
+        assert_eq!(by(11), Some("persists"), "根拠不一致でも、今回も指摘されたなら、継続");
+        assert_eq!(out.len(), 12, "前回の指摘は、仕分けを問わず全件が対象");
         assert_eq!(out.iter().find(|x| x.from_index == 0).unwrap().state_before, "fix");
         let _ = std::fs::remove_dir_all(&dir);
     }
