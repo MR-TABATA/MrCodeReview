@@ -7,6 +7,7 @@
 
 import { h } from './dom';
 import { getAppLang, msg } from './i18n';
+import { ut } from './uitext';
 import type { AgentFetch, AgentReport, Note } from './types';
 
 // ── 申告の状態（「対応にした指摘ごとに」、申告が保存されているか） ──
@@ -55,13 +56,14 @@ export const agentSourceKind = (source: string): AgentSource => (source.startsWi
 
 /** 保存元を、人が読める言葉にする。 */
 export function agentSourceLabel(source: string): string {
+  const t = ut().agent;
   switch (agentSourceKind(source)) {
     case 'cli':
-      return `${source.slice(4)} が、mrcr handoff report で保存`;
+      return t.srcCli(source.slice(4));
     case 'mcp':
-      return `${source.slice(4)} が、MCP で保存`;
+      return t.srcMcp(source.slice(4));
     default:
-      return 'ログから取り込み';
+      return t.srcLog;
   }
 }
 
@@ -84,23 +86,21 @@ export interface AgentActions {
 
 /** 取り込んだ結果の 1 文。何も見つからなかったときは、調べた数と、考えられる理由を言う。 */
 export function agentSummary(r: AgentFetch): string {
+  const t = ut().agent;
   const parts: string[] = [];
   if (r.found > 0) {
-    parts.push(`${r.found} 件の報告を取り込みました${r.updated > 0 ? `（${r.updated} 件を、新しく保存・更新）` : '（変更はありません）'}。`);
+    parts.push(t.found(r.found, r.updated));
   } else {
-    parts.push(
-      `会話の記録からは、報告は見つかりませんでした（調べたログ ${r.files_scanned} 件、識別子を含むログ ${r.files_with_tag} 件）。` +
-        'エージェントが、まだ終わっていないか、文面の末部の「最後の報告」を書いていません。または、対応していないエージェントです（読めるのは、Claude Code・agy・Copilot CLI のログだけ）。',
-    );
+    parts.push(t.notFound(r.files_scanned, r.files_with_tag) + (getAppLang() === 'en' ? ' ' : '') + t.notFoundWhy);
     // すでに保存されている申告（`mrcr handoff report` で保存したものなど）を、無かったことにして見せない
     const stored = (r.agent_reports ?? []).filter(Boolean).length;
-    if (stored > 0) parts.push(`すでに保存されている申告 ${stored} 件は、そのままです。`);
+    if (stored > 0) parts.push(t.stored(stored));
   }
-  if (r.ignored > 0) parts.push(`このレビューに無い番号の報告が ${r.ignored} 件ありました（取り込んでいません）。`);
-  if (r.unreadable_lines > 0) parts.push(`読めなかった行が ${r.unreadable_lines} 件あります（壊れた行・時刻のない行）。`);
+  if (r.ignored > 0) parts.push(t.ignored(r.ignored));
+  if (r.unreadable_lines > 0) parts.push(t.unreadable(r.unreadable_lines));
   // 「見つからなかった」と「調べていない」を、取り違えない
-  if (r.skipped_files > 0) parts.push(`上限を超えたため、古いログ ${r.skipped_files} 件は、調べていません（Claude Code・agy・Copilot CLI それぞれ、新しい順に 30 件まで）。`);
-  return parts.join('');
+  if (r.skipped_files > 0) parts.push(t.skippedFiles(r.skipped_files));
+  return parts.join(getAppLang() === 'en' ? ' ' : '');
 }
 
 /** 一覧の上の細い 1 行の右端に置く、「対応内容を取り込む」と、その結果。 */
@@ -133,7 +133,7 @@ export function agentStatusBar(status: AgentStatus, ui: AgentUi, act: AgentActio
         ? m.agentStatePartial(status.reported, status.total, status.missing)
         : m.agentStateNone(status.missing);
   // 「対応しなかった」の申告は、あなたの判断が残っている。「保存済み」だけだと、完了したように見えるので、手がかりを添える
-  const label = status.skipped > 0 ? `${base}・${m.agentStateDecide(status.skipped)}` : base;
+  const label = status.skipped > 0 ? `${base}${ut().misc.dotSep}${m.agentStateDecide(status.skipped)}` : base;
   const kind = status.skipped > 0 ? 'decide' : status.missing === 0 ? 'ok' : 'missing';
   return h(
     'span',
@@ -147,12 +147,13 @@ export function agentStatusBar(status: AgentStatus, ui: AgentUi, act: AgentActio
 export function agentNotice(ui: AgentUi, act: AgentActions): HTMLElement | null {
   if (ui.error) return h('p', { class: 'err' }, ui.error);
   if (ui.asking) {
+    const t = ut().agent;
     return h(
       'div',
       { class: 'confirm agentask' },
-      h('p', {}, h('strong', {}, '会話の記録（Claude Code・agy・GitHub Copilot CLI のログ）を読んでよいですか？')),
-      h('p', {}, '読むのは、このレビューの識別子を含む、エージェントの返事の行だけです。会話の本文は、保存しません。保存するのは、報告の 1 行と、ログの名前・時刻だけです。この許可は、覚えます。'),
-      h('div', { class: 'row' }, h('button', { class: 'run', onclick: () => act.fetch(true) }, '読む'), h('button', { onclick: () => act.cancel() }, 'やめる')),
+      h('p', {}, h('strong', {}, t.askTitle)),
+      h('p', {}, t.askBody),
+      h('div', { class: 'row' }, h('button', { class: 'run', onclick: () => act.fetch(true) }, t.askRead), h('button', { onclick: () => act.cancel() }, t.askCancel)),
     );
   }
   if (ui.result && !ui.result.needs_consent) return h('p', { class: ui.result.found > 0 ? 'muted agentsum' : 'muted agentsum none' }, agentSummary(ui.result));
@@ -211,25 +212,26 @@ export const agentDone = (report: AgentReport | null | undefined, status: string
 
 /** 畳んだ指摘の 1 行。押すと、開く（開いたあとは、同じ見出しの行を押すと、閉じる）。`by` は、対応済みにした人（エージェントの申告か、あなたか）。 */
 export function foldedRow(f: { severity: string; title: string }, onOpen: () => void, no?: { index: number; tag: string }, by: 'agent' | 'you' = 'agent'): HTMLElement {
+  const t = ut().agent;
   return h(
     'article',
     { class: 'finding folded s-fix' },
     h(
       'button',
-      { class: 'foldrow', title: no ? `押すと、指摘と、エージェントの申告を開きます（${no.tag}）` : '押すと、指摘と、エージェントの申告を開きます', onclick: onOpen },
-      no ? h('span', { class: 'fc-no', title: `識別子: ${no.tag}` }, `#${no.index + 1}`) : null,
+      { class: 'foldrow', title: no ? t.foldTitleTag(no.tag) : t.foldTitle, onclick: onOpen },
+      no ? h('span', { class: 'fc-no', title: t.idLabel(no.tag) }, `#${no.index + 1}`) : null,
       h('span', { class: `badge sev-${f.severity}` }, f.severity),
-      h('strong', {}, f.title || '(見出しなし)'),
-      h('span', { class: 'foldmark' }, by === 'you' ? '✓ 対応済み（あなたの申告）' : '✓ 対応済み（エージェントの申告）'),
+      h('strong', {}, f.title || t.noTitle),
+      h('span', { class: 'foldmark' }, by === 'you' ? t.foldDoneYou : t.foldDoneAgent),
       h('span', { class: 'foldcaret' }, '▸'),
     ),
   );
 }
 
 /** 「対応した」の申告に添える。申告は、エージェントの言葉で、MCR が、コードを確かめたものではない。 */
-export const AGENT_DID_NOTE = 'これは、エージェントの申告です。MCR は、コードが実際に直ったかを、確かめていません。';
+export const AGENT_DID_NOTE = ut('ja').agent.didNote;
 /** 「対応しなかった」の申告に添える。直していないので、「直ったか」ではなく、「判断が正しいか」を、確かめていない、と言う。 */
-export const AGENT_SKIPPED_NOTE = 'これは、エージェントの判断です。MCR は、その判断が正しいかを、確かめていません。読んで、あなたが決めてください。';
+export const AGENT_SKIPPED_NOTE = ut('ja').agent.skippedNote;
 
 /**
  * カードの中の、「エージェントの申告」。報告が無ければ null（「記録なし」を、文字では出さない）。
@@ -238,16 +240,17 @@ export const AGENT_SKIPPED_NOTE = 'これは、エージェントの判断です
  */
 export function agentBox(report: AgentReport | null | undefined, when: (ms: number) => string, onDiff?: () => void): HTMLElement | null {
   if (!report) return null;
+  const t = ut().agent;
   const did = report.verdict === 'did';
   return h(
     'div',
     { class: `agentrep ${did ? 'did' : 'skipped'}` },
-    h('div', { class: 'row' }, h('span', { class: 'badge' }, did ? '対応した' : '対応しなかった'), h('strong', {}, 'エージェントの申告')),
+    h('div', { class: 'row' }, h('span', { class: 'badge' }, did ? t.badgeDid : t.badgeSkipped), h('strong', {}, t.boxTitle)),
     h('p', { class: 'agenttext' }, report.text),
-    h('div', { class: 'muted' }, `${when(report.reported_at)} ・ ${agentSourceLabel(report.source)}`),
+    h('div', { class: 'muted' }, `${when(report.reported_at)}${ut().misc.hintSep}${agentSourceLabel(report.source)}`),
     // 「何の」「誰の」確認ではないのかを、申告の種類ごとに、はっきり言う
-    h('div', { class: 'muted' }, did ? AGENT_DID_NOTE : AGENT_SKIPPED_NOTE),
-    did ? h('div', { class: 'muted' }, '確かめるには、もう一度レビューを実行してください（次のレビューに、解消したかが出ます）。') : null,
-    onDiff ? h('div', {}, h('button', { class: 'small linkish difflink', title: '差分タブの「いま」を開きます（読み取りだけ）', onclick: onDiff }, 'いまの差分を見る')) : null,
+    h('div', { class: 'muted' }, did ? t.didNote : t.skippedNote),
+    did ? h('div', { class: 'muted' }, t.didCheck) : null,
+    onDiff ? h('div', {}, h('button', { class: 'small linkish difflink', title: t.diffTitle, onclick: onDiff }, t.diffBtn)) : null,
   );
 }

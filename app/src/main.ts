@@ -17,12 +17,13 @@ import { h } from './dom';
 import { agentConsentSection, newAgentConsent } from './agentconsent';
 import { recipesForDiff } from './recipescope';
 import { batchEstimate, newBatchUi, pickedRecipes, STOPPED, type BatchResult } from './batch';
-import { detailPanel, GROUNDING_NOTE } from './detailview';
+import { detailPanel } from './detailview';
 import { findingOrder, isDoneFinding } from './findingorder';
 import { agentBox, agentDone, agentNotice, agentStatus, agentStatusBar, foldedRow, newAgentUi, refreshAgentReportsOnFocus, type AgentActions } from './agentview';
 import { handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffActions, type HandoffTarget } from './handoffview';
 import { displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
 import { providerLabel, providerNote } from './providertext';
+import { ut } from './uitext';
 import { continuityOf, filteredFates, flowOf, shownByContinuity, type ContinuityKind } from './continuity';
 import { icon, type IconName } from './icons';
 import { debounced } from './debounce';
@@ -53,7 +54,7 @@ interface RepoDeleteResult extends RepoList {
 
 /** 決められない履歴があるときの一言（このリポジトリのものだったかもしれないが、消していない）。 */
 function unattributedNote(n: number): string {
-  return n > 0 ? `（フォルダが無くなっていて、どの登録のものか分からない履歴が ${n} 件あります。消していません）` : '';
+  return n > 0 ? ut().app.unattributed(n) : '';
 }
 import { recipeBar } from './recipebar';
 import { groupSkipped, launchOf, notCovered, planRun, type RunPlan } from './runplan';
@@ -140,12 +141,8 @@ function lsSet(k: string, v: string): void {
 type Tab = 'findings' | 'diff' | 'sent' | 'response' | 'detail';
 /** 「記録」タブの中身（詳細・送った内容・応答）。上のタブは、指摘・差分・記録の 3 つ */
 type RecordSub = 'detail' | 'sent' | 'response';
-const RECORD_SUBS: [RecordSub, string][] = [
-  ['detail', '詳細'],
-  ['sent', '送った内容'],
-  ['response', '応答'],
-];
-const isRecordTab = (t: Tab): t is RecordSub => RECORD_SUBS.some(([k]) => k === t);
+const RECORD_SUBS: RecordSub[] = ['detail', 'sent', 'response']; // 表示名は `recordSubLabels`
+const isRecordTab = (t: Tab): t is RecordSub => RECORD_SUBS.includes(t as RecordSub);
 type DiffMode = 'unified' | 'split';
 const DIFFMODE_KEY = 'mrcr.diffmode';
 
@@ -275,7 +272,7 @@ const specViewInstance =
         onPickFile: async () => {
           try {
             const selected = await open({
-              title: '設計書・仕様書ファイルを選択',
+              title: ut().app.specFileDialog,
               multiple: false,
               directory: false,
               filters: [{ name: 'Markdown / Text', extensions: ['md', 'markdown', 'txt'] }],
@@ -317,9 +314,9 @@ async function refreshSpecFiles(): Promise<void> {
 
 // ── 整形 ──────────────────────────────────────────────────────────────────────
 const nf = new Intl.NumberFormat('ja-JP');
-const num = (n: number | null): string => (n === null ? '（報告なし）' : nf.format(n));
+const num = (n: number | null): string => (n === null ? ut().app.notReported : nf.format(n));
 const when = (ms: number): string => formatWhen(ms, getAppLang());
-const dur = (ms: number): string => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} 秒`);
+const dur = (ms: number): string => (ms < 1000 ? `${ms} ms` : ut().app.durSeconds((ms / 1000).toFixed(1)));
 const shortRepo = (p: string): string => p.split('/').filter(Boolean).slice(-2).join('/');
 
 // ── 取得 ──────────────────────────────────────────────────────────────────────
@@ -528,7 +525,7 @@ async function loadByok(): Promise<void> {
     state.byok = s;
     state.byokDraft = { model: s.model, maxTokens: String(s.max_tokens) };
   } catch (e) {
-    state.byokMsg = { text: `BYOK の状態を読めません: ${String(e)}`, kind: 'err' };
+    state.byokMsg = { text: ut().app.byokStatusFailed(String(e)), kind: 'err' };
   }
   if (state.settings) render();
 }
@@ -538,7 +535,7 @@ async function refreshProviders(): Promise<void> {
   try {
     state.providers = await invoke<ProviderInfo[]>('list_providers');
   } catch (e) {
-    state.byokMsg = { text: `プロバイダの一覧を読めません: ${String(e)}`, kind: 'err' };
+    state.byokMsg = { text: ut().app.providersFailed(String(e)), kind: 'err' };
   }
 }
 
@@ -555,10 +552,10 @@ async function byokDo(okText: string, op: () => Promise<void>): Promise<void> {
   await loadByok();
 }
 
-const saveByokKey = (key: string): Promise<void> => byokDo('キーをキーチェーンに保存しました', () => invoke('byok_save_key', { key }));
-const deleteByokKey = (): Promise<void> => byokDo('キーをキーチェーンから消しました', () => invoke('byok_delete_key'));
+const saveByokKey = (key: string): Promise<void> => byokDo(ut().app.byokKeySaved, () => invoke('byok_save_key', { key }));
+const deleteByokKey = (): Promise<void> => byokDo(ut().app.byokKeyDeleted, () => invoke('byok_delete_key'));
 const saveByokConfig = (): Promise<void> =>
-  byokDo('モデル名と最大出力トークンを保存しました', () => invoke('byok_save_config', { model: state.byokDraft.model, maxTokens: Number(state.byokDraft.maxTokens) }));
+  byokDo(ut().app.byokConfigSaved, () => invoke('byok_save_config', { model: state.byokDraft.model, maxTokens: Number(state.byokDraft.maxTokens) }));
 
 /** 会話の記録を読む許可を取り消す。取り込み済みの報告は、残る。 */
 async function revokeAgentConsent(): Promise<void> {
@@ -1030,7 +1027,7 @@ async function chooseAndAddRepo(askName = true): Promise<void> {
   if (dirs.length > 1) return addReposAtOnce(dirs);
   const path = dirs[0];
   const defaultName = path.replace(/\/+$/, '').split('/').filter(Boolean).pop() || '';
-  const inputName = askName ? window.prompt(`リポジトリの表示名を入力してください（省略時は「${defaultName}」になります）:`, '') : '';
+  const inputName = askName ? window.prompt(ut().app.askRepoName(defaultName), '') : '';
   const name = inputName === null ? undefined : inputName.trim();
   const callAdd = async (confirmMove: boolean): Promise<RepoAddResult | null> => {
     try {
@@ -1038,7 +1035,7 @@ async function chooseAndAddRepo(askName = true): Promise<void> {
       applyRepoList(res);
       return res;
     } catch (e) {
-      state.repoMsg = { text: `追加できませんでした: ${String(e)}`, kind: 'err' };
+      state.repoMsg = { text: ut().app.addFailed(String(e)), kind: 'err' };
       window.alert(state.repoMsg.text);
       render();
       return null;
@@ -1049,9 +1046,9 @@ async function chooseAndAddRepo(askName = true): Promise<void> {
   let plan = planAfterAdd(out);
   if (plan.moveFrom) {
     // 登録のフォルダが見つからない。移動したのか、外付けドライブの未接続などで見えないだけなのかは、ここでは分からない。確認が取れるまで、何も変えない
-    const moved = await confirmDialog(moveConfirmText(plan.moveFrom, path), { title: '登録の付け替え', okLabel: '付け替える' });
+    const moved = await confirmDialog(moveConfirmText(plan.moveFrom, path), { title: ut().app.moveDialogTitle, okLabel: ut().app.moveOk });
     if (!moved) {
-      state.repoMsg = { text: '登録は、そのままです（元のフォルダが見つかったら、もう一度追加してください）', kind: 'ok' };
+      state.repoMsg = { text: ut().app.moveDeclined, kind: 'ok' };
       render();
       return;
     }
@@ -1066,7 +1063,7 @@ async function chooseAndAddRepo(askName = true): Promise<void> {
     return;
   }
   state.repoMsg = plan.alreadyAt
-    ? { text: `同じリポジトリが、すでに ${plan.alreadyAt} に登録されています（新しい行は作らず、そちらを選びました）`, kind: 'ok' }
+    ? { text: ut().app.alreadyAt(plan.alreadyAt), kind: 'ok' }
     : { text: '', kind: '' };
   void loadRepoIcon(plan.select);
   await changeRepo(plan.select);
@@ -1086,7 +1083,7 @@ async function loadRepoStatus(icons = true): Promise<void> {
     state.repoStatus = Object.fromEntries(list.map((x) => [x.path, x]));
     state.repoData = Object.fromEntries(data.map((x) => [x.path, x]));
   } catch (e) {
-    state.repoMsg = { text: `リポジトリの状態を読めません: ${String(e)}`, kind: 'err' };
+    state.repoMsg = { text: ut().app.repoStatusFailed(String(e)), kind: 'err' };
   }
   if (icons) for (const r of state.registeredRepos) void loadRepoIcon(r.path);
   // 窓に戻ったときの読み直しは、変わったときだけ描き直す（「追加」の押せる・押せないが、フォルダの移動に追いつくように）
@@ -1106,7 +1103,7 @@ function addBlockedNow(): string | null {
 
 /** 上限に達して追加を断ったときの案内（構想書 §8.3 (3)）。 */
 function limitMessage(limit: number | null): string {
-  return `登録できるのは、${limit ?? 3} リポジトリ分のデータまでです。解除しても、データがあるうちは、枠は空きません。設定の「リポジトリ」で「データを削除…」して枠を空けてください。`;
+  return ut().app.limitMessage(limit ?? 3);
 }
 
 /** 登録が変わったあと、選択中のリポジトリが、登録に無い・解除済みになっていたら、見えている登録に切り替える（登録に無いパスのまま、残さない）。 */
@@ -1123,7 +1120,7 @@ async function repoOp<T extends RepoList>(cmd: string, args: Record<string, unkn
     await ensureSelectionRegistered();
     return out;
   } catch (e) {
-    state.repoMsg = { text: `登録を更新できませんでした（何も変わっていません）: ${String(e)}`, kind: 'err' };
+    state.repoMsg = { text: ut().app.repoUpdateFailed(String(e)), kind: 'err' };
     render();
     return null;
   }
@@ -1132,7 +1129,7 @@ async function repoOp<T extends RepoList>(cmd: string, args: Record<string, unkn
 /** 表示名を変える（空にすると、フォルダ名に戻る）。 */
 async function renameRepoTo(id: string, name: string): Promise<void> {
   if (!(await repoOp('repo_rename', { id, name: name.trim() || null }))) return;
-  state.repoMsg = { text: '表示名を保存しました', kind: 'ok' };
+  state.repoMsg = { text: ut().app.nameSaved, kind: 'ok' };
   render();
 }
 
@@ -1155,14 +1152,14 @@ async function unlinkRepo(repo: RegisteredRepo): Promise<void> {
   const out = await repoOp<RepoUnlinkResult>('repo_unlink', { id: repo.id });
   if (!out) return;
   state.repoMsg = out.removed
-    ? { text: `「${title}」を解除しました（履歴がないので、登録ごと消えました）${unattributedNote(out.unattributed_reviews)}`, kind: 'ok' }
-    : { text: `「${title}」を解除しました（履歴があるので、一覧から外しただけです。「復元」で戻せます）`, kind: 'ok' };
+    ? { text: ut().app.unlinkedRemoved(title, unattributedNote(out.unattributed_reviews)), kind: 'ok' }
+    : { text: ut().app.unlinkedKept(title), kind: 'ok' };
   await afterRepoChange(repo.path, true);
 }
 
 async function restoreRepo(id: string, path: string): Promise<void> {
   if (!(await repoOp('repo_restore', { id }))) return;
-  state.repoMsg = { text: '復元しました', kind: 'ok' };
+  state.repoMsg = { text: ut().app.restored, kind: 'ok' };
   render();
   void loadRepoIcon(path);
 }
@@ -1172,8 +1169,8 @@ async function dropEmptyRepo(repo: RegisteredRepo): Promise<void> {
   const out = await repoOp<RepoUnlinkResult>('repo_unlink', { id: repo.id });
   if (!out) return;
   state.repoMsg = out.removed
-    ? { text: `「${repoDisplayName(repo)}」の登録を消しました${unattributedNote(out.unattributed_reviews)}`, kind: 'ok' }
-    : { text: `「${repoDisplayName(repo)}」には履歴があるので、登録は消さず、解除のままにしました`, kind: 'err' };
+    ? { text: ut().app.dropRemoved(repoDisplayName(repo), unattributedNote(out.unattributed_reviews)), kind: 'ok' }
+    : { text: ut().app.dropKept(repoDisplayName(repo)), kind: 'err' };
   await afterRepoChange(repo.path, true);
 }
 
@@ -1187,18 +1184,14 @@ async function deleteRepoData(repo: RegisteredRepo): Promise<void> {
     applyRepoList(list);
     await ensureSelectionRegistered();
     gone = true;
-    state.repoMsg = { text: `「${title}」のデータを削除しました（レビュー ${d.reviews} 件・指摘 ${d.findings} 件・仕分け ${d.triaged} 件・メモ ${d.memos} 件）${unattributedNote(unattributed_reviews)}`, kind: 'ok' };
+    state.repoMsg = { text: ut().app.deleted(title, d.reviews, d.findings, d.triaged, d.memos, unattributedNote(unattributed_reviews)), kind: 'ok' };
   } catch (e) {
-    state.repoMsg = { text: `削除できませんでした（何も消えていません）: ${String(e)}`, kind: 'err' };
+    state.repoMsg = { text: ut().app.deleteFailed(String(e)), kind: 'err' };
   }
   await afterRepoChange(repo.path, gone);
 }
 
-const REPO_STATE_TEXT: Record<RepoStatus['state'], string> = {
-  ok: '',
-  missing: '見つかりません（移動・削除された可能性）',
-  not_git: 'git のリポジトリではありません',
-};
+const repoStateText = (state: RepoStatus['state']): string => ({ ok: '', missing: ut().app.stateMissing, not_git: ut().app.stateNotGit })[state];
 
 const dataText = (d?: RepoDataRow, lang: Lang = getAppLang()): string => {
   if (!d) return '';
@@ -1284,7 +1277,7 @@ function reposSection(lang: Lang = getAppLang()): HTMLElement {
           h('div', { class: 'redit-line' }, input, r.path === state.repo ? h('span', { class: 'chip did' }, m.inUseChip) : null),
           h('code', { class: 'redit-path', title: r.path }, r.path),
           h('div', { class: 'muted redit-state' }, dataText(state.repoData[r.path], lang)),
-          st && st.state !== 'ok' ? h('div', { class: 'warn redit-state' }, `⚠ ${REPO_STATE_TEXT[st.state]}`) : null,
+          st && st.state !== 'ok' ? h('div', { class: 'warn redit-state' }, `⚠ ${repoStateText(st.state)}`) : null,
           st?.root ? h('div', { class: 'muted redit-state' }, m.subdirNote(st.root)) : null,
         ),
         h(
@@ -1360,14 +1353,14 @@ function reposSection(lang: Lang = getAppLang()): HTMLElement {
 
 /** 左の一覧の「✕」。解除する（履歴があるあいだは、枠は戻らない）。 */
 async function handleRemoveRepo(repo: RegisteredRepo): Promise<void> {
-  if (!(await confirmDialog(`リポジトリ「${repoDisplayName(repo)}」を解除しますか？\n（履歴は残ります。設定の「リポジトリ」で、復元・データの削除ができます）`, { title: '登録の解除', okLabel: '解除する' }))) return;
+  if (!(await confirmDialog(ut().app.unlinkConfirm(repoDisplayName(repo)), { title: ut().app.unlinkTitle, okLabel: ut().app.unlinkOk }))) return;
   await unlinkRepo(repo);
 }
 
 function handleRenameRepo(repo: RegisteredRepo): void {
   const curName = repo.name || '';
   const defaultName = repo.path.replace(/\/+$/, '').split('/').filter(Boolean).pop() || '';
-  const inputName = window.prompt(`表示名を変更（省略時は「${defaultName}」になります）:`, curName);
+  const inputName = window.prompt(ut().app.renamePrompt(defaultName), curName);
   if (inputName === null) return;
   void renameRepoTo(repo.id, inputName);
 }
@@ -1404,7 +1397,7 @@ function sideResizer(side: 'left' | 'right'): HTMLElement {
   };
   const el = h('div', {
     class: `resizer ${side === 'left' ? 'l' : 'r'}`,
-    title: 'ドラッグで幅を変える（ダブルクリックで標準の幅）',
+    title: ut().app.dragResizeTitle,
     role: 'separator',
     'aria-orientation': 'vertical',
   });
@@ -1614,7 +1607,7 @@ async function printReport(): Promise<void> {
   render();
   try {
     await invoke('print_page');
-    st.message = '印刷の画面を開きました。左下の「PDF」から「PDF として保存」を選んでください。';
+    st.message = ut().app.printOpened;
   } catch (e) {
     st.error = String(e);
   } finally {
@@ -1700,15 +1693,15 @@ function headerView(): HTMLElement {
     'div',
     {
       class: 'repo-header-display',
-      title: state.repo ? `${activeName} (${state.repo})` : 'リポジトリを選択してください',
+      title: state.repo ? `${activeName} (${state.repo})` : ut().app.selectRepoTitle,
     },
-    iconButton('folder', addBlocked ?? 'リポジトリを登録・追加', false, () => void chooseRepo(), undefined, addBlocked !== null),
+    iconButton('folder', addBlocked ?? ut().app.addRepoTitle, false, () => void chooseRepo(), undefined, addBlocked !== null),
     h(
       'span',
       { class: 'current-repo-label' },
       state.repo
         ? h('span', { class: 'repo-name-badge' }, renderAppIcon(activeName, state.repoIcons[state.repo]), activeName)
-        : h('span', { class: 'muted' }, '左サイドバーからリポジトリを選択'),
+        : h('span', { class: 'muted' }, ut().app.selectRepoLeft),
     ),
   );
 
@@ -1778,7 +1771,7 @@ async function runBatch(): Promise<void> {
     run.index = i;
     await runRecipe(r.id);
     const rec = state.selected;
-    const reason = state.runError || (rec?.recipe.id === r.id ? rec.error || (rec.parse_error ? `指摘を読めなかった: ${rec.parse_error}` : '') : '実行結果を確認できません');
+    const reason = state.runError || (rec?.recipe.id === r.id ? rec.error || (rec.parse_error ? ut().app.runParseFailed(rec.parse_error) : '') : ut().app.runNoResult);
     run.results.push({ id: r.id, title: r.title, ok: !reason, note: reason ?? '' });
   }
   // 中止で、実行しなかった観点は、そう残す（黙って、無かったことにしない）
@@ -1874,7 +1867,7 @@ function recipeBarSection(): HTMLElement {
     {
       recipes: shownRecipes(),
       checkedIds: active,
-      running: busy ? (currentTitle || 'レビュー') : '',
+      running: busy ? (currentTitle || ut().app.reviewLabel) : '',
       runIndex: runIdx,
       totalRuns,
       disabledReason,
@@ -2394,7 +2387,7 @@ function findingChips(f: Finding, status: TriageState, carry: Carry | null | und
       chip(
         'warn',
         m.chipEvidenceMismatch,
-        m.chipEvidenceMismatchTitle(GROUNDING_NOTE),
+        m.chipEvidenceMismatchTitle(ut().detail.groundingNote),
       ),
     );
   }
@@ -2441,7 +2434,7 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
     else state.expanded.add(index);
     render();
   };
-  const loc = `${f.file || '(ファイル不明)'}${f.line === null ? '' : `:${f.line}`}`;
+  const loc = `${f.file || ut().app.noFile}${f.line === null ? '' : `:${f.line}`}`;
   const chips = findingChips(f, status, carry, note, agent);
   const cont = continuityChip(reviewId, carry);
   if (cont) chips.unshift(cont);
@@ -2455,7 +2448,7 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
         role: 'button',
         tabindex: '0',
         'aria-expanded': String(open),
-        title: open ? '押すと、閉じます' : '押すと、内容と引用が開きます',
+        title: open ? ut().app.cardCloseTitle : ut().app.cardOpenTitle,
         onclick: toggle,
         onkeydown: (ev: Event) => {
           const e = ev as KeyboardEvent;
@@ -2470,8 +2463,8 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
       // 番号は、エージェントの報告（mrcr:…#番号）と照合するための印。並べ替えても、変わらない
       findingNo(index, findingTag(reviewId, index)),
       // 重要度は、記号だけでなく、文字（high / medium / low）で見せる。開かなくても、一覧のまま、見比べられるように
-      h('span', { class: `badge fc-sev sev-${f.severity}`, title: `重大度: ${f.severity}`, 'aria-label': `重大度 ${f.severity}` }, `${SEV_ICON[f.severity] ?? '●'} ${f.severity}`),
-      h('strong', { class: 'fc-title' }, f.title || '(見出しなし)'),
+      h('span', { class: `badge fc-sev sev-${f.severity}`, title: ut().app.severityTitle(f.severity), 'aria-label': ut().app.severityAria(f.severity) }, `${SEV_ICON[f.severity] ?? '●'} ${f.severity}`),
+      h('strong', { class: 'fc-title' }, f.title || ut().app.noTitle),
       h('span', { class: 'fc-caret' }, open ? '▾' : '▸'),
     ),
     // 仕分け（対応・待ち・無視・CLI に渡す）は、見出しと内容の間。閉じていても押せる。「対応した」と申告された指摘は、読むだけ
@@ -2490,7 +2483,7 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
           h(
             'div',
             { class: 'fc-evrow' },
-            h('div', { class: 'f-ev-label', title: GROUNDING_NOTE }, f.verified ? msg(getAppLang()).mainUi.quoteVerified : msg(getAppLang()).mainUi.quoteNotVerified),
+            h('div', { class: 'f-ev-label', title: ut().detail.groundingNote }, f.verified ? msg(getAppLang()).mainUi.quoteVerified : msg(getAppLang()).mainUi.quoteNotVerified),
             h('code', { class: 'fc-loc' }, loc),
           ),
           h('pre', { class: 'evidence' }, f.evidence || msg(getAppLang()).mainUi.noQuote),
@@ -2543,7 +2536,7 @@ function findingCard(reviewId: string, f: Finding, index: number, status: Triage
       done
         ? {
             class: 'f-head foldable',
-            title: '押すと、畳みます',
+            title: ut().app.foldTitle,
             onclick: () => {
               state.openCards.delete(index);
               render();
@@ -2552,21 +2545,21 @@ function findingCard(reviewId: string, f: Finding, index: number, status: Triage
         : { class: 'f-head' },
       findingNo(index, findingTag(reviewId, index)),
       h('span', { class: `badge sev-${f.severity}` }, f.severity),
-      h('strong', {}, f.title || '(見出しなし)'),
+      h('strong', {}, f.title || ut().app.noTitle),
       f.rule ? h('span', { class: 'badge rule' }, f.rule) : null,
-      h('span', { class: `badge ${f.verified ? 'ok' : 'bad'}` }, f.verified ? '根拠あり' : '根拠不一致'),
+      h('span', { class: `badge ${f.verified ? 'ok' : 'bad'}` }, f.verified ? ut().app.evidenceOk : ut().app.evidenceMismatch),
       f.spec_verified === true
-        ? h('span', { class: 'badge ok' }, '設計書一致')
+        ? h('span', { class: 'badge ok' }, ut().app.specOk)
         : f.spec_verified === false
-          ? h('span', { class: 'badge bad' }, '設計書不一致')
+          ? h('span', { class: 'badge bad' }, ut().app.specNg)
           : null,
       done ? h('span', { class: 'foldcaret' }, '▾') : null,
     ),
-    compact ? null : h('div', { class: 'f-loc' }, h('code', {}, `${f.file || '(ファイル不明)'}${f.line === null ? '' : `:${f.line}`}`)),
+    compact ? null : h('div', { class: 'f-loc' }, h('code', {}, `${f.file || ut().app.noFile}${f.line === null ? '' : `:${f.line}`}`)),
     h('p', {}, f.detail),
-    compact ? null : h('div', { class: 'f-ev-label' }, f.verified ? '引用（差分に実在）' : '引用（この差分には見つからない）'),
-    compact ? null : h('pre', { class: 'evidence' }, f.evidence || '(引用なし)'),
-    compact ? null : (f.spec_quote ? h('div', { class: 'f-ev-label' }, f.spec_verified ? '設計書の引用（原文に実在）' : '設計書の引用（原文と不一致）') : null),
+    compact ? null : h('div', { class: 'f-ev-label' }, f.verified ? ut().app.quoteIn : ut().app.quoteNot),
+    compact ? null : h('pre', { class: 'evidence' }, f.evidence || ut().app.noQuote),
+    compact ? null : (f.spec_quote ? h('div', { class: 'f-ev-label' }, f.spec_verified ? ut().app.specQuoteOk : ut().app.specQuoteNg) : null),
     compact ? null : (f.spec_quote ? h('pre', { class: 'spec-quote' }, f.spec_quote) : null),
     carryNote(carry),
     // 「対応した」と申告された指摘は、読むだけ（仕分けと「CLI に渡す」は、出さない）。やり直すなら、もう一度レビューを実行する
@@ -2596,8 +2589,8 @@ function handlingBox(index: number, status: TriageState, note?: Note, agentDone 
     return h(
       'div',
       { class: 'handling' },
-      note?.memo ? h('div', { class: 'muted' }, `対応メモ: ${note.memo}`) : null,
-      note?.done_at != null ? h('div', { class: 'muted' }, `対応済み: ${when(note.done_at)}${note.done_head ? `・HEAD ${note.done_head.slice(0, 7)}` : ''}`) : null,
+      note?.memo ? h('div', { class: 'muted' }, ut().app.memoLine(note.memo)) : null,
+      note?.done_at != null ? h('div', { class: 'muted' }, ut().app.doneLine(when(note.done_at), note.done_head ? note.done_head.slice(0, 7) : '')) : null,
       stamp ? h('div', { class: 'muted stamp' }, stamp) : null,
     );
   }
@@ -2620,7 +2613,7 @@ function handlingBox(index: number, status: TriageState, note?: Note, agentDone 
           'div',
           { class: 'row done-row' },
           h('button', { class: `small done ${done !== null ? 'on' : ''}`, onclick: () => void toggleDone(index, done === null) }, done !== null ? m.doneRevertBtn : m.markDoneBtn),
-          done !== null ? h('span', { class: 'muted' }, `${when(done)}${note?.done_head ? `・HEAD ${note.done_head.slice(0, 7)}` : ''}`) : null,
+          done !== null ? h('span', { class: 'muted' }, ut().app.doneStamp(when(done), note?.done_head ? note.done_head.slice(0, 7) : '')) : null,
         )
       : null,
     stamp ? h('div', { class: 'muted stamp' }, stamp) : null,
@@ -2764,15 +2757,15 @@ function diffTab(r: ReviewView): HTMLElement {
   const whenToggle = h(
     'div',
     { class: 'dmode' },
-    ...([['then', 'レビューした時点'], ['now', 'いま']] as ['then' | 'now', string][]).map(([w, label]) =>
+    ...([['then', ut().app.diffThen], ['now', ut().app.diffNow]] as ['then' | 'now', string][]).map(([w, label]) =>
       h('button', { class: state.diffWhen === w ? 'on' : '', onclick: () => (w === 'now' ? showNowDiff() : ((state.diffWhen = 'then'), render())) }, label),
     ),
   );
-  if (now && (!nd || nd.loading)) return h('div', {}, h('div', { class: 'dtool' }, whenToggle), h('p', { class: 'muted' }, 'いまの差分を読み取っています…'));
-  if (now && nd?.error) return h('div', {}, h('div', { class: 'dtool' }, whenToggle, h('button', { class: 'small', onclick: () => void loadNowDiff() }, '読み直す')), h('p', { class: 'err' }, nd.error));
+  if (now && (!nd || nd.loading)) return h('div', {}, h('div', { class: 'dtool' }, whenToggle), h('p', { class: 'muted' }, ut().app.diffNowLoading));
+  if (now && nd?.error) return h('div', {}, h('div', { class: 'dtool' }, whenToggle, h('button', { class: 'small', onclick: () => void loadNowDiff() }, ut().app.reload)), h('p', { class: 'err' }, nd.error));
   const view = now ? (nd?.view ?? null) : viewFor(r);
   if (!view) {
-    return h('p', { class: 'muted' }, 'この記録から差分を取り出せませんでした（「送った内容」タブにプロンプト全文があります）。');
+    return h('p', { class: 'muted' }, ut().app.diffUnavailable);
   }
   const mode = state.diffMode;
   const status = (i: number): TriageState => r.triage[i] ?? 'new';
@@ -2783,7 +2776,7 @@ function diffTab(r: ReviewView): HTMLElement {
   const toggle = h(
     'div',
     { class: 'dmode' },
-    ...([['unified', '統合'], ['split', '並べて']] as [DiffMode, string][]).map(([m, label]) =>
+    ...([['unified', ut().app.modeUnified], ['split', ut().app.modeSplit]] as [DiffMode, string][]).map(([m, label]) =>
       h('button', { class: mode === m ? 'on' : '', onclick: () => ((state.diffMode = m), lsSet(DIFFMODE_KEY, m), render()) }, label),
     ),
   );
@@ -2791,7 +2784,7 @@ function diffTab(r: ReviewView): HTMLElement {
   const sections: HTMLElement[] = [];
   if (view.orphans.length) {
     sections.push(
-      h('section', { class: 'dfile' }, h('div', { class: 'dfile-h' }, '差分に無いファイルへの指摘'), ...view.orphans.map((i) => card(i, false))),
+      h('section', { class: 'dfile' }, h('div', { class: 'dfile-h' }, ut().app.orphans), ...view.orphans.map((i) => card(i, false))),
     );
   }
   for (const fv of view.files) {
@@ -2843,12 +2836,12 @@ function diffTab(r: ReviewView): HTMLElement {
           'div',
           { class: 'dfile-h' },
           h('code', {}, fv.file.path),
-          fv.file.isNew ? h('span', { class: 'badge ok' }, '新規') : null,
+          fv.file.isNew ? h('span', { class: 'badge ok' }, ut().app.fileNew) : null,
           h('span', { class: 'muted' }, `+${fv.file.added} −${fv.file.removed}`),
-          fv.placed.length ? h('span', { class: 'badge' }, `指摘 ${fv.placed.length}`) : null,
+          fv.placed.length ? h('span', { class: 'badge' }, ut().app.placedCount(fv.placed.length)) : null,
         ),
         loose.length
-          ? h('div', { class: 'dloose' }, h('p', { class: 'note' }, '差分のどの行にも結びつかなかった指摘（引用も行番号も、この差分に合いません）'), ...loose.map((i) => card(i, false)))
+          ? h('div', { class: 'dloose' }, h('p', { class: 'note' }, ut().app.loose), ...loose.map((i) => card(i, false)))
           : null,
         h('div', { class: `dbody ${mode}` }, ...body),
       ),
@@ -2857,38 +2850,33 @@ function diffTab(r: ReviewView): HTMLElement {
 
   const nowNote = (): HTMLElement => {
     const d = nd!.data!;
-    const base = baseLabel(r.snapshot.base) || '未コミットの変更（HEAD から）';
+    const base = baseLabel(r.snapshot.base) || ut().detail.uncommitted;
     return h(
       'div',
       { class: 'nownote' },
       h(
         'p',
         { class: 'note' },
-        `いまの作業ツリーまでの差分です。見る範囲は、レビューのときと同じです（${base}）。`,
-        d.same_as_review ? 'レビューした時点から、変わっていません。' : 'レビューした時点から、変わっています。',
-        d.head !== r.snapshot.head ? `HEAD は、レビューのときから、進んでいます（${r.snapshot.head.slice(0, 8)} → ${d.head.slice(0, 8)}）。` : '',
-        '指摘は、レビューした時点の行番号なので、ここには、重ねていません。',
-        d.excluded.length ? `送らない設定のファイルが ${d.excluded.length} 件あります。` : '',
+        ut().app.nowIntro(base),
+        d.same_as_review ? ut().app.nowSame : ut().app.nowChanged,
+        d.head !== r.snapshot.head ? ut().app.nowHeadMoved(r.snapshot.head.slice(0, 8), d.head.slice(0, 8)) : '',
+        ut().app.nowNoOverlay,
+        d.excluded.length ? ut().app.nowExcluded(d.excluded.length) : '',
       ),
-      h('button', { class: 'small', onclick: () => void loadNowDiff() }, '読み直す'),
+      h('button', { class: 'small', onclick: () => void loadNowDiff() }, ut().app.reload),
     );
   };
   return h(
     'div',
     {},
     now ? null : r.findings.length ? handoffBar(r) : null,
-    h('div', { class: 'dtool' }, whenToggle, toggle, now ? null : h('span', { class: 'muted' }, '指摘は、引用した行の文字列で差分の行に結びつけています（行番号は参考）。')),
+    h('div', { class: 'dtool' }, whenToggle, toggle, now ? null : h('span', { class: 'muted' }, ut().app.hintAnchored)),
     now ? nowNote() : null,
     ...sections,
   );
 }
 
-const RELATED_STATUS: Record<string, string> = {
-  sent: '送った',
-  none: '差分の外に使用箇所なし',
-  too_many: 'ありふれていて除いた',
-  budget: '上限に達して送らなかった',
-};
+const relatedStatus = (status: string): string => ({ sent: ut().app.relSent, none: ut().app.relNone, too_many: ut().app.relTooMany, budget: ut().app.relBudget } as Record<string, string>)[status] ?? status;
 
 /** 送った関連コード（差分に出ていない使用箇所）。何を根拠に見たのかを、あとから確かめられる。 */
 function relatedSection(rel: Related | null): HTMLElement | null {
@@ -2897,17 +2885,17 @@ function relatedSection(rel: Related | null): HTMLElement | null {
   return h(
     'div',
     {},
-    h('h3', {}, `送った関連コード（${sent} か所）`),
-    h('p', { class: 'note' }, '差分で変更した名前が、差分に出ていない場所でどう使われているかです。この観点では、これも一緒に送っています。'),
+    h('h3', {}, ut().app.relatedH(sent)),
+    h('p', { class: 'note' }, ut().app.relatedNote),
     h(
       'ul',
       { class: 'files' },
       ...rel.names.map((n) =>
-        h('li', {}, h('code', {}, n.name), ` — ${n.why} — 使用箇所 ${n.hits} か所（${RELATED_STATUS[n.status] ?? n.status}）`),
+        h('li', {}, h('code', {}, n.name), ut().app.relatedName(n.why, n.hits, relatedStatus(n.status))),
       ),
     ),
     ...rel.snippets.map((s) =>
-      h('details', {}, h('summary', {}, `${s.name}: ${s.file} ${s.start}〜${s.end} 行`), h('pre', { class: 'prompt' }, s.text)),
+      h('details', {}, h('summary', {}, ut().app.snippetSummary(s.name, s.file, s.start, s.end)), h('pre', { class: 'prompt' }, s.text)),
     ),
   );
 }
@@ -2951,7 +2939,7 @@ function resultView(): HTMLElement {
     ? h(
         'div',
         { class: 'subtabs' },
-        ...RECORD_SUBS.map(([k]) => h('button', { class: state.tab === k ? 'on' : '', onclick: () => ((state.tab = k), render()) }, recordSubLabels[k])),
+        ...RECORD_SUBS.map((k) => h('button', { class: state.tab === k ? 'on' : '', onclick: () => ((state.tab = k), render()) }, recordSubLabels[k])),
       )
     : null;
 
@@ -2990,24 +2978,24 @@ function resultView(): HTMLElement {
       'div',
       {},
       h('p', { class: 'note' }, providerNote(r.provider, getAppLang())),
-      h('h3', {}, `送ったファイル（${r.snapshot.files.length}）`),
+      h('h3', {}, ut().app.filesSentH(r.snapshot.files.length)),
       h('ul', { class: 'files' }, ...r.snapshot.files.map((f) => h('li', {}, h('code', {}, f.path), ` ${nf.format(f.bytes)} B`))),
-      h('h3', {}, `送らなかったもの（${r.snapshot.excluded.length}）`),
+      h('h3', {}, ut().app.excludedH(r.snapshot.excluded.length)),
       r.snapshot.excluded.length
         ? h('ul', { class: 'files' }, ...r.snapshot.excluded.map((f) => h('li', {}, h('code', {}, f.path), ` — ${f.reason}`)))
-        : h('p', { class: 'muted' }, 'なし'),
+        : h('p', { class: 'muted' }, ut().app.none),
       relatedSection(r.related),
-      h('h3', {}, `プロンプト全文（${nf.format(r.prompt.length)} 文字）`),
+      h('h3', {}, ut().app.promptH(nf.format(r.prompt.length))),
       h('pre', { class: 'prompt tall' }, r.prompt),
     );
   } else if (state.tab === 'response') {
     body = h(
       'div',
       {},
-      h('h3', {}, '応答の本文'),
-      h('pre', { class: 'prompt' }, r.response_text || '(なし)'),
-      h('h3', {}, '生の出力（提供元が返したまま）'),
-      h('pre', { class: 'prompt tall' }, r.raw || '(なし)'),
+      h('h3', {}, ut().app.responseH),
+      h('pre', { class: 'prompt' }, r.response_text || ut().app.noneParen),
+      h('h3', {}, ut().app.rawH),
+      h('pre', { class: 'prompt tall' }, r.raw || ut().app.noneParen),
     );
   } else {
     body = detailPanel(r, { when, dur, num, base: baseLabel(r.snapshot.base) });
@@ -3110,9 +3098,9 @@ async function boot(): Promise<void> {
     updating = true;
     void runUpdateCheck({
       check: () => invoke<UpdateInfo | null>('update_check'),
-      confirm: (info) => confirmDialog(confirmText(info), { title: 'アップデート', okLabel: '更新する' }),
+      confirm: (info) => confirmDialog(confirmText(info), { title: ut().app.updateTitle, okLabel: ut().app.updateOk }),
       install: () => invoke<void>('update_install'),
-      notify: (text, kind) => void message(text, { title: 'アップデート', kind: kind === 'err' ? 'error' : 'info' }),
+      notify: (text, kind) => void message(text, { title: ut().app.updateTitle, kind: kind === 'err' ? 'error' : 'info' }),
     }).finally(() => {
       updating = false;
     });
@@ -3136,7 +3124,7 @@ async function boot(): Promise<void> {
   if (booted.error) state.runError = booted.error;
   // 取り込みで、最初のコミットを調べられなかった登録がある（移動・クローンを同じものと見分けられないことがある。次に開いたとき、また調べる）
   if (booted.warnings.length) {
-    state.repoMsg = { text: `最初のコミットを調べられなかった登録があります（次に開いたとき、もう一度調べます）: ${booted.warnings.join(' / ')}`, kind: 'err' };
+    state.repoMsg = { text: ut().app.bootWarning(booted.warnings.join(' / ')), kind: 'err' };
   }
   // データの置き場を移せなかった・2 か所に分かれていたとき。履歴が消えたように見えるので、帯で知らせる（起動のたびに、条件が続くかぎり出る）
   try {
@@ -3158,7 +3146,7 @@ async function boot(): Promise<void> {
     await invoke('set_menu_language', { lang: String(s.values.language ?? 'auto') });
   } catch (e) {
     console.error('get_settings language', e);
-    const msg = `言語設定を読み込めませんでした（既定の言語で表示しています）: ${String(e)}`;
+    const msg = ut().app.langLoadFailed(String(e));
     state.repoMsg = { text: [state.repoMsg.text, msg].filter(Boolean).join(' ／ '), kind: 'err' };
   }
 

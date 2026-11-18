@@ -187,3 +187,20 @@ describe('buildViewFromDiff（「いまの差分」）', () => {
     expect(buildViewFromDiff('', [])).toEqual({ files: [], orphans: [] });
   });
 });
+
+describe('extractDiff（日本語・英語のプロンプト）', () => {
+  const DIFF = 'diff --git a/a.js b/a.js\n--- a/a.js\n+++ b/a.js\n@@ -1 +1,2 @@\n x\n+y\n';
+  it('日本語の見出し「## 差分」から取り出す', () => {
+    expect(extractDiff(`前置き\n\n## 差分\n\n\`\`\`diff\n${DIFF}\`\`\`\n`)).toBe(DIFF);
+  });
+  it('英語の見出し「## Diff」からも取り出す（英語で実行したレビューの、差分タブが空にならない）', () => {
+    expect(extractDiff(`Intro\n\n## Diff\n\n\`\`\`diff\n${DIFF}\`\`\`\n`)).toBe(DIFF);
+  });
+  it('どちらの見出しも無ければ null', () => {
+    expect(extractDiff('見出しの無いプロンプト')).toBeNull();
+  });
+  it('両方の見出しが出てくるときは、いちばん後ろ（アプリが最後に足した差分）を使う', () => {
+    const p = `## Diff\n\n\`\`\`diff\nold\n\`\`\`\n\n## 差分\n\n\`\`\`diff\n${DIFF}\`\`\`\n`;
+    expect(extractDiff(`\n${p}`)).toBe(DIFF);
+  });
+});

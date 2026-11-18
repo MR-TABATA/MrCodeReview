@@ -12,6 +12,7 @@
 
 import { h } from './dom';
 import { getAppLang, msg } from './i18n';
+import { ut } from './uitext';
 import type { HandoffFile } from './types';
 
 /** 渡す相手: 'all' = 「対応」の全部、数字 = その番号（0 始まり）の指摘 1 件 */
@@ -75,22 +76,23 @@ export function handoffResult(target: HandoffTarget, ui: HandoffUi, act: Handoff
   if (ui.error && !ui.file) return h('p', { class: 'err' }, ui.error);
   const f = ui.file;
   if (!f) return null;
+  const t = ut().handoff;
   return h(
     'div',
     { class: 'confirm done' },
-    h('p', {}, h('strong', {}, 'CLI に渡す準備ができました')),
-    h('p', {}, `① 「対応」の ${f.count} 件を、ファイルに書きました（コミットされません）`),
+    h('p', {}, h('strong', {}, t.ready)),
+    h('p', {}, t.wrote(f.count)),
     h('p', {}, h('code', { class: 'hpath' }, f.path)),
     h(
       'p',
       {},
-      ui.copiedPrompt ? '② 次の 1 行を、コピーしました。' : '② 次の 1 行を、コピーできませんでした。選んで、コピーしてください。',
-      h('strong', {}, ' CLI（claude や agy を動かしている端末）に貼って、Enter を押してください。'),
-      ' エージェントが、ファイルを読んで、直します。',
+      ui.copiedPrompt ? t.copied : t.copyFailed,
+      h('strong', {}, t.pasteHint),
+      t.agentWill,
     ),
     h('pre', { class: 'prompt hprompt' }, f.prompt),
-    h('details', {}, h('summary', {}, '渡した内容を見る'), h('pre', { class: 'prompt hprompt' }, f.text)),
-    h('div', { class: 'row' }, h('button', { onclick: () => act.copyPrompt() }, 'もう一度コピー'), h('button', { onclick: () => act.close() }, '閉じる')),
+    h('details', {}, h('summary', {}, t.viewContent), h('pre', { class: 'prompt hprompt' }, f.text)),
+    h('div', { class: 'row' }, h('button', { onclick: () => act.copyPrompt() }, t.copyAgain), h('button', { onclick: () => act.close() }, t.close)),
   );
 }
 

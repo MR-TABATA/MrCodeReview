@@ -6,7 +6,8 @@
 import { agentSourceKind } from './agentview';
 import { reviewTag } from './findingtag';
 import { h } from './dom';
-import { getAppLang } from './i18n';
+import { getAppLang, msg, type Lang } from './i18n';
+import { ut } from './uitext';
 import { providerLabel } from './providertext';
 import type { ReviewView } from './types';
 
@@ -20,19 +21,20 @@ export interface DetailFmt {
   base: string;
 }
 
-const nf = new Intl.NumberFormat('ja-JP');
-
-/** 「根拠あり／根拠不一致」の意味。この言葉が出る場所（詳細タブの指摘の表・カードの引用・「⚠ 根拠不一致」）に、添える */
-export const GROUNDING_NOTE = '根拠の確認は、引用が差分に文字列として存在するかだけを見ています。指摘が正しいかどうかの判断ではありません。';
+/** 「根拠あり／根拠不一致」の意味。この言葉が出る場所（詳細タブの指摘の表・カードの引用・「⚠ 根拠不一致」）に、添える。日本語の文言（英語は `ut().detail.groundingNote`） */
+export const GROUNDING_NOTE = ut('ja').detail.groundingNote;
 
 /** 実行の結果の 1 文。失敗は理由つき。 */
-export function resultText(r: ReviewView): string {
-  if (r.error) return `失敗: ${r.error}`;
-  if (r.parse_error) return `実行は成功。指摘を読めなかった: ${r.parse_error}`;
-  return '成功';
+export function resultText(r: ReviewView, lang: Lang = getAppLang()): string {
+  const t = ut(lang).detail;
+  if (r.error) return t.resultFailed(r.error);
+  if (r.parse_error) return t.resultParseError(r.parse_error);
+  return t.resultOk;
 }
 
-export function detailPanel(r: ReviewView, fmt: DetailFmt): HTMLElement {
+export function detailPanel(r: ReviewView, fmt: DetailFmt, lang: Lang = getAppLang()): HTMLElement {
+  const t = ut(lang).detail;
+  const nf = new Intl.NumberFormat(msg(lang).bcp47);
   const table = (...rows: ([string, string] | null)[]) =>
     h(
       'table',
@@ -52,54 +54,58 @@ export function detailPanel(r: ReviewView, fmt: DetailFmt): HTMLElement {
   const skipped = reports.filter((a) => a?.verdict === 'skipped').length;
   // 保存元: `mrcr handoff report`（CLI）で保存したものと、会話の記録（ログ）から取り込んだもの、MCP で保存したもの
   const bySource = (k: 'cli' | 'mcp' | 'log') => reports.filter((a) => a && agentSourceKind(a.source) === k).length;
-  const sources = [bySource('cli') > 0 ? `mrcr handoff report で保存 ${bySource('cli')} 件` : '', bySource('mcp') > 0 ? `MCP で保存 ${bySource('mcp')} 件` : '', bySource('log') > 0 ? `会話の記録から取り込み ${bySource('log')} 件` : '']
+  const sources = [
+    bySource('cli') > 0 ? t.srcCli(bySource('cli')) : '',
+    bySource('mcp') > 0 ? t.srcMcp(bySource('mcp')) : '',
+    bySource('log') > 0 ? t.srcLog(bySource('log')) : '',
+  ]
     .filter(Boolean)
-    .join('・');
+    .join(t.sourcesJoin);
 
   return h(
     'div',
     { class: 'detailtab' },
-    h('h3', {}, '実行'),
+    h('h3', {}, t.hRun),
     table(
-      ['日時', fmt.when(r.created_at)],
-      ['所要時間', fmt.dur(r.duration_ms)],
-      ['LLM', providerLabel(r.provider, getAppLang())],
-      ['モデル', r.model || '（報告なし）'],
-      ['結果', resultText(r)],
+      [t.date, fmt.when(r.created_at)],
+      [t.duration, fmt.dur(r.duration_ms)],
+      [t.llm, providerLabel(r.provider, lang)],
+      [t.model, r.model || t.notReported],
+      [t.result, resultText(r, lang)],
     ),
-    h('h3', {}, '見る範囲と、送った内容'),
+    h('h3', {}, t.hScope),
     table(
-      ['見る範囲', fmt.base || '未コミットの変更（HEAD から）'],
-      ['HEAD', r.snapshot.head],
-      r.spec ? ['基準の文書', `${r.spec.display_name}（${nf.format(r.spec.char_count)} 文字）`] : null,
-      ['差分の識別子', r.snapshot.diff_hash],
-      ['差分の大きさ', `${nf.format(r.snapshot.diff_bytes)} B`],
-      ['送ったファイル', `${r.snapshot.files.length} 件`],
-      ['送らなかったもの', `${r.snapshot.excluded.length} 件`],
-      ['プロンプト', `${nf.format(r.prompt.length)} 文字`],
+      [t.range, fmt.base || t.uncommitted],
+      [t.head, r.snapshot.head],
+      r.spec ? [t.specDoc, t.specChars(r.spec.display_name, nf.format(r.spec.char_count))] : null,
+      [t.diffId, r.snapshot.diff_hash],
+      [t.diffSize, `${nf.format(r.snapshot.diff_bytes)} B`],
+      [t.filesSent, t.items(r.snapshot.files.length)],
+      [t.excluded, t.items(r.snapshot.excluded.length)],
+      [t.prompt, t.promptChars(nf.format(r.prompt.length))],
     ),
-    h('h3', {}, 'トークン'),
+    h('h3', {}, t.hTokens),
     table(
-      ['入力', fmt.num(u.input_tokens)],
-      ['出力', fmt.num(u.output_tokens)],
-      ['キャッシュ読み取り', fmt.num(u.cache_read_tokens)],
-      ['キャッシュ書き込み', fmt.num(u.cache_write_tokens)],
-      ['入力＋出力', fmt.num(total)],
-      ['提供元の報告額（参考）', r.cost_usd === null ? '（報告なし）' : `$${r.cost_usd.toFixed(4)}`],
+      [t.tokIn, fmt.num(u.input_tokens)],
+      [t.tokOut, fmt.num(u.output_tokens)],
+      [t.cacheRead, fmt.num(u.cache_read_tokens)],
+      [t.cacheWrite, fmt.num(u.cache_write_tokens)],
+      [t.tokTotal, fmt.num(total)],
+      [t.cost, r.cost_usd === null ? t.notReported : `$${r.cost_usd.toFixed(4)}`],
     ),
-    r.provider.id === 'tool' ? h('p', { class: 'note' }, 'LLM を呼んでいないので、トークンは 0 です（測っての 0 で、報告なしではありません）。') : null,
-    h('p', { class: 'note' }, 'トークンは提供元が返した実測値だけを記録します。報告が無い項目は、推定で埋めずに空欄のままにします。金額は、提供元の報告額を参考に出すだけです（サブスクでは請求されません）。'),
-    h('h3', {}, '指摘'),
+    r.provider.id === 'tool' ? h('p', { class: 'note' }, t.toolTokens) : null,
+    h('p', { class: 'note' }, t.tokenNote),
+    h('h3', {}, t.hFindings),
     table(
-      ['件数', `${r.findings.length} 件`],
-      ['根拠あり／根拠不一致', `${verified} 件／${r.findings.length - verified} 件`],
-      hasSpec ? ['設計書の根拠照合', `${specVerified} 件照合済／${r.findings.filter((f) => f.spec_verified === false).length} 件不一致`] : null,
-      ['仕分け', `対応 ${count('fix')} ・待ち ${count('wait')} ・無視 ${count('dismiss')} ・未仕分け ${count('new')}`],
-      ['対応済み（あなたの操作）', `${done} 件`],
-      ['エージェントの申告', reports.some(Boolean) ? `対応した ${did} 件 ・対応しなかった ${skipped} 件（${sources}。どれも、エージェントの申告・判断で、MCR が確かめたものではありません）` : '（申告はありません）'],
+      [t.fCount, t.items(r.findings.length)],
+      [t.fGrounded, t.fGroundedValue(verified, r.findings.length - verified)],
+      hasSpec ? [t.specCheck, t.specCheckValue(specVerified, r.findings.filter((f) => f.spec_verified === false).length)] : null,
+      [t.triage, t.triageValue(count('fix'), count('wait'), count('dismiss'), count('new'))],
+      [t.doneByYou, t.items(done)],
+      [t.agentReports, reports.some(Boolean) ? t.agentReportsValue(did, skipped, sources) : t.noReports],
     ),
-    h('p', { class: 'note' }, `${GROUNDING_NOTE}${r.provider.id === 'tool' ? '（linter の指摘は、引用が差分の行そのものなので、必ず根拠ありになります）' : ''}`),
-    h('h3', {}, '記録'),
-    table(['識別子', reviewTag(r.id)], ['実行メモ', r.notes.length ? r.notes.join(' ／ ') : 'なし']),
+    h('p', { class: 'note' }, `${t.groundingNote}${r.provider.id === 'tool' ? t.toolGrounding : ''}`),
+    h('h3', {}, t.hRecord),
+    table([t.id, reviewTag(r.id)], [t.runNotes, r.notes.length ? r.notes.join(' ／ ') : t.none]),
   );
 }

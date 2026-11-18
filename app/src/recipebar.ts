@@ -1,6 +1,7 @@
 import { h } from './dom';
 import { displayRecipeTitle } from './historyview';
 import { DEFAULT_LANG, msg, type Lang } from './i18n';
+import { ut } from './uitext';
 import { DOC_IDS, TERRAFORM_IDS, TERRAFORM_LABEL } from './recipescope';
 import type { SkipWhy } from './runplan';
 import type { Recipe } from './types';
@@ -239,7 +240,7 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
       'div',
       { class: 'recipe-bar-meta' },
       h('span', { class: 'recipe-chips-tools' }, selectAllBtn, clearAllBtn, showAllBtn),
-      hints.length ? h('span', { class: 'muted hint' }, hints.join(' ・ ')) : null,
+      hints.length ? h('span', { class: 'muted hint' }, hints.join(ut(lang).misc.hintSep)) : null,
       st.runError ? h('span', { class: 'err' }, st.runError) : null,
     ),
   );

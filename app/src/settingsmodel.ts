@@ -5,6 +5,7 @@
 
 import {
   DEFAULT_LANG,
+  getAppLang,
   isValidLangSetting,
   msg,
   settingMetaUnit,
@@ -13,6 +14,7 @@ import {
   type SettingMetaText,
   type SettingsTabDef,
 } from './i18n';
+import { ut } from './uitext';
 import type { SettingMeta } from './types';
 
 export type Values = Record<string, unknown>;
@@ -75,37 +77,38 @@ export function formatValue(m: SettingMeta, v: unknown, lang: Lang = DEFAULT_LAN
 }
 
 /** 項目ごとの、入力の誤り（キー → 理由）。誤りが無ければ空。 */
-export function validate(meta: SettingMeta[], draft: Values): Record<string, string> {
+export function validate(meta: SettingMeta[], draft: Values, lang: Lang = getAppLang()): Record<string, string> {
+  const t = ut(lang).settings;
   const errors: Record<string, string> = {};
   for (const m of meta) {
     const v = draft[m.key];
     if (m.kind === 'select') {
       if (m.key === 'language' && !isValidLangSetting(v)) {
-        errors[m.key] = '選択肢から選んでください';
+        errors[m.key] = t.pickOption;
       }
       continue;
     }
     if (m.kind === 'list') {
       if (!Array.isArray(v) || v.some((x) => typeof x !== 'string' || x.trim() === '')) {
-        errors[m.key] = '空でない文字列を、1 行に 1 つずつ書いてください';
+        errors[m.key] = t.listFormat;
       } else if (m.key === 'ignored_lockfiles' && v.some((x) => String(x).includes('/'))) {
-        errors[m.key] = 'ファイル名だけを書いてください（パスは書けません）';
+        errors[m.key] = t.fileNamesOnly;
       }
       continue;
     }
     if (typeof v !== 'number' || !Number.isFinite(v)) {
-      errors[m.key] = '数値を入れてください';
+      errors[m.key] = t.needNumber;
     } else if (m.kind === 'integer' && !Number.isInteger(v)) {
-      errors[m.key] = '整数を入れてください';
+      errors[m.key] = t.needInteger;
     } else if (m.min !== null && m.max !== null && (v < m.min || v > m.max)) {
-      errors[m.key] = `${rangeText(m)} の範囲で入れてください`;
+      errors[m.key] = t.inRange(rangeText(m, lang));
     }
   }
   // 項目をまたぐ規則（サーバーと同じ）
   const file = draft['max_file_bytes'];
   const total = draft['max_total_bytes'];
   if (!errors['max_total_bytes'] && !errors['max_file_bytes'] && typeof file === 'number' && typeof total === 'number' && total < file) {
-    errors['max_total_bytes'] = `1 ファイルの上限（${nf.format(file)}）以上にしてください`;
+    errors['max_total_bytes'] = t.totalAtLeast(nf.format(file));
   }
   return errors;
 }

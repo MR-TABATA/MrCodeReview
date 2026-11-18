@@ -1,3 +1,4 @@
+import { ut } from './uitext';
 /**
  * 登録リポジトリの管理。
  * - 名前（省略可）とパスを保持する。
@@ -29,7 +30,7 @@ export const slotCount = (repos: RegisteredRepo[]): number => repos.length;
 export function addBlockedReason(repos: RegisteredRepo[], limit: number | null, missing: (path: string) => boolean): string | null {
   if (limit === null || slotCount(repos) < limit) return null;
   if (visibleRepos(repos).some((r) => missing(r.path))) return null;
-  return `枠がいっぱいです（${limit} / ${limit}）。追加するには、設定の「リポジトリ」で「データを削除…」して枠を空けてください`;
+  return ut().misc.slotsFull(limit);
 }
 
 /** 以前の版が、登録を画面に持っていたキー。いまは Rust（SQLite）が持つ。初回の取り込みにだけ読む。 */
