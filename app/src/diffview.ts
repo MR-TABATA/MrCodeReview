@@ -10,14 +10,24 @@
 import { sideBySide, type DiffRow } from './diff';
 import type { Finding } from './types';
 
-const DIFF_MARK = '\n## 差分\n\n```diff\n';
+/** 差分のブロックの見出し（日本語・英語。プロンプトの言語で変わる。Rust 側 `i18n.rs` の `diff_heading`）。 */
+const DIFF_MARKS = ['\n## 差分\n\n```diff\n', '\n## Diff\n\n```diff\n'];
 
 /** プロンプトの全文から、送った差分の本文を取り出す。見つからなければ null。 */
 export function extractDiff(prompt: string): string | null {
   // アプリが最後に足した差分のブロックを探す。差分の中身に同じ並びが出ても、行頭に +/-/空白が付くので一致しない。
-  const at = prompt.lastIndexOf(DIFF_MARK);
+  // 日本語と英語の見出しのうち、いちばん後ろにあるもの（プロンプトの言語は、記録ごとに違う）
+  let at = -1;
+  let mark = DIFF_MARKS[0];
+  for (const m of DIFF_MARKS) {
+    const i = prompt.lastIndexOf(m);
+    if (i > at) {
+      at = i;
+      mark = m;
+    }
+  }
   if (at < 0) return null;
-  const start = at + DIFF_MARK.length;
+  const start = at + mark.length;
   const end = prompt.endsWith('```\n') ? prompt.length - 4 : prompt.length;
   return end >= start ? prompt.slice(start, end) : null;
 }

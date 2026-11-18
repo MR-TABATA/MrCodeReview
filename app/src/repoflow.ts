@@ -5,7 +5,9 @@
  * - 窓に戻ったとき: 比較元の一覧を取り直す（失敗しても、いまの一覧を残す）。
  */
 
+import { getAppLang, type Lang } from './i18n';
 import { resolveRegisteredRepo, type RegisteredRepo } from './reporegistry';
+import { ut } from './uitext';
 import type { BaseOption } from './types';
 
 export interface RepoList {
@@ -42,9 +44,9 @@ export function settleSelection(repos: RegisteredRepo[], selected: string, loade
  * 「送る内容」の欄に出すエラー。送る内容を読めなかった理由が先。それが無くて、見る範囲の候補だけ読めなかったときは、その理由
  * （黙って候補を空にしない）。どちらも無ければ、空。
  */
-export function previewErrorText(previewError: string, basesError: string): string {
+export function previewErrorText(previewError: string, basesError: string, lang: Lang = getAppLang()): string {
   if (previewError) return previewError;
-  return basesError ? `見る範囲の候補を読めませんでした: ${basesError}` : '';
+  return basesError ? ut(lang).repo.basesFailed(basesError) : '';
 }
 
 export interface BootReposResult {
@@ -70,7 +72,7 @@ export async function bootRepos(d: {
     const list = await d.load(legacy);
     return { list, error: '', warnings: list.warnings ?? [], selected: settleSelection(list.repos, d.selected, true) };
   } catch (e) {
-    return { list: null, error: `登録リポジトリを読めません: ${String(e)}`, warnings: [], selected: d.selected };
+    return { list: null, error: ut().repo.loadFailed(String(e)), warnings: [], selected: d.selected };
   }
 }
 
@@ -85,17 +87,9 @@ export interface AddPlan {
 }
 
 /** 「移動した」ものとして付け替える確認の文面。何を・どこからどこへ変えるかを先に言う。 */
-export function moveConfirmText(from: string, to: string): string {
-  return [
-    '登録を、新しいフォルダに付け替えます。',
-    '',
-    `元: ${from}`,
-    `新: ${to}`,
-    '',
-    '履歴（レビュー・仕分け・メモ）は、そのまま引き継ぎます。',
-    '',
-    '元のフォルダは、いま見つかりません。外付けドライブが接続されていないだけなら、「キャンセル」にしてください（何も変えません）。',
-  ].join('\n');
+export function moveConfirmText(from: string, to: string, lang: Lang = getAppLang()): string {
+  const t = ut(lang).repo;
+  return [t.moveTitle, '', t.moveFrom(from), t.moveTo(to), '', t.moveKeeps, '', t.moveMissing].join('\n');
 }
 
 /** 追加の結果から、次の動きを決める。上限で断られたときは、選ばない。 */
@@ -129,7 +123,8 @@ const folderName = (path: string): string => path.replace(/\/+$/, '').split('/')
  * - 追加できた・登録済みで選べた: 数える。最初のものを、追加後の選択にする。
  * - 枠がいっぱいで断られた・移動したかもしれない（確認が要る）・呼び出しに失敗した: 何も変えず、名前を挙げて伝える。
  */
-export function planBatchAdd(items: BatchAddItem[]): BatchAddPlan {
+export function planBatchAdd(items: BatchAddItem[], lang: Lang = getAppLang()): BatchAddPlan {
+  const t = ut(lang).repo;
   const added: string[] = [];
   const elsewhere: string[] = [];
   const refused: string[] = [];
@@ -137,7 +132,7 @@ export function planBatchAdd(items: BatchAddItem[]): BatchAddPlan {
   const failed: string[] = [];
   for (const it of items) {
     if (!it.out) {
-      failed.push(`${folderName(it.path)}（${it.error ?? '理由が分かりません'}）`);
+      failed.push(t.failedItem(folderName(it.path), it.error ?? t.unknownReason));
       continue;
     }
     const p = planAfterAdd(it.out);
@@ -148,11 +143,11 @@ export function planBatchAdd(items: BatchAddItem[]): BatchAddPlan {
       if (p.alreadyAt) elsewhere.push(folderName(it.path));
     }
   }
-  const parts = [`${items.length} 件のうち、${added.length} 件を追加しました。`];
-  if (elsewhere.length) parts.push(`${elsewhere.length} 件は、同じリポジトリがすでに別の場所に登録されていたので、そちらを使います（${elsewhere.join('、')}）。`);
-  if (refused.length) parts.push(`枠がいっぱいで追加できなかったもの: ${refused.join('、')}。設定の「リポジトリ」で「データを削除…」して枠を空けてください。`);
-  if (maybeMoved.length) parts.push(`登録のフォルダが移動したかもしれないので、何も変えていません（1 件ずつ追加して確認してください）: ${maybeMoved.join('、')}。`);
-  if (failed.length) parts.push(`追加できなかったもの: ${failed.join('、')}。`);
+  const parts = [t.batchAdded(items.length, added.length)];
+  if (elsewhere.length) parts.push(t.batchElsewhere(elsewhere.length, elsewhere.join(t.listSep)));
+  if (refused.length) parts.push(t.batchRefused(refused.join(t.listSep)));
+  if (maybeMoved.length) parts.push(t.batchMaybeMoved(maybeMoved.join(t.listSep)));
+  if (failed.length) parts.push(t.batchFailed(failed.join(t.listSep)));
   return { select: added[0] ?? null, message: parts.join('\n'), problems: refused.length + maybeMoved.length + failed.length > 0 };
 }
 

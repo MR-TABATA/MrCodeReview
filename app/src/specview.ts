@@ -32,6 +32,8 @@ export class SpecView {
   private readonly filePanel: HTMLElement;
   private readonly pastePanel: HTMLElement;
   private readonly pickFileBtn: HTMLButtonElement;
+  private readonly clearFileBtn: HTMLButtonElement;
+  private readonly clearPasteBtn: HTMLButtonElement;
   private readonly filePathInput: HTMLInputElement;
   private readonly fileDatalist: HTMLDataListElement;
   private readonly fileSelect: HTMLSelectElement;
@@ -68,7 +70,7 @@ export class SpecView {
 
     this.cardTitle = document.createElement('span');
     this.cardTitle.className = 'spec-card-title';
-    this.cardTitle.textContent = '📘 参照する設計書・仕様書の指定';
+    this.cardTitle.textContent = this.messages.specView.cardTitle;
     headerRow.appendChild(this.cardTitle);
 
     // タブバー
@@ -105,8 +107,8 @@ export class SpecView {
     this.pickFileBtn = document.createElement('button');
     this.pickFileBtn.type = 'button';
     this.pickFileBtn.className = 'spec-file-btn';
-    this.pickFileBtn.textContent = '📄 ファイルを選択...';
-    this.pickFileBtn.title = 'macOSのファイル選択ダイアログを開きます';
+    this.pickFileBtn.textContent = this.messages.specView.pickFile;
+    this.pickFileBtn.title = this.messages.specView.pickFileTitle;
     this.pickFileBtn.addEventListener('click', async () => {
       if (this.onPickFile) {
         const picked = await this.onPickFile();
@@ -124,7 +126,7 @@ export class SpecView {
     this.filePathInput = document.createElement('input');
     this.filePathInput.type = 'text';
     this.filePathInput.className = 'spec-file-path-display';
-    this.filePathInput.placeholder = 'ファイルパス（例: docs/spec.md）または「ファイルを選択...」ボタン';
+    this.filePathInput.placeholder = this.messages.specView.filePathPlaceholder;
     this.filePathInput.setAttribute('list', datalistId);
     this.filePathInput.addEventListener('change', async () => {
       await this.selectFile(this.filePathInput.value);
@@ -151,7 +153,8 @@ export class SpecView {
     clearFileBtn.type = 'button';
     clearFileBtn.className = 'spec-clear-btn spec-file-clear-btn';
     clearFileBtn.textContent = this.messages.specView.clearButton;
-    clearFileBtn.title = '選択を解除';
+    clearFileBtn.title = this.messages.specView.clearSelectionTitle;
+    this.clearFileBtn = clearFileBtn;
     clearFileBtn.addEventListener('click', () => {
       this.clearFile();
     });
@@ -171,7 +174,7 @@ export class SpecView {
 
     this.textarea = document.createElement('textarea');
     this.textarea.className = 'spec-textarea';
-    this.textarea.placeholder = 'GitHub Issue の要件、PR の説明文、受け入れ基準、または設計書のテキストをここに貼り付けてください...';
+    this.textarea.placeholder = this.messages.specView.pasteAreaPlaceholder;
     this.textarea.rows = 4;
     this.textarea.addEventListener('input', () => {
       this.pasteText = this.textarea.value;
@@ -189,7 +192,8 @@ export class SpecView {
     clearPasteBtn.type = 'button';
     clearPasteBtn.className = 'spec-clear-btn spec-paste-clear-btn';
     clearPasteBtn.textContent = this.messages.specView.clearButton;
-    clearPasteBtn.title = '入力をクリア';
+    clearPasteBtn.title = this.messages.specView.clearInputTitle;
+    this.clearPasteBtn = clearPasteBtn;
     clearPasteBtn.addEventListener('click', () => {
       this.pasteText = '';
       this.textarea.value = '';
@@ -324,9 +328,17 @@ export class SpecView {
 
   public setMessages(messages: Messages): void {
     this.messages = messages;
-    this.cardTitle.textContent = '📘 参照する設計書・仕様書の指定';
+    this.cardTitle.textContent = this.messages.specView.cardTitle;
     this.tabFileBtn.textContent = this.messages.specView.tabFile;
     this.tabPasteBtn.textContent = this.messages.specView.tabPaste;
+    this.pickFileBtn.textContent = this.messages.specView.pickFile;
+    this.pickFileBtn.title = this.messages.specView.pickFileTitle;
+    this.filePathInput.placeholder = this.messages.specView.filePathPlaceholder;
+    this.clearFileBtn.textContent = this.messages.specView.clearButton;
+    this.clearFileBtn.title = this.messages.specView.clearSelectionTitle;
+    this.textarea.placeholder = this.messages.specView.pasteAreaPlaceholder;
+    this.clearPasteBtn.textContent = this.messages.specView.clearButton;
+    this.clearPasteBtn.title = this.messages.specView.clearInputTitle;
     this.renderFileOptions();
     this.updateCharCounter();
   }

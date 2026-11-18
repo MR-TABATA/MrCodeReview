@@ -50,7 +50,7 @@ describe('uitext（画面の文言・日英）', () => {
 
   it('日本語の文言は、日本語を含む（固有名詞だけのものを除く）', () => {
     for (const [p, v] of leaves('ja')) {
-      if (SAME_IN_BOTH.has(p)) continue;
+      if (SAME_IN_BOTH.has(p) || p.endsWith('(0)')) continue; // 「0・空」の見本は、数だけの文になることがある
       expect(v, `ja ${p}`).toMatch(JAPANESE);
     }
   });
@@ -58,7 +58,7 @@ describe('uitext（画面の文言・日英）', () => {
   it('英語は、日本語のコピーのままではない（訳し忘れを見つける）', () => {
     const ja = new Map(leaves('ja'));
     for (const [p, v] of leaves('en')) {
-      if (SAME_IN_BOTH.has(p.replace(/\(0?\)$/, ''))) continue;
+      if (SAME_IN_BOTH.has(p.replace(/\(0?\)$/, '')) || p.endsWith('(0)')) continue;
       expect(v, `en ${p}`).not.toBe(ja.get(p));
     }
   });

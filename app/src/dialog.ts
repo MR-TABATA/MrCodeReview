@@ -5,6 +5,7 @@
 // 確認は、ここの `confirmDialog`（答えを待つ）を使う。
 
 import { confirm } from '@tauri-apps/plugin-dialog';
+import { ut } from './uitext';
 
 // ダイアログの既定の見出し。アプリの名前（殻で違う）は、起動時に Rust から読んで入れる（読めるまでは、Free 殻の名前）。
 let appName = 'MrCodeReview';
@@ -15,7 +16,7 @@ export function setAppName(name: string): void {
 /** 「はい」のときだけ true。キャンセル・閉じる・ダイアログを出せなかったときは false（確認が取れなければ、進まない）。 */
 export async function confirmDialog(message: string, opts: { title?: string; okLabel?: string } = {}): Promise<boolean> {
   try {
-    return (await confirm(message, { title: opts.title ?? appName, kind: 'warning', okLabel: opts.okLabel ?? 'OK', cancelLabel: 'キャンセル' })) === true;
+    return (await confirm(message, { title: opts.title ?? appName, kind: 'warning', okLabel: opts.okLabel ?? 'OK', cancelLabel: ut().misc.cancel })) === true;
   } catch {
     return false;
   }

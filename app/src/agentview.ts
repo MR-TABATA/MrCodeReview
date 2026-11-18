@@ -133,7 +133,7 @@ export function agentStatusBar(status: AgentStatus, ui: AgentUi, act: AgentActio
         ? m.agentStatePartial(status.reported, status.total, status.missing)
         : m.agentStateNone(status.missing);
   // 「対応しなかった」の申告は、あなたの判断が残っている。「保存済み」だけだと、完了したように見えるので、手がかりを添える
-  const label = status.skipped > 0 ? `${base}・${m.agentStateDecide(status.skipped)}` : base;
+  const label = status.skipped > 0 ? `${base}${ut().misc.dotSep}${m.agentStateDecide(status.skipped)}` : base;
   const kind = status.skipped > 0 ? 'decide' : status.missing === 0 ? 'ok' : 'missing';
   return h(
     'span',
@@ -247,7 +247,7 @@ export function agentBox(report: AgentReport | null | undefined, when: (ms: numb
     { class: `agentrep ${did ? 'did' : 'skipped'}` },
     h('div', { class: 'row' }, h('span', { class: 'badge' }, did ? t.badgeDid : t.badgeSkipped), h('strong', {}, t.boxTitle)),
     h('p', { class: 'agenttext' }, report.text),
-    h('div', { class: 'muted' }, `${when(report.reported_at)} ・ ${agentSourceLabel(report.source)}`),
+    h('div', { class: 'muted' }, `${when(report.reported_at)}${ut().misc.hintSep}${agentSourceLabel(report.source)}`),
     // 「何の」「誰の」確認ではないのかを、申告の種類ごとに、はっきり言う
     h('div', { class: 'muted' }, did ? t.didNote : t.skippedNote),
     did ? h('div', { class: 'muted' }, t.didCheck) : null,

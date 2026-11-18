@@ -48,6 +48,13 @@ export interface Messages {
     toggleLabel: string;
     tabFile: string;
     tabPaste: string;
+    cardTitle: string;
+    pickFile: string;
+    pickFileTitle: string;
+    filePathPlaceholder: string;
+    clearSelectionTitle: string;
+    pasteAreaPlaceholder: string;
+    clearInputTitle: string;
     fileSelectPlaceholder: string;
     noFilesFound: string;
     allSections: string;
@@ -516,6 +523,13 @@ export const MESSAGES: Record<Lang, Messages> = {
       toggleLabel: '設計書・要件を参照する',
       tabFile: '📄 ファイルから選択',
       tabPaste: '📝 直接貼り付け',
+      cardTitle: '📘 参照する設計書・仕様書の指定',
+      pickFile: '📄 ファイルを選択...',
+      pickFileTitle: 'macOSのファイル選択ダイアログを開きます',
+      filePathPlaceholder: 'ファイルパス（例: docs/spec.md）または「ファイルを選択...」ボタン',
+      clearSelectionTitle: '選択を解除',
+      pasteAreaPlaceholder: 'GitHub Issue の要件、PR の説明文、受け入れ基準、または設計書のテキストをここに貼り付けてください...',
+      clearInputTitle: '入力をクリア',
       fileSelectPlaceholder: 'ファイルを選択（.md / .txt）',
       noFilesFound: '参照できる仕様書ファイル（.md / .txt）が見つかりません',
       allSections: '（ファイル全体を参照）',
@@ -1010,6 +1024,13 @@ export const MESSAGES: Record<Lang, Messages> = {
       toggleLabel: 'Refer to Spec / Requirements',
       tabFile: '📄 Select File',
       tabPaste: '📝 Paste Directly',
+      cardTitle: '📘 Reference specification / design document',
+      pickFile: '📄 Choose a file...',
+      pickFileTitle: 'Opens the macOS file chooser',
+      filePathPlaceholder: 'File path (e.g. docs/spec.md) or the "Choose a file..." button',
+      clearSelectionTitle: 'Clear the selection',
+      pasteAreaPlaceholder: 'Paste requirements from a GitHub Issue, a PR description, acceptance criteria, or the text of a design document here...',
+      clearInputTitle: 'Clear the input',
       fileSelectPlaceholder: 'Select file (.md / .txt)',
       noFilesFound: 'No specification files (.md / .txt) found',
       allSections: '(Entire file)',

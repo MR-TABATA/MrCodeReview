@@ -4,6 +4,7 @@
 // - 確認できなかったとき（ネットワーク・署名・サーバ）は、黙らず、理由を出す。「最新です」と区別する。
 // - 更新を入れる前に、必ず、聞く（入れると、アプリが再起動する）。
 
+import { ut } from './uitext';
 export interface UpdateInfo {
   version: string;
   current: string;
@@ -24,9 +25,9 @@ export type UpdateResult = 'latest' | 'declined' | 'installed' | 'error';
 export function confirmText(info: UpdateInfo): string {
   const notes = info.notes?.trim();
   return [
-    `新しい版 ${info.version} があります（いまは ${info.current}）。`,
+    ut().update.newVersion(info.version, info.current),
     notes ? `\n${notes.length > 300 ? `${notes.slice(0, 300)}…` : notes}` : '',
-    '\nダウンロードして入れ替え、アプリを再起動します。実行中のレビューは、止まります。',
+    ut().update.installNote,
   ].join('');
 }
 
@@ -39,7 +40,7 @@ export async function runUpdateCheck(d: UpdateDeps): Promise<UpdateResult> {
     return 'error';
   }
   if (!info) {
-    await d.notify('いまの版は、最新です。', 'ok');
+    await d.notify(ut().update.latest, 'ok');
     return 'latest';
   }
   if (!(await d.confirm(info))) return 'declined';
