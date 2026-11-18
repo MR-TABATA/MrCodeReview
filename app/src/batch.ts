@@ -9,6 +9,8 @@
 
 import { h } from './dom';
 import { fmtSeconds, type DurationStats } from './duration';
+import { getAppLang, msg, type Lang } from './i18n';
+import { ut } from './uitext';
 import type { Recipe } from './types';
 
 /** LLM を使う観点が、これ以上なら、実行前に確認する */
@@ -43,7 +45,6 @@ export interface BatchUi {
 
 export const newBatchUi = (): BatchUi => ({ open: false, picked: new Set(), confirming: false, run: null, last: null });
 
-const nf = new Intl.NumberFormat('ja-JP');
 
 /** 選んだ観点（観点の並びの順。クリックした順ではなく、いつも同じ順に実行する） */
 export const pickedRecipes = (recipes: Recipe[], picked: Set<string>): Recipe[] => recipes.filter((r) => picked.has(r.id));
@@ -61,39 +62,39 @@ export interface BatchEstimate {
  * `stats`: 観点の id → 過去の実績。まだ読み込んでいないものは、undefined。
  * `inputTokens`: 1 回に送る、概算の入力トークン（まだ分からなければ null）。
  */
-export function batchEstimate(chosen: Recipe[], stats: Record<string, DurationStats | undefined>, inputTokens: number | null, isMock: boolean): BatchEstimate {
+export function batchEstimate(chosen: Recipe[], stats: Record<string, DurationStats | undefined>, inputTokens: number | null, isMock: boolean, lang: Lang = getAppLang()): BatchEstimate {
+  const t = ut(lang).batch;
+  const nf = new Intl.NumberFormat(msg(lang).bcp47);
+  const fs = (ms: number) => fmtSeconds(ms, lang);
   const llm = chosen.filter((r) => r.kind !== 'tool').length;
   const tokensText =
-    llm === 0
-      ? 'LLM は使いません。トークンは 0 です。'
-      : inputTokens === null
-        ? `LLM に ${llm} 回、送ります。`
-        : `送る量: 約 ${nf.format(inputTokens)} トークン × ${llm} 回 ＝ 約 ${nf.format(inputTokens * llm)} トークン（概算。入力だけ）`;
+    llm === 0 ? t.noLlm : inputTokens === null ? t.sendsN(llm) : t.amount(nf.format(inputTokens), llm, nf.format(inputTokens * llm));
 
   let timeText = '';
   if (!isMock && chosen.length > 0 && chosen.every((r) => stats[r.id] !== undefined)) {
     const known = chosen.map((r) => stats[r.id]!).filter((s) => s.n > 0);
     const unknown = chosen.length - known.length;
     if (known.length === 0) {
-      timeText = '目安: 実績なし（この LLM・この観点では、まだ測っていません）';
+      timeText = t.timeNone;
     } else {
       const sum = (f: (s: DurationStats) => number) => known.reduce((a, s) => a + f(s), 0);
       const [lo, mid, hi] = [sum((s) => s.min_ms), sum((s) => s.median_ms), sum((s) => s.max_ms)];
-      const range = lo === hi ? '' : `（${fmtSeconds(lo)}〜${fmtSeconds(hi)}）`;
-      timeText = unknown === 0 ? `目安: 約 ${fmtSeconds(mid)}${range}` : `目安: 実績のある ${known.length} 観点で 約 ${fmtSeconds(mid)}${range}。ほか ${unknown} 観点は、実績なし`;
+      const range = lo === hi ? '' : t.rangeParen(fs(lo), fs(hi));
+      timeText = unknown === 0 ? t.timeAll(fs(mid), range) : t.timeSome(known.length, fs(mid), range, unknown);
     }
   }
   return { count: chosen.length, llm, tokensText, timeText };
 }
 
 /** 終わったあとの 1 文。失敗と中止は、件数で言う。 */
-export function batchSummary(results: BatchResult[]): string {
+export function batchSummary(results: BatchResult[], lang: Lang = getAppLang()): string {
   const ok = results.filter((r) => r.ok).length;
   const stopped = results.filter((r) => !r.ok && r.note === STOPPED).length;
   const failed = results.length - ok - stopped;
-  return `${results.length} 件中 ${ok} 件成功${failed ? `・${failed} 件失敗` : ''}${stopped ? `・${stopped} 件は、中止して実行せず` : ''}`;
+  return ut(lang).batch.summary(results.length, ok, failed, stopped);
 }
 
+/** 「中止して実行していない」の印。結果の `note` に入れて、比べるための値（言語に依らない）。画面に出すときは、`ut().batch.stoppedNote` に直す。 */
 export const STOPPED = '中止して実行していない';
 
 export interface BatchContext {
@@ -120,10 +121,11 @@ export interface BatchActions {
   stop(): void;
 }
 
-export function batchPanel(ui: BatchUi, recipes: Recipe[], ctx: BatchContext, act: BatchActions): HTMLElement {
+export function batchPanel(ui: BatchUi, recipes: Recipe[], ctx: BatchContext, act: BatchActions, lang: Lang = getAppLang()): HTMLElement {
+  const t = ut(lang).batch;
   const running = ui.run !== null;
   const chosen = pickedRecipes(recipes, ui.picked);
-  const est = batchEstimate(chosen, ctx.stats, ctx.inputTokens, ctx.isMock);
+  const est = batchEstimate(chosen, ctx.stats, ctx.inputTokens, ctx.isMock, lang);
 
   const list = h(
     'ul',
@@ -137,7 +139,7 @@ export function batchPanel(ui: BatchUi, recipes: Recipe[], ctx: BatchContext, ac
           {},
           h('input', { type: 'checkbox', disabled: running, ...(ui.picked.has(r.id) ? { checked: true } : {}), onchange: () => act.pick(r.id) }),
           ` ${r.title}`,
-          r.kind === 'tool' ? h('span', { class: 'muted' }, '（LLM を使わない）') : null,
+          r.kind === 'tool' ? h('span', { class: 'muted' }, t.toolNoLlm) : null,
         ),
       ),
     ),
@@ -148,8 +150,8 @@ export function batchPanel(ui: BatchUi, recipes: Recipe[], ctx: BatchContext, ac
     ? h(
         'div',
         {},
-        h('p', { class: 'note' }, `${run.index + 1} / ${run.ids.length}　${recipes.find((r) => r.id === run.ids[run.index])?.title ?? ''} を実行中… `, h('span', { 'data-elapsed': '' }, ctx.elapsed)),
-        h('button', { class: 'small', disabled: run.stop, onclick: () => act.stop() }, run.stop ? '現在の実行が終わったら、止めます' : '残りを中止'),
+        h('p', { class: 'note' }, t.running(run.index + 1, run.ids.length, recipes.find((r) => r.id === run.ids[run.index])?.title ?? ''), h('span', { 'data-elapsed': '' }, ctx.elapsed)),
+        h('button', { class: 'small', disabled: run.stop, onclick: () => act.stop() }, run.stop ? t.stopNow : t.stopRest),
       )
     : null;
 
@@ -157,9 +159,9 @@ export function batchPanel(ui: BatchUi, recipes: Recipe[], ctx: BatchContext, ac
     ? h(
         'div',
         { class: 'confirm' },
-        h('p', {}, `LLM に ${est.llm} 回、送ります。同じ差分を、観点の数だけ、送ります。`),
+        h('p', {}, t.confirmSends(est.llm)),
         h('p', { class: 'muted' }, est.tokensText),
-        h('div', { class: 'row' }, h('button', { class: 'run', onclick: () => act.confirm() }, '実行する'), h('button', { onclick: () => act.cancelConfirm() }, 'やめる')),
+        h('div', { class: 'row' }, h('button', { class: 'run', onclick: () => act.confirm() }, t.confirmRun), h('button', { onclick: () => act.cancelConfirm() }, t.confirmCancel)),
       )
     : null;
 
@@ -168,15 +170,15 @@ export function batchPanel(ui: BatchUi, recipes: Recipe[], ctx: BatchContext, ac
     ? h(
         'div',
         { class: 'batchlast' },
-        h('p', { class: 'note' }, batchSummary(last)),
-        ...last.filter((r) => !r.ok).map((r) => h('p', { class: 'err' }, `${r.title}: ${r.note}`)),
+        h('p', { class: 'note' }, batchSummary(last, lang)),
+        ...last.filter((r) => !r.ok).map((r) => h('p', { class: 'err' }, `${r.title}: ${r.note === STOPPED ? t.stoppedNote : r.note}`)),
       )
     : null;
 
   return h(
     'section',
     { class: 'batch' },
-    h('button', { class: 'small linkish', onclick: () => act.toggle() }, ui.open ? 'まとめて実行 ▾' : 'まとめて実行 ▸'),
+    h('button', { class: 'small linkish', onclick: () => act.toggle() }, ui.open ? t.toggleOpen : t.toggleClosed),
     ui.open
       ? h(
           'div',
@@ -184,10 +186,10 @@ export function batchPanel(ui: BatchUi, recipes: Recipe[], ctx: BatchContext, ac
           lastBox,
           list,
           ctx.lintNote && ui.picked.has('lint') ? h('p', { class: 'note' }, ctx.lintNote) : null,
-          est.count > 0 ? h('p', { class: 'note' }, `${est.count} 観点を選択中。${est.tokensText}`) : h('p', { class: 'muted' }, '観点を選ぶと、送る量と目安の時間が出ます。'),
+          est.count > 0 ? h('p', { class: 'note' }, t.selected(est.count, est.tokensText)) : h('p', { class: 'muted' }, t.pickHint),
           est.timeText ? h('p', { class: 'note est' }, est.timeText) : null,
           confirmBox,
-          confirmBox || running ? null : h('button', { class: 'run', disabled: est.count === 0 || !!ctx.reason, onclick: () => act.start() }, est.count > 0 ? `${est.count} 観点を、順に実行` : '順に実行'),
+          confirmBox || running ? null : h('button', { class: 'run', disabled: est.count === 0 || !!ctx.reason, onclick: () => act.start() }, est.count > 0 ? t.runN(est.count) : t.runNone),
           !running && ctx.reason && est.count > 0 ? h('p', { class: 'note' }, ctx.reason) : null,
           progress,
         )
