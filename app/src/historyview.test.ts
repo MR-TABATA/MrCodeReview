@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { countsLine, dayKey, displayRecipeTitle, historyPanel, needsAttention, prunePicks, RECENT_KEEP, splitHistory } from './historyview';
+import { countsLine, dayKey, displayRecipeTitle, formatWhen, historyPanel, needsAttention, prunePicks, RECENT_KEEP, splitHistory } from './historyview';
 import type { ReviewSummary } from './types';
 
 const S = (id: string, over: Partial<ReviewSummary> = {}): ReviewSummary => ({ id, created_at: 1_793_000_000_000, repo: '/Users/me/Git/MrkDown', recipe_title: '潜在バグ', provider_label: 'Claude', findings: 3, verified: 2, total_tokens: 1820, failed: false, counts: { open: 1, done: 1, wait: 0, dismiss: 1 }, ...over });
@@ -227,5 +227,18 @@ describe('historyPanel の日付のグループ', () => {
     expect(displayRecipeTitle('lint', 'en')).toBe('Linters');
     expect(displayRecipeTitle('他ファイルとの不整合', 'en')).toBe('Cross-file Inconsistencies');
     expect(displayRecipeTitle('リンター', 'ja')).toBe('リンター');
+  });
+});
+
+describe('formatWhen（日時の表示は、言語に従う）', () => {
+  const ms = Date.UTC(2026, 10, 18, 12, 0, 0);
+  it('日本語は日本語の書式、英語は英語の書式。同じ日時で、書式が違う', () => {
+    const ja = formatWhen(ms, 'ja');
+    const en = formatWhen(ms, 'en');
+    expect(ja).toBe(new Date(ms).toLocaleString('ja-JP'));
+    expect(en).toBe(new Date(ms).toLocaleString('en-US'));
+    expect(ja).toMatch(/^2026\/\d+\/\d+/); // 年/月/日（日付は、タイムゾーンで 1 日ずれうる）
+    expect(en).toMatch(/AM|PM/); // 12 時間表記
+    expect(ja).not.toBe(en);
   });
 });

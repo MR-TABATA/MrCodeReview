@@ -105,6 +105,16 @@ export interface Base {
 }
 
 /** 画面の「比較元」の選択肢。 */
+/** 「前回の続きから」の材料（この観点の、前回のレビューと、そこからの続きの比較元）。 */
+export interface ContinueInfo {
+  id: string;
+  seq: number | null;
+  findings: number;
+  created_at: number;
+  /** 比較元の値（前回のレビュー時点の HEAD のハッシュ）。 */
+  base: string;
+}
+
 export interface BaseOption {
   value: string;
   label: string;
@@ -194,7 +204,7 @@ export interface Fate {
   from_index: number;
   title: string;
   file: string;
-  state_before: 'fix' | 'wait';
+  state_before: TriageState;
   fate: 'persists' | 'gone' | 'not_reraised' | 'file_missing' | 'unknown';
 }
 
@@ -257,6 +267,10 @@ export interface ReviewRecord {
   /** findings と同じ並び。引き継ぎ元が無ければ null（古い記録では空配列） */
   carries: (Carry | null)[];
   fates: Fate[];
+  /** 実行した時点の「前回」（同じリポジトリ・同じ観点の直前）。初回・古い記録は無い */
+  previous?: { id: string; created_at: number; findings: number; seq?: number | null } | null;
+  /** 同じリポジトリ・同じ観点の中の連番（「潜在バグ_1」の 1） */
+  seq?: number | null;
   /** 実行メモ（除外した件数など） */
   notes: string[];
   /** 送った関連コード。関連コードを使う観点のときだけ */
@@ -353,6 +367,8 @@ export interface ReviewSummary {
   verified: number;
   total_tokens: number | null;
   failed: boolean;
+  /** 同じリポジトリ・同じ観点の中の連番（「潜在バグ_1」の 1）。番号を振る前の記録は無い */
+  seq?: number | null;
   /** 仕分けの件数。読み取りに失敗したときは null */
   counts: TriageCounts | null;
 }

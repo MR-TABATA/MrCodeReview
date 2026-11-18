@@ -8,8 +8,9 @@
 //! - ほぼ一致（トークンの一致率 90% 以上）: 「待ち」「無視」だけ引き継ぐ。
 //!   「対応」を引き継がないのは、引用が少し変わっていたら、直した可能性が高いから。
 //! - 同じ引用が複数あるときは、行番号の順に 1 対 1 で対応づける。
+//! - 前回「未仕分け」だった指摘も、同じものかどうかの判定には使う（「継続」を言うため）。引き継ぐ仕分けは無いので、`Carry.state` は "new"。
 //!
-//! 前回の「対応」「待ち」の指摘がどうなったかは、**ファイルの現在の内容**で調べる。
+//! 前回の指摘がどうなったかは、**ファイルの現在の内容**で調べる。
 //! 差分で見ると、直してコミットした途端に差分が空になり、「消えた＝直った」と誤判定するため。
 
 use crate::findings::Finding;
@@ -34,13 +35,13 @@ pub struct Fate {
     pub from_index: usize,
     pub title: String,
     pub file: String,
-    /// 前回の仕分け（"fix" | "wait"）
+    /// 前回の仕分け（"fix" | "wait" | "dismiss" | "new"）
     pub state_before: String,
     /// "persists" 今回も指摘された
     /// "gone" 引用の行がファイルから消えた（コードが変わった）
     /// "not_reraised" 引用の行はまだあるが、今回は指摘されなかった
     /// "file_missing" ファイルが無い
-    /// "unknown" 引用が空などで調べられない
+    /// "unknown" 引用が空・引用がそもそも差分に見つからなかった（根拠不一致）などで、調べられない
     pub fate: String,
 }
 
@@ -96,7 +97,7 @@ fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
     a.intersection(b).count() as f64 / a.union(b).count() as f64
 }
 
-/// 新しい指摘ごとに、引き継ぎ元を決める。`known` は新しい順に並べておく（先に当たったものが優先）。
+/// 新しい指摘ごとに、引き継ぎ元を決める。未仕分けの過去の指摘も、同じ指摘かどうかの判定には使う（`state` は "new"）。`known` は新しい順に並べておく（先に当たったものが優先）。
 /// 結果は `new` と同じ並び。
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn match_known(new: &[Finding], known: &[Known]) -> Vec<Option<Carry>> {
@@ -111,7 +112,7 @@ pub fn match_known_with(new: &[Finding], known: &[Known], fuzzy_min: f64, fuzzy_
     let mut order: Vec<usize> = (0..new.len()).collect();
     order.sort_by_key(|&i| (new[i].line.unwrap_or(u32::MAX), i));
 
-    let candidate = |k: usize, used: &[bool]| !used[k] && known[k].state != crate::triage::NEW;
+    let candidate = |k: usize, used: &[bool]| !used[k];
 
     // 1 周目: 完全一致
     for &i in &order {
@@ -136,7 +137,7 @@ pub fn match_known_with(new: &[Finding], known: &[Known], fuzzy_min: f64, fuzzy_
         }
     }
 
-    // 2 周目: ほぼ一致（「待ち」「無視」だけ）
+    // 2 周目: ほぼ一致（「待ち」「無視」「未仕分け」だけ。「対応」は、直した可能性が高いので引き継がない）
     for &i in &order {
         if out[i].is_some() {
             continue;
@@ -147,7 +148,7 @@ pub fn match_known_with(new: &[Finding], known: &[Known], fuzzy_min: f64, fuzzy_
         }
         let hit = (0..known.len()).find(|&k| {
             candidate(k, &used)
-                && matches!(known[k].state.as_str(), crate::triage::WAIT | crate::triage::DISMISS)
+                && matches!(known[k].state.as_str(), crate::triage::WAIT | crate::triage::DISMISS | crate::triage::NEW)
                 && known[k].rule == new[i].rule
                 && crate::findings::same_file(&known[k].file, &new[i].file)
                 && jaccard(&ev, &tokens(&norm(&known[k].evidence))) >= fuzzy_min
@@ -194,7 +195,7 @@ pub(crate) fn read_in_repo(root: &Path, file: &str) -> Option<Option<String>> {
     }
 }
 
-/// 前回の「対応」「待ち」の指摘が、今回どうなったか。
+/// 前回の指摘（仕分けを問わず全部）が、今回どうなったか。
 /// `carried` は、今回の指摘が引き継ぎ元にした前回の指摘の番号。
 pub fn fates(
     prev_id: &str,
@@ -206,12 +207,10 @@ pub fn fates(
     let mut out = Vec::new();
     for (i, f) in prev_findings.iter().enumerate() {
         let state = prev_triage.get(i).map(String::as_str).unwrap_or(crate::triage::NEW);
-        if !matches!(state, crate::triage::FIX | crate::triage::WAIT) {
-            continue;
-        }
         let fate = if carried.contains(&i) {
             "persists"
-        } else if norm(&f.evidence).is_empty() {
+        } else if norm(&f.evidence).is_empty() || !f.verified {
+            // 引用が差分に見つからなかった指摘（根拠不一致）は、引用の行が、もともとコードに無い。「消えた」と言えない
             "unknown"
         } else {
             match read_in_repo(root, &f.file) {
@@ -242,6 +241,11 @@ pub fn fates(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn unverified(mut x: Finding) -> Finding {
+        x.verified = false;
+        x
+    }
 
     fn f(file: &str, line: Option<u32>, evidence: &str) -> Finding {
         Finding {
@@ -294,9 +298,16 @@ mod tests {
     }
 
     #[test]
-    fn new_state_is_not_inherited() {
+    fn new_state_is_matched_but_carries_no_triage() {
         let known = vec![k("r0", 0, "db.js", "x = 1", "new")];
-        assert!(match_known(&[f("db.js", None, "x = 1")], &known)[0].is_none());
+        let c = match_known(&[f("db.js", None, "x = 1")], &known);
+        let c = c[0].as_ref().expect("未仕分けでも、同じ指摘とは判定する");
+        assert_eq!((c.from_index, c.state.as_str(), c.exact), (0, "new", true));
+        // ほぼ一致でも判定する
+        let old = "const total = items.reduce((a, b) => a + b.price, 0) + shipping + tax + fee;";
+        let new = "const total = items.reduce((a, b) => a + b.price, 0) + shipping + tax + fees;";
+        let c = match_known(&[f("a.js", None, new)], &[k("r0", 0, "a.js", old, "new")]);
+        assert!(c[0].as_ref().is_some_and(|c| !c.exact && c.state == "new"));
     }
 
     #[test]
@@ -331,6 +342,27 @@ mod tests {
         let c = match_known(&new, &[k("r0", 0, "a.js", "danger()", "dismiss"), k("r0", 1, "a.js", "danger()", "wait")]);
         assert!(c[0].is_some() && c[1].is_some());
         assert_eq!(c[1].as_ref().unwrap().from_index, 0, "行番号の小さい指摘が、先に並んだ既知を取る");
+    }
+
+    #[test]
+    fn same_quote_as_new_and_wait_goes_to_the_one_listed_first_and_leaves_the_other_unused() {
+        // known は新しい順。先に並んだ「未仕分け」に結びつき、あとの「待ち」は余る（今回の指摘に、誤って「待ち」を引き継がない）
+        let known = vec![k("r1", 0, "a.js", "x = 1", "new"), k("r0", 0, "a.js", "x = 1", "wait")];
+        let c = match_known(&[f("a.js", None, "x = 1")], &known);
+        let c = c[0].as_ref().unwrap();
+        assert_eq!((c.from_review.as_str(), c.state.as_str()), ("r1", "new"));
+        // 今回の指摘が 2 件なら、余っていた「待ち」も、1 対 1 で使われる
+        let c = match_known(&[f("a.js", Some(1), "x = 1"), f("a.js", Some(2), "x = 1")], &known);
+        assert_eq!((c[0].as_ref().unwrap().state.as_str(), c[1].as_ref().unwrap().state.as_str()), ("new", "wait"));
+    }
+
+    #[test]
+    fn two_unsorted_with_the_same_quote_pair_one_to_one() {
+        let known = vec![k("r0", 0, "a.js", "x = 1", "new"), k("r0", 1, "a.js", "x = 1", "new")];
+        let c = match_known(&[f("a.js", None, "x = 1")], &known);
+        assert_eq!(c[0].as_ref().unwrap().from_index, 0, "今回 1 件に、前回 2 件のうち 1 件だけが結びつく");
+        let c = match_known(&[f("a.js", Some(1), "x = 1"), f("a.js", Some(2), "x = 1")], &known);
+        assert_eq!((c[0].as_ref().unwrap().from_index, c[1].as_ref().unwrap().from_index), (0, 1));
     }
 
     #[test]
@@ -401,11 +433,15 @@ mod tests {
             f("src/missing.js", Some(1), "x"),             // 3: ファイルが無い
             f("src/a.js", Some(2), ""),                    // 4: 引用が空 → unknown
             f("src/a.js", Some(2), "danger( x );"),        // 5: 今回も指摘された → persists
-            f("src/a.js", Some(2), "danger( x );"),        // 6: 前回の仕分けが「無視」→ 対象外
+            f("src/a.js", Some(2), "danger( x );"),        // 6: 前回の仕分けが「無視」→ これも判定する
             f("../etc/passwd", Some(1), "root"),           // 7: 外のパスは読まない → unknown
+            f("src/a.js", Some(2), "danger( x );"),        // 8: 前回は未仕分け・今回も指摘された → persists
+            f("src/a.js", Some(2), "gone_line();"),        // 9: 前回は未仕分け・引用が消えた → gone
+            unverified(f("src/a.js", Some(2), "never_existed();")), // 10: 前回から、根拠不一致（引用が差分に無かった）→ 消えたと言えない → unknown
+            unverified(f("src/a.js", Some(2), "danger( x );")),     // 11: 根拠不一致でも、今回も指摘された → persists
         ];
-        let triage: Vec<String> = ["fix", "wait", "fix", "wait", "fix", "fix", "dismiss", "fix"].map(String::from).to_vec();
-        let carried: HashSet<usize> = [5].into_iter().collect();
+        let triage: Vec<String> = ["fix", "wait", "fix", "wait", "fix", "fix", "dismiss", "fix", "new", "new", "new", "new"].map(String::from).to_vec();
+        let carried: HashSet<usize> = [5, 8, 11].into_iter().collect();
         let out = fates("r0", &prev, &triage, &carried, &dir);
         let by = |i: usize| out.iter().find(|x| x.from_index == i).map(|x| x.fate.as_str());
         assert_eq!(by(0), Some("gone"));
@@ -414,8 +450,15 @@ mod tests {
         assert_eq!(by(3), Some("file_missing"));
         assert_eq!(by(4), Some("unknown"));
         assert_eq!(by(5), Some("persists"));
-        assert_eq!(by(6), None);
+        assert_eq!(by(6), Some("not_reraised"));
+        assert_eq!(out.iter().find(|x| x.from_index == 6).unwrap().state_before, "dismiss");
         assert_eq!(by(7), Some("unknown"));
+        assert_eq!(by(8), Some("persists"));
+        assert_eq!(by(9), Some("gone"));
+        assert_eq!(out.iter().find(|x| x.from_index == 9).unwrap().state_before, "new");
+        assert_eq!(by(10), Some("unknown"), "根拠不一致だった指摘は、コードに無かった行を、「消えた」とは言わない");
+        assert_eq!(by(11), Some("persists"), "根拠不一致でも、今回も指摘されたなら、継続");
+        assert_eq!(out.len(), 12, "前回の指摘は、仕分けを問わず全件が対象");
         assert_eq!(out.iter().find(|x| x.from_index == 0).unwrap().state_before, "fix");
         let _ = std::fs::remove_dir_all(&dir);
     }

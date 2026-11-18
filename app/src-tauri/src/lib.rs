@@ -539,6 +539,33 @@ fn list_bases_checked(data_dir: &Path, repo: &str) -> Result<Vec<snapshot::BaseO
     snapshot::list_bases_with_last(repo, i18n::Lang::default().code(), last.as_ref())
 }
 
+/// 「前回の続きから」の材料。**この観点の**前回（同じリポジトリ・同じ観点で、成功した直前のレビュー）と、そこからの続きの比較元。
+#[derive(Serialize, Debug, PartialEq)]
+struct ContinueInfo {
+    id: String,
+    seq: Option<u32>,
+    findings: usize,
+    created_at: u64,
+    /// 比較元の値（前回のレビュー時点の HEAD のハッシュ）。`run_review` の `base` に、そのまま渡せる。
+    base: String,
+}
+
+/// 前回が無い・前回の HEAD がいまの履歴に無い（rebase など）・別のブランチのときは `Ok(None)`（黙って全体を送らない。ボタンを出さないだけ）。
+fn continue_info_checked(data_dir: &Path, repo: &str, recipe_id: &str) -> Result<Option<ContinueInfo>, String> {
+    repos::require_registered(data_dir, repo)?;
+    let top = snapshot::toplevel(repo)?;
+    let Some(prev) = store::recent_ok(data_dir, &top, recipe_id, 1).into_iter().next() else { return Ok(None) };
+    let last = snapshot::LastReview { head: prev.snapshot.head.clone(), created_at: prev.created_at, covered: vec![recipe_id.to_string()] };
+    let Some(opt) = snapshot::last_review_option(Path::new(&top), &last, i18n::Lang::default().code())? else { return Ok(None) };
+    Ok(Some(ContinueInfo { id: prev.id.clone(), seq: prev.seq, findings: prev.findings.len(), created_at: prev.created_at, base: opt.value }))
+}
+
+#[tauri::command]
+async fn continue_info(state: tauri::State<'_, AppState>, repo: String, recipe_id: String) -> Result<Option<ContinueInfo>, String> {
+    let data_dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || continue_info_checked(&data_dir, &repo, &recipe_id)).await.map_err(|e| e.to_string())?
+}
+
 /// 押す前の確認。何を送り、何を送らないか。
 #[tauri::command]
 async fn preview_snapshot(state: tauri::State<'_, AppState>, repo: String, base: Option<String>) -> Result<SnapshotInfo, String> {
@@ -762,7 +789,7 @@ fn carry_over(
     recipe_id: &str,
     new_findings: &[findings::Finding],
     settings: &settings::Settings,
-) -> (Vec<Option<carry::Carry>>, Vec<carry::Fate>, Vec<String>) {
+) -> (Vec<Option<carry::Carry>>, Vec<carry::Fate>, Vec<String>, Option<store::PreviousRef>) {
     // 新しい順
     let prevs: Vec<ReviewRecord> = store::recent_ok(data_dir, repo, recipe_id, settings.carry_window);
     let states: Vec<Vec<String>> =
@@ -799,7 +826,8 @@ fn carry_over(
         .iter()
         .map(|c| c.as_ref().map(|c| c.state.clone()).unwrap_or_else(|| triage::NEW.to_string()))
         .collect();
-    (carries, fates, inherited)
+    let previous = prevs.first().map(store::PreviousRef::of);
+    (carries, fates, inherited, previous)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -950,6 +978,8 @@ fn run_review_with_base_and_lang(
         findings: Vec::new(),
         carries: Vec::new(),
         fates: Vec::new(),
+        previous: None,
+        seq: None,
         notes,
         related,
         repo_overrides: effective.repo_keys,
@@ -973,7 +1003,7 @@ fn run_review_with_base_and_lang(
                             findings::verify_spec(&mut f, &s.content);
                         }
                     }
-                    (rec.carries, rec.fates, inherited) = carry_over(data_dir, &rec.repo, &rec.recipe.id, &f, &settings);
+                    (rec.carries, rec.fates, inherited, rec.previous) = carry_over(data_dir, &rec.repo, &rec.recipe.id, &f, &settings);
                     rec.findings = f;
                 }
                 Err(e) => rec.parse_error = Some(e),
@@ -983,7 +1013,7 @@ fn run_review_with_base_and_lang(
         Err(e) => rec.error = Some(e),
     }
     // 失敗した実行も、送った内容ごと残す。
-    store::append(data_dir, &rec)?;
+    store::append_numbered(data_dir, &mut rec)?;
     // 引き継いだ仕分けを、このレビューの初期値にする
     triage::put(data_dir, &rec.id, inherited)?;
     Ok(rec)
@@ -1578,6 +1608,7 @@ pub fn run() {
             report_save,
             print_page,
             list_bases,
+            continue_info,
             list_spec_files,
             list_spec_sections,
             preview_spec,
@@ -1656,6 +1687,85 @@ mod tests {
         let id = repos::list(&data).unwrap().repos[0].id.clone();
         repos::unlink(&data, &id).unwrap();
         assert!(run_review_checked(&data, repo_s, "security", "mock", None).unwrap_err().contains("解除されています"));
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn continue_info_is_per_recipe_and_points_at_that_recipes_previous_review() {
+        let repo = demo_repo("continue-info");
+        let repo_s = repo.to_str().unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-continue-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        repos::add(&data, repo_s, None).unwrap();
+        assert!(continue_info_checked(&data, repo_s, "security").unwrap().is_none(), "レビューをする前は、出さない");
+
+        let r1 = run_review_checked(&data, repo_s, "security", "mock", None).unwrap();
+        let c = continue_info_checked(&data, repo_s, "security").unwrap().expect("レビューのあとに出る");
+        assert_eq!((c.id.as_str(), c.seq, c.findings, c.base.as_str()), (r1.id.as_str(), Some(1), r1.findings.len(), r1.snapshot.head.as_str()));
+        assert!(continue_info_checked(&data, repo_s, "bugs").unwrap().is_none(), "別の観点のレビューは、この観点の「前回」ではない");
+
+        // 同じ観点で 2 回目を走らせると、前回は 2 回目になる
+        let r2 = run_review_checked(&data, repo_s, "security", "mock", None).unwrap();
+        let c = continue_info_checked(&data, repo_s, "security").unwrap().unwrap();
+        assert_eq!((c.id.as_str(), c.seq), (r2.id.as_str(), Some(2)));
+
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn continue_info_base_is_that_recipes_own_head_even_after_other_recipes_ran_in_between() {
+        let repo = demo_repo("continue-between");
+        let repo_s = repo.to_str().unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-continue-between-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        repos::add(&data, repo_s, None).unwrap();
+        let s1 = run_review_checked(&data, repo_s, "security", "mock", None).unwrap();
+        // コミットを進めて、別の観点を走らせる
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-q", "-m", "wip"]);
+        std::fs::write(repo.join("later.txt"), "x\n").unwrap(); // 次のレビューに、送る差分が要る
+        let b1 = run_review_checked(&data, repo_s, "bugs", "mock", None).unwrap();
+        assert_ne!(s1.snapshot.head, b1.snapshot.head, "コミットを進めたので、HEAD が違う");
+        // 続きの比較元は、その観点自身の前回の HEAD。別の観点の実行で、動かない
+        let sec = continue_info_checked(&data, repo_s, "security").unwrap().unwrap();
+        let bug = continue_info_checked(&data, repo_s, "bugs").unwrap().unwrap();
+        assert_eq!((sec.base.as_str(), sec.id.as_str()), (s1.snapshot.head.as_str(), s1.id.as_str()));
+        assert_eq!((bug.base.as_str(), bug.id.as_str()), (b1.snapshot.head.as_str(), b1.id.as_str()));
+
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn continue_info_is_absent_when_the_previous_head_left_the_history_or_the_previous_run_failed() {
+        let repo = demo_repo("continue-none");
+        let repo_s = repo.to_str().unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-continue-none-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        repos::add(&data, repo_s, None).unwrap();
+        run_review_checked(&data, repo_s, "security", "mock", None).unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-q", "-m", "wip"]);
+        std::fs::write(repo.join("later.txt"), "x\n").unwrap(); // 次のレビューに、送る差分が要る
+        run_review_checked(&data, repo_s, "bugs", "mock", None).unwrap();
+        assert!(continue_info_checked(&data, repo_s, "bugs").unwrap().is_some());
+
+        // 前回（bugs）の HEAD を、履歴から外す（amend）。security の前回の HEAD は、祖先のまま
+        git(&repo, &["commit", "-q", "--amend", "--allow-empty", "-m", "rewritten"]);
+        assert!(continue_info_checked(&data, repo_s, "bugs").unwrap().is_none(), "前回の HEAD がいまの履歴に無いときは、出さない（全体を送らない）");
+        assert!(continue_info_checked(&data, repo_s, "security").unwrap().is_some(), "ほかの観点は、影響を受けない");
+
+        // 失敗したレビューしか無い観点には、前回が無い
+        let top = snapshot::toplevel(repo_s).unwrap();
+        let mut failed = store::sample_record("failed-only", 9_000_000_000_000);
+        failed.repo = top;
+        failed.recipe.id = "tests".into();
+        failed.error = Some("失敗".into());
+        store::append(&data, &failed).unwrap();
+        assert!(continue_info_checked(&data, repo_s, "tests").unwrap().is_none(), "失敗した実行は、前回にならない");
+
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
     }
@@ -1854,9 +1964,12 @@ mod tests {
         assert_ne!(r1.id, r2.id);
         assert_eq!(view(&data, r2.clone()).triage, vec!["wait", "dismiss"]);
         assert!(r2.carries.iter().all(|c| c.as_ref().is_some_and(|c| c.exact && c.from_review == r1.id)));
-        // 「待ち」にした前回の指摘は、今回も指摘された。「無視」は一覧に出さない
-        assert_eq!(r2.fates.len(), 1);
+        // 前回の指摘は、仕分けを問わず全件が対象。どちらも今回も指摘された
+        assert!(r1.previous.is_none(), "初回は前回が無い");
+        assert_eq!(r2.previous, Some(store::PreviousRef { id: r1.id.clone(), created_at: r1.created_at, findings: 2, seq: Some(1) }));
+        assert_eq!(r2.fates.len(), 2);
         assert_eq!((r2.fates[0].from_index, r2.fates[0].fate.as_str(), r2.fates[0].state_before.as_str()), (0, "persists", "wait"));
+        assert_eq!((r2.fates[1].from_index, r2.fates[1].fate.as_str(), r2.fates[1].state_before.as_str()), (1, "persists", "dismiss"));
 
         // 3 回目は、2 回目から引き継ぐ（仕分けが途切れない）
         let r3 = run_review_blocking(&data, repo.to_str().unwrap(), "security", "mock").unwrap();
@@ -1893,8 +2006,9 @@ mod tests {
         // 無視にした架空の指摘は、そのまま引き継ぐ
         assert_eq!(view(&data, r2.clone()).triage, vec!["new", "dismiss"]);
         // 前回「対応」にした指摘は、引用の行がファイルから消えた＝解消
-        assert_eq!(r2.fates.len(), 1);
+        assert_eq!(r2.fates.len(), 2);
         assert_eq!((r2.fates[0].from_index, r2.fates[0].fate.as_str()), (0, "gone"));
+        assert_eq!((r2.fates[1].from_index, r2.fates[1].fate.as_str(), r2.fates[1].state_before.as_str()), (1, "persists", "dismiss"));
 
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
@@ -1917,8 +2031,10 @@ mod tests {
         assert!(r2.snapshot.files.iter().all(|f| f.path != "db.js"), "db.js はもう差分に出ない");
 
         // 差分から消えただけで「解消」とは言わない。ファイルには引用の行がまだある。
-        assert_eq!(r2.fates.len(), 1);
+        assert_eq!(r2.fates.len(), 2, "前回の指摘は、仕分けを問わず全件が対象");
         assert_eq!(r2.fates[0].fate, "not_reraised");
+        // 未仕分けだった架空の指摘は、引用が差分に無かった（根拠不一致の見本）。引用の行が、もともと無いので、「消えた」とは言わない（不明）
+        assert_eq!((r2.fates[1].from_index, r2.fates[1].fate.as_str(), r2.fates[1].state_before.as_str()), (1, "unknown", "new"));
 
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);

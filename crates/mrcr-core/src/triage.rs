@@ -295,6 +295,8 @@ mod tests {
             findings,
             carries: vec![],
             fates: vec![],
+            previous: None,
+            seq: None,
             notes: vec![],
             related: None,
             repo_overrides: vec![],

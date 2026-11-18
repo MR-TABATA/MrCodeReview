@@ -412,6 +412,8 @@ fn run_review(args: ReviewArgs) -> i32 {
                 findings: findings.clone(),
                 carries: Vec::new(),
                 fates: Vec::new(),
+                previous: None,
+                seq: None,
                 notes: Vec::new(),
                 related: None,
                 repo_overrides: Vec::new(),

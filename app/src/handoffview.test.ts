@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { setAppLang } from './i18n';
 import { handoffPath, handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffInfo, type HandoffUi } from './handoffview';
 
 const INFO: HandoffInfo = { fix: 2, done: 0, wait: 1, dismiss: 0, fresh: 3, text: '以下のコードレビューの指摘を直してください。\n…' };
@@ -135,5 +136,15 @@ describe('handoffPreview（一覧の一番下。まとめて渡すボタンと�
   it('書き出し中は、ボタンを押せず、「書き出しています…」と出る', () => {
     const b = btn(handoffPreview(INFO, ui({ busy: true, target: 'all' }), acts())!, '書き出しています…')!;
     expect(b.disabled).toBe(true);
+  });
+});
+
+describe('handoffTop のヒントは、言語に従う', () => {
+  afterEach(() => setAppLang('ja'));
+  it('英語では英語。日本語は混ざらない', () => {
+    setAppLang('en');
+    const hint = handoffTop({ ...INFO, fix: 0, wait: 0, text: '' }).querySelector('.hint')?.textContent ?? '';
+    expect(hint).not.toBe('');
+    expect(hint).not.toMatch(/[぀-ヿ一-鿿]/);
   });
 });

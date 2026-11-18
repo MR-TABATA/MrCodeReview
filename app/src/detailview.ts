@@ -6,6 +6,8 @@
 import { agentSourceKind } from './agentview';
 import { reviewTag } from './findingtag';
 import { h } from './dom';
+import { getAppLang } from './i18n';
+import { providerLabel } from './providertext';
 import type { ReviewView } from './types';
 
 /** 画面側の整形（`main.ts` と同じ書き方に揃えるため、渡してもらう） */
@@ -61,7 +63,7 @@ export function detailPanel(r: ReviewView, fmt: DetailFmt): HTMLElement {
     table(
       ['日時', fmt.when(r.created_at)],
       ['所要時間', fmt.dur(r.duration_ms)],
-      ['LLM', r.provider.label],
+      ['LLM', providerLabel(r.provider, getAppLang())],
       ['モデル', r.model || '（報告なし）'],
       ['結果', resultText(r)],
     ),

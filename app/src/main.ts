@@ -21,7 +21,9 @@ import { detailPanel, GROUNDING_NOTE } from './detailview';
 import { findingOrder, isDoneFinding } from './findingorder';
 import { agentBox, agentDone, agentNotice, agentStatus, agentStatusBar, foldedRow, newAgentUi, refreshAgentReportsOnFocus, type AgentActions } from './agentview';
 import { handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffActions, type HandoffTarget } from './handoffview';
-import { displayRecipeTitle, historyPanel, prunePicks } from './historyview';
+import { displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
+import { providerLabel, providerNote } from './providertext';
+import { continuityOf, filteredFates, flowOf, shownByContinuity, type ContinuityKind } from './continuity';
 import { icon, type IconName } from './icons';
 import { debounced } from './debounce';
 import { recipeSummary } from './recipeinfo';
@@ -84,6 +86,7 @@ import type {
   Related,
   ReviewSummary,
   ReviewView,
+  ContinueInfo,
   SectionMeta,
   SettingsView,
   SnapshotInfo,
@@ -163,6 +166,12 @@ const state = {
   repoIcons: {} as Record<string, string | null>,
   /** 右サイドバー: 履歴パネルを折り畳んでいるか */
   historyCollapsed: false,
+  /** 結果先頭の「前回 → 今回」の帯で選んだ絞り込み。レビューを切り替えたら外す */
+  continuity: null as ContinuityKind | null,
+  /** 「前回の続きから」の材料。観点を 1 つだけ選んでいて、その観点に前回があるときだけ入る */
+  continueInfo: null as (ContinueInfo & { recipeId: string }) | null,
+  /** 「前回の続きから」の材料を読めなかったときの理由（前回が無いときは空） */
+  continueError: '',
   /** トークン使用量の画面を開いているとき、その状態。閉じているときは null。 */
   usage: null as UsageState | null,
   /** レポート（成果物にできる記録）の画面を開いているとき、その状態。閉じているときは null。 */
@@ -309,7 +318,7 @@ async function refreshSpecFiles(): Promise<void> {
 // ── 整形 ──────────────────────────────────────────────────────────────────────
 const nf = new Intl.NumberFormat('ja-JP');
 const num = (n: number | null): string => (n === null ? '（報告なし）' : nf.format(n));
-const when = (ms: number): string => new Date(ms).toLocaleString('ja-JP');
+const when = (ms: number): string => formatWhen(ms, getAppLang());
 const dur = (ms: number): string => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} 秒`);
 const shortRepo = (p: string): string => p.split('/').filter(Boolean).slice(-2).join('/');
 
@@ -361,6 +370,7 @@ async function refreshPreview(): Promise<void> {
   // 送る内容は読めたのに、候補だけ読めなかったときも、黙って空にせず、理由を出す
   state.previewError = previewErrorText(state.previewError, basesError);
   render();
+  void loadContinue();
   void refreshStats();
 }
 
@@ -372,12 +382,89 @@ const refreshHistoryLater = debounced(() => {
   });
 }, 400);
 
+/** 「前回の続きから」の材料の、持ち主（リポジトリ × 観点）。観点を 1 つだけ選んでいるときだけある（観点ごとに、前回の比較元が違うため）。 */
+function continueKey(): string | null {
+  const ids = [...activeChecked()];
+  return state.repo && ids.length === 1 ? `${state.repo}\n${ids[0]}` : null;
+}
+
+let continueSeq = 0;
+let continueInflight: { key: string; p: Promise<void> } | null = null;
+
+/**
+ * 「前回の続きから」の材料を読み直す。
+ * - 選択が変わったら、前の観点の材料は、すぐ捨てる（読み込みが終わるまで、別の観点の続きで実行できてしまわないように）。
+ * - 返ってきたとき、選択が変わっていたら、その結果は捨てる（古い読み込みが、新しい選択を上書きしない）。
+ * - 同じ選択の読み込みが走っているなら、それを待つ（`force` は、履歴が変わったときなど、読み直したいとき）。結果が同じなら、描き直さない。
+ * - 読めなかったときは、理由を残す（前回が「無い」のと、読めなかったのを、見分ける）。
+ */
+function loadContinue(force = false): Promise<void> {
+  const key = continueKey();
+  const cur = state.continueInfo;
+  if (cur && key !== `${state.repo}\n${cur.recipeId}`) {
+    state.continueInfo = null;
+    render();
+  }
+  if (!key) {
+    continueSeq++;
+    continueInflight = null;
+    if (state.continueError) {
+      state.continueError = '';
+      render();
+    }
+    return Promise.resolve();
+  }
+  if (!force && continueInflight?.key === key) return continueInflight.p;
+  const my = ++continueSeq;
+  const [repo, recipeId] = [state.repo, [...activeChecked()][0]];
+  const p = (async () => {
+    let next: typeof state.continueInfo = null;
+    let err = '';
+    try {
+      const c = await invoke<ContinueInfo | null>('continue_info', { repo, recipeId });
+      if (c) next = { ...c, recipeId };
+    } catch (e) {
+      err = String(e);
+    }
+    if (my !== continueSeq || continueKey() !== key) return; // 古い結果は捨てる
+    const changed = JSON.stringify(next) !== JSON.stringify(state.continueInfo) || err !== state.continueError;
+    state.continueInfo = next;
+    state.continueError = err;
+    if (changed) render();
+  })().finally(() => {
+    if (continueSeq === my) continueInflight = null;
+  });
+  continueInflight = { key, p };
+  return p;
+}
+
+/** 「前回の続きから」: 比較元を前回のレビューの続きにして、そのまま実行する。 */
+async function continueFromPrevious(): Promise<void> {
+  const c = state.continueInfo;
+  // 押した時点の選択と、材料の観点が同じか確かめる（読み込み中の、前の観点の材料で、別の観点を実行しない）
+  const mine = c ? `${state.repo}\n${c.recipeId}` : null;
+  if (!c || continueKey() !== mine) return;
+  const before = { base: state.base, custom: state.baseCustom };
+  state.baseCustom = false;
+  state.base = c.base;
+  await refreshPreview();
+  if (continueKey() !== mine) {
+    // 待っているあいだに、観点が変わった。別の観点の比較元のまま、走らせない
+    state.base = before.base;
+    state.baseCustom = before.custom;
+    await refreshPreview();
+    return;
+  }
+  runCheckedRecipes();
+}
+
 async function refreshHistory(): Promise<void> {
   // 選んでいるリポジトリの履歴だけ。選んでいなければ、すべて
   state.history = await invoke<ReviewSummary[]>('list_reviews', { repo: state.repo || null });
   state.picked = prunePicks(state.picked, state.history);
   render();
   void refreshRepoCounts(); // 左の一覧の「未」の件数も、履歴と同じ頃に読み直す
+  void loadContinue(true); // 前回は、履歴が変わると変わる（走っている読み込みがあっても、読み直す）
 }
 
 /** 左の一覧に出す、リポジトリごとの「未」の件数を読み直す（読み取りだけ。変わったときだけ描き直す）。 */
@@ -570,6 +657,7 @@ async function select(id: string): Promise<void> {
   state.topOpen = null;
   state.settings = null;
   state.usage = null;
+  state.continuity = null;
   closeReport();
   state.selected = (await invoke<ReviewView | null>('get_review', { id })) ?? null;
   state.tab = 'findings';
@@ -1708,6 +1796,7 @@ function toggleRecipeCheck(id: string, checked?: boolean): void {
   lsSet(CHECKED_RECIPES_KEY, JSON.stringify([...state.checkedRecipeIds]));
   render();
   void loadBatchStats();
+  void loadContinue();
 }
 
 function selectAllRecipes(): void {
@@ -1715,6 +1804,7 @@ function selectAllRecipes(): void {
   lsSet(CHECKED_RECIPES_KEY, JSON.stringify([...state.checkedRecipeIds]));
   render();
   void loadBatchStats();
+  void loadContinue();
 }
 
 function clearAllRecipes(): void {
@@ -1722,6 +1812,7 @@ function clearAllRecipes(): void {
   lsSet(CHECKED_RECIPES_KEY, JSON.stringify([]));
   render();
   void loadBatchStats();
+  void loadContinue();
 }
 
 function runCheckedRecipes(): void {
@@ -1760,7 +1851,9 @@ function recipeBarSection(): HTMLElement {
   // 「前回のレビューの続き」を選んでいるとき、前回の実行に含まれない観点があれば、事実だけを出す
   const lastOpt = state.bases.find((b) => b.value === state.base && b.last);
   const missed = notCovered(toRun, lastOpt?.last?.covered);
-  const baseNote = !busy && missed.length ? msg(lang).recipeBar.lastReviewNote(missed.map((r) => displayRecipeTitle(r.title, lang))) : '';
+  const lastNote = !busy && missed.length ? msg(lang).recipeBar.lastReviewNote(missed.map((r) => displayRecipeTitle(r.title, lang))) : '';
+  // 前回の続きを調べられなかったときは、「前回が無い」と同じ見え方にしない
+  const baseNote = [lastNote, !busy && state.continueError ? msg(lang).mainUi.continuity.continueFailed(state.continueError) : ''].filter(Boolean).join(' ／ ');
 
   let currentTitle = state.running;
   let runIdx = 0;
@@ -1797,12 +1890,20 @@ function recipeBarSection(): HTMLElement {
       estimatedTimeText: est.timeText,
       runError: state.runError,
       specSlot,
+      // 比較元がすでに前回の続きなら、実行ボタンと同じなので、出さない。前回の指摘が 0 件なら、続ける相手がいないので、出さない
+      ...(state.continueInfo && state.continueInfo.findings > 0 && state.continueInfo.recipeId === [...active][0] && state.base !== state.continueInfo.base && !busy
+        ? {
+            continueLabel: msg(lang).mainUi.continuity.continueBtn(reviewName(chosen[0]?.title ?? '', state.continueInfo.seq, lang), state.continueInfo.findings),
+            continueTitle: msg(lang).mainUi.continuity.continueTitle(when(state.continueInfo.created_at)),
+          }
+        : {}),
     },
     {
       onToggle: toggleRecipeCheck,
       onSelectAll: selectAllRecipes,
       onClearAll: clearAllRecipes,
       onRun: runCheckedRecipes,
+      onContinue: () => void continueFromPrevious(),
       onCancel: () => {
         if (state.batch.run) state.batch.run.stop = true;
       },
@@ -1836,7 +1937,7 @@ function llmConfigSection(lang: Lang = getAppLang()): HTMLElement {
         void loadBatchStats();
       },
     },
-    ...state.providers.map((p) => h('option', { value: p.id, ...(p.id === state.providerId ? { selected: true } : {}) }, p.label)),
+    ...state.providers.map((p) => h('option', { value: p.id, ...(p.id === state.providerId ? { selected: true } : {}) }, providerLabel(p, lang))),
   );
 
   return h(
@@ -1845,7 +1946,7 @@ function llmConfigSection(lang: Lang = getAppLang()): HTMLElement {
     h('h3', {}, m.llmHeading),
     h('p', { class: 'muted', style: 'font-size: 12px; margin-bottom: 8px;' }, m.llmSubtitle),
     select_,
-    current?.note ? noteBox(current.note) : null,
+    current?.note ? noteBox(providerNote(current, lang)) : null,
     byokSection(lang),
   );
 }
@@ -2119,48 +2220,134 @@ function rightPanel(): HTMLElement {
 
 // ── 右: ログビューア ──────────────────────────────────────────────────────────────
 
-const STATE_LABEL: Record<TriageState, string> = { new: '未仕分け', fix: '対応', wait: '待ち', dismiss: '無視' };
-
 function carryNote(c: Carry | null | undefined): HTMLElement | null {
-  if (!c) return null;
+  if (!c || c.state === 'new') return null; // 未仕分けは、引き継ぐ仕分けが無い（同じ指摘だという判定だけ）
+  const t = msg(getAppLang()).mainUi.continuity;
+  return h('div', { class: 'carry' }, t.carryNote(t.stateLabel[c.state], c.exact));
+}
+
+/** 前回の指摘へ移る。前回のレビューを開き、その指摘を開いた状態にする。 */
+async function goToPreviousFinding(prevId: string, index: number): Promise<void> {
+  await select(prevId);
+  if (state.selected?.id !== prevId) return;
+  state.expanded.add(index);
+  state.openCards.add(index);
+  render();
+}
+
+/** 指摘カードの「新規」「継続（前回 #N）」の印。前回が無い（初回）・差分に重ねる小さなカードでは、出さない。判定は、結果の先頭の帯（continuityOf）と同じ。 */
+function continuityChip(reviewId: string, carry: Carry | null | undefined): HTMLElement | null {
+  const r = state.selected;
+  const prev = r?.id === reviewId ? r.previous : null;
+  if (!prev) return null;
+  const m = msg(getAppLang()).mainUi;
+  if (carry && carry.from_review === prev.id) {
+    return h(
+      'button',
+      { class: 'chip persist link', title: m.chipPersistTitle, onclick: () => void goToPreviousFinding(prev.id, carry.from_index) },
+      m.chipPersist(carry.from_index + 1),
+    );
+  }
+  return h('span', { class: 'chip new', title: m.chipNewTitle }, m.chipNew);
+}
+
+/** 前回の連番。記録した時点で番号が無かった（番号を入れる前の版で実行した）ときは、履歴にある前回のレビュー本体から引く。履歴から消えていれば、無い。 */
+function previousSeq(r: ReviewView): number | null {
+  const p = r.previous;
+  if (!p) return null;
+  return p.seq ?? state.history.find((s) => s.id === p.id)?.seq ?? null;
+}
+
+/** 同じリポジトリ・同じ観点の流れの 1 行（組み立ては `flowOf`）。 */
+function flowLine(r: ReviewView): HTMLElement | null {
+  const flow = flowOf(state.history, r);
+  if (!flow) return null;
+  const t = msg(getAppLang()).mainUi.continuity;
+  const parts: (HTMLElement | string)[] = [];
+  if (flow.hasBefore) parts.push(h('span', { class: 'muted' }, '… → '));
+  flow.items.forEach((s, i) => {
+    if (i > 0) parts.push(h('span', { class: 'muted' }, ' → '));
+    const label = t.flowItem(s.seq, s.failed, s.findings);
+    parts.push(
+      s.now
+        ? h('strong', { class: 'flow-now', title: t.flowNowTitle }, `[${label}]`)
+        : h('button', { class: 'link', title: t.flowOpenTitle(when(s.created_at)), onclick: () => void select(s.id) }, label),
+    );
+  });
+  if (flow.hasAfter) parts.push(h('span', { class: 'muted' }, ' → …'));
+  return h('div', { class: 'cont-flow' }, h('span', { class: 'muted' }, t.flowLabel(displayRecipeTitle(r.recipe.title))), ...parts);
+}
+
+/** 結果の先頭。前回の日時・件数と、今回の「継続 / 解消 / 新規」。押すと、その種類だけに絞る。前回が無い（初回）ときは出さない。 */
+function continuityBand(r: ReviewView): HTMLElement | null {
+  const c = continuityOf(r);
+  const prev = r.previous;
+  if (!c || !prev) return null;
+  const t = msg(getAppLang()).mainUi.continuity;
+  const chip = (kind: ContinuityKind, label: string, n: number, cls: string): HTMLElement =>
+    h(
+      'button',
+      {
+        class: `chip ${cls}${state.continuity === kind ? ' on' : ''}`,
+        disabled: n === 0,
+        title: state.continuity === kind ? t.chipOnTitle : t.chipOffTitle,
+        onclick: () => {
+          state.continuity = state.continuity === kind ? null : kind;
+          render();
+        },
+      },
+      `${label} ${n}`,
+    );
   return h(
-    'div',
-    { class: 'carry' },
-    `前回までの仕分け「${STATE_LABEL[c.state]}」を引き継ぎました` + (c.exact ? '' : '（引用がほぼ同じ）'),
+    'section',
+    { class: 'continuity' },
+    h(
+      'div',
+      { class: 'cont-prev' },
+      h('span', { class: 'muted' }, t.prev),
+      h('button', { class: 'link', title: t.prevTitle(when(prev.created_at)), onclick: () => void select(prev.id) }, t.prevRun(reviewName(r.recipe.title, previousSeq(r)), prev.findings)),
+      h('span', { class: 'cont-arrow' }, ' → '),
+      h('span', {}, t.thisRun(reviewName(r.recipe.title, r.seq), r.findings.length)),
+    ),
+    flowLine(r),
+    h(
+      'div',
+      { class: 'cont-chips' },
+      chip('persist', t.persist, c.persist.length, 'bad'),
+      chip('gone', t.gone, c.gone.length, 'ok'),
+      chip('new', t.fresh, c.isNew.length, ''),
+      c.other.length ? chip('other', t.other, c.other.length, '') : null,
+    ),
+    h('p', { class: 'note' }, t.note),
   );
 }
 
-const FATE_VIEW: Record<Fate['fate'], { badge: string; cls: string; text: string }> = {
-  persists: { badge: '継続', cls: 'bad', text: '今回も指摘されました（まだ直っていません）' },
-  gone: { badge: '解消', cls: 'ok', text: '引用した行がコードから消えました（変更されたと見られます）' },
-  not_reraised: { badge: '再指摘なし', cls: '', text: '今回は指摘されませんでしたが、引用した行はまだコードにあります' },
-  file_missing: { badge: 'ファイルなし', cls: '', text: 'このファイルが見つかりません（削除・移動の可能性）' },
-  unknown: { badge: '不明', cls: '', text: '引用が空などで、調べられませんでした' },
-};
+/** 前回の指摘の行方の、バッジの色。文言は `locales.ts`。 */
+const FATE_CLASS: Record<Fate['fate'], string> = { persists: 'bad', gone: 'ok', not_reraised: '', file_missing: '', unknown: '' };
 
-/** 前回の「対応」「待ち」の指摘が、今回どうなったか。「解消」は、引用の行がファイルの現在の内容から消えたことだけを根拠にしている。 */
-function fatesPanel(fates: Fate[]): HTMLElement | null {
+/** 前回の指摘（仕分けを問わず全件）が、今回どうなったか。「解消」は、引用の行がファイルの現在の内容から消えたことだけを根拠にしている。 */
+function fatesPanel(fates: Fate[], title?: string): HTMLElement | null {
   if (!fates.length) return null;
+  const t = msg(getAppLang()).mainUi.continuity;
   return h(
     'section',
     { class: 'fates' },
-    h('h3', {}, '前回のレビューからの変化'),
+    h('h3', {}, title ?? t.panelTitleDefault),
     h(
       'ul',
       {},
       ...fates.map((x) => {
-        const v = FATE_VIEW[x.fate];
+        const v = t.fate[x.fate];
         return h(
           'li',
           {},
-          h('span', { class: `badge ${v.cls}` }, v.badge),
-          h('strong', {}, ` ${x.title || '(見出しなし)'} `),
-          h('span', { class: 'muted' }, `（前回は「${STATE_LABEL[x.state_before]}」・${x.file}）`),
+          h('span', { class: `badge ${FATE_CLASS[x.fate]}` }, v.badge),
+          h('strong', {}, ` ${x.title || t.noTitle} `),
+          h('span', { class: 'muted' }, t.fateBefore(t.stateLabel[x.state_before], x.file)),
           h('div', { class: 'f-fate' }, v.text),
         );
       }),
     ),
-    h('p', { class: 'note' }, '「解消」は、引用した行がファイルの現在の内容から消えたことだけを根拠にした推定です。直ったことの証明ではありません。'),
   );
 }
 
@@ -2225,7 +2412,8 @@ function findingChips(f: Finding, status: TriageState, carry: Carry | null | und
   const st = fixStateChip(status, isDoneFinding(status, note, agent), lang);
   if (st) out.push(chip(st.cls, st.text, st.title));
   if (note?.memo) out.push(chip('memo', m.chipMemo, note.memo));
-  if (carry) out.push(chip('carry', m.chipCarried, m.chipCarriedTitle(STATE_LABEL[carry.state], carry.state)));
+  // 未仕分けの指摘に付いた Carry は、「同じ指摘だ」という判定だけ（引き継ぐ仕分けは無い）。「引き継ぎ」の印は、仕分け済みのときだけ
+  if (carry && carry.state !== 'new') out.push(chip('carry', m.chipCarried, m.chipCarriedTitle(m.continuity.stateLabel[carry.state], carry.state)));
   return out;
 }
 
@@ -2255,6 +2443,8 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
   };
   const loc = `${f.file || '(ファイル不明)'}${f.line === null ? '' : `:${f.line}`}`;
   const chips = findingChips(f, status, carry, note, agent);
+  const cont = continuityChip(reviewId, carry);
+  if (cont) chips.unshift(cont);
   return h(
     'article',
     { class: `finding fc ${f.verified ? '' : 'unverified'} s-${status} fc-sev-${f.severity} ${open ? 'open' : ''}` },
@@ -2743,7 +2933,7 @@ function resultView(): HTMLElement {
   const head = h(
     'div',
     { class: 'd-head' },
-    h('div', { class: 'row dhead-row' }, h('h2', {}, `${r.recipe.title} — ${shortRepo(r.repo)}`), h('span', { class: 'spacer' }), h('button', { class: 'small', title: m.reportThisReviewTitle, onclick: () => void openReportFor([r.id]) }, m.reportThisReviewBtn)),
+    h('div', { class: 'row dhead-row' }, h('h2', {}, `${reviewName(r.recipe.title, r.seq)} — ${shortRepo(r.repo)}`), h('span', { class: 'spacer' }), h('button', { class: 'small', title: m.reportThisReviewTitle, onclick: () => void openReportFor([r.id]) }, m.reportThisReviewBtn)),
     // 見出しは、観点とリポジトリだけ。日時・LLM・モデル・所要時間・HEAD・差分・比較元は、履歴の行と、「詳細」タブにある
   );
   const nav = h(
@@ -2785,9 +2975,12 @@ function resultView(): HTMLElement {
       r.parse_error ? h('p', { class: 'err' }, m.parseFailed(r.parse_error)) : null,
       !r.error && !r.parse_error && !r.findings.length ? h('p', { class: 'summary' }, m.noFindings) : null,
       r.findings.length ? handoffBar(r, true) : null,
-      fatesPanel(r.fates ?? []),
+      continuityBand(r),
+      fatesPanel(filteredFates(r, continuityOf(r), state.continuity), previousSeq(r) ? msg(getAppLang()).mainUi.continuity.panelTitle(reviewName(r.recipe.title, previousSeq(r))) : undefined),
       // 対応済みは、下に置く（「対応済みにする」を押した直後に、下へ移る）
-      ...findingOrder(r.findings.length, (i) => isDoneFinding(r.triage[i] ?? 'new', r.finding_notes?.[i], r.agent_reports?.[i]), (i) => r.findings[i].severity).map((i) => findingCard(r.id, r.findings[i], i, r.triage[i] ?? 'new', r.carries?.[i], false, r.finding_notes?.[i], true, r.agent_reports?.[i])),
+      ...findingOrder(r.findings.length, (i) => isDoneFinding(r.triage[i] ?? 'new', r.finding_notes?.[i], r.agent_reports?.[i]), (i) => r.findings[i].severity)
+        .filter((i) => shownByContinuity(continuityOf(r), state.continuity, i))
+        .map((i) => findingCard(r.id, r.findings[i], i, r.triage[i] ?? 'new', r.carries?.[i], false, r.finding_notes?.[i], true, r.agent_reports?.[i])),
       r.findings.length ? handoffPreview(handoffInfo(r), state.handoffUi, handoffActs()) : null,
     );
   } else if (state.tab === 'diff') {
@@ -2796,7 +2989,7 @@ function resultView(): HTMLElement {
     body = h(
       'div',
       {},
-      h('p', { class: 'note' }, r.provider.note),
+      h('p', { class: 'note' }, providerNote(r.provider, getAppLang())),
       h('h3', {}, `送ったファイル（${r.snapshot.files.length}）`),
       h('ul', { class: 'files' }, ...r.snapshot.files.map((f) => h('li', {}, h('code', {}, f.path), ` ${nf.format(f.bytes)} B`))),
       h('h3', {}, `送らなかったもの（${r.snapshot.excluded.length}）`),
