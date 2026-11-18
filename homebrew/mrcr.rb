@@ -9,9 +9,9 @@
 class Mrcr < Formula
   desc "On-demand, inspectable AI code review CLI for uncommitted changes"
   homepage "https://mrktools.app/en/codereview/"
-  url "https://github.com/MR-TABATA/MrCodeReview/releases/download/v1.7.0/mrcr-1.7.0-macos.zip"
-  sha256 "e893db5eb4aec8700840808269ccd8043e5a1d5a58ffbc63d64baee49593b98e"
-  version "1.7.0"
+  url "https://github.com/MR-TABATA/MrCodeReview/releases/download/v1.9.0/mrcr-1.9.0-macos.zip"
+  sha256 "da06ce0ba237a14eafb8a260a6507cb2c82c2a139bdcc73c2b3ca9b3943094ef"
+  version "1.9.0"
   license "MIT"
 
   depends_on :macos => :ventura
