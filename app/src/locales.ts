@@ -399,6 +399,10 @@ export interface Messages {
     chipMemo: string;
     chipCarried: string;
     chipCarriedTitle: (stateLabel: string, stateRaw: TriageState) => string;
+    chipNew: string;
+    chipNewTitle: string;
+    chipPersist: (no: number) => string;
+    chipPersistTitle: string;
     resultEmpty: string;
     tabFindings: (count: number) => string;
     tabDiff: string;
@@ -852,6 +856,10 @@ export const MESSAGES: Record<Lang, Messages> = {
       chipMemo: '📝 メモ',
       chipCarried: '↺ 引き継ぎ',
       chipCarriedTitle: (stateLabel) => `前回までの仕分け「${stateLabel}」を引き継ぎました`,
+      chipNew: '新規',
+      chipNewTitle: '前回のレビューには無かった指摘です',
+      chipPersist: (no) => `継続（前回 #${no}）`,
+      chipPersistTitle: '前回の指摘と同じと判定しました。押すと、前回のレビューのその指摘へ移ります',
       resultEmpty: '上で観点を選んで実行するか、右の履歴を選ぶと、ここに結果（指摘・差分・記録）が出ます。',
       tabFindings: (count) => `指摘（${count}）`,
       tabDiff: '差分',
@@ -1489,6 +1497,10 @@ export const MESSAGES: Record<Lang, Messages> = {
       chipMemo: '📝 Memo',
       chipCarried: '↺ Carried',
       chipCarriedTitle: (_stateLabel, stateRaw) => `Carried previous status: ${stateRaw}`,
+      chipNew: 'New',
+      chipNewTitle: 'Not in the previous review',
+      chipPersist: (no) => `Still open (prev #${no})`,
+      chipPersistTitle: 'Judged to be the same finding as in the previous review. Click to jump to it',
       resultEmpty:
         'Select review angles above to run, or choose a review from History on the right to view results (findings, diff, logs).',
       tabFindings: (count) => `Findings (${count})`,

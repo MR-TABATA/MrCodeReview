@@ -27,6 +27,12 @@ export function displayRecipeTitle(title: string, lang: Lang = getAppLang()): st
   return msg(lang).builtinRecipeTitles[title] ?? title;
 }
 
+/** レビューの名前。「潜在バグ_3」（観点の名前 + 連番）。番号を振る前の記録は、観点の名前だけ。 */
+export function reviewName(title: string, seq: number | null | undefined, lang: Lang = getAppLang()): string {
+  const t = displayRecipeTitle(title, lang);
+  return seq ? `${t}_${seq}` : t;
+}
+
 const when = (ms: number, lang: Lang): string => new Date(ms).toLocaleString(msg(lang).bcp47);
 
 /** 履歴に、いつも出す件数（新しいほうから）。これより古いものは、「未」が残っていなければ、日付ごとにまとめる */
@@ -124,7 +130,7 @@ export function historyPanel(
         h(
           'div',
           { class: 'h1' },
-          h('span', { class: 'ht' }, displayRecipeTitle(s.recipe_title, lang)),
+          h('span', { class: 'ht' }, reviewName(s.recipe_title, s.seq, lang)),
           s.failed ? h('span', { class: 'badge bad' }, m.failedBadge) : null,
           h(
             'button',

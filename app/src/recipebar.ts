@@ -38,6 +38,9 @@ export interface RecipeBarState {
   estimatedTimeText?: string;
   runError?: string;
   specSlot?: HTMLElement | null;
+  /** 「前回の続きから」のボタンの文言。観点を 1 つだけ選んでいて、その観点に前回があるときだけ（無ければ出さない） */
+  continueLabel?: string;
+  continueTitle?: string;
 }
 
 export interface RecipeBarActions {
@@ -45,6 +48,7 @@ export interface RecipeBarActions {
   onSelectAll(): void;
   onClearAll(): void;
   onRun(): void;
+  onContinue?(): void;
   onCancel(): void;
   onExpand(): void;
   onToggleShowAll(): void;
@@ -187,6 +191,11 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
     ? h('button', { class: 'cancel-btn', onclick: acts.onCancel }, m.cancel)
     : null;
 
+  // 前回があるときだけ。押すと、前回のレビューの続きを範囲にして、そのまま実行する
+  const continueBtn =
+    st.continueLabel && acts.onContinue
+      ? h('button', { class: 'continue-run-btn', disabled: !canRun, title: st.continueTitle ?? '', onclick: acts.onContinue }, st.continueLabel)
+      : null;
   const runGroup = h('div', { class: 'run-button-group' }, runBtn, cancelBtn);
 
   if (st.collapsed) {
@@ -215,7 +224,8 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
     // 参照する設計書・仕様書の指定フォーム（あれば）
     st.specSlot ?? null,
     // 実行ボタンは常に右寄せで配置（観点数やフォーム有無によらず右端に揃える）
-    h('div', { class: 'recipe-run-row' }, runGroup),
+    // 右から、実行ボタン（観点 1 つ分）、「前回の続きから」（観点 2 つ分）。高さは、同じ行なので同じ
+    h('div', { class: 'recipe-run-row' }, runGroup, continueBtn),
     notes.length
       ? h(
           'div',

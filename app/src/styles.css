@@ -188,6 +188,14 @@ button.run:disabled { background: var(--accent-dim); border-color: var(--accent-
 .dlayer .finding p { margin: 4px 0 6px; }
 .dlayer .triage { margin-top: 6px; }
 .carry { margin-top: 8px; font-size: 12px; color: var(--accent); }
+.continuity { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; }
+.continuity .cont-prev { margin: 0 0 8px; }
+.continuity .cont-flow { margin: 0 0 8px; }
+.continuity .cont-flow .link { margin: 0 1px; }
+.continuity .cont-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.continuity .chip.on { outline: 2px solid currentColor; }
+.continuity .chip:disabled { opacity: 0.45; cursor: default; }
+.continuity .link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
 .fates { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; }
 .fates h3 { margin: 0 0 6px; }
 .fates ul { list-style: none; margin: 0; padding: 0; }
@@ -563,6 +571,9 @@ button.small.run { width: auto; padding: 3px 10px; font-size: 12px; }
 .fc-peek { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--muted); }
 .fc-sub .chip { flex: 0 0 auto; }
 .chip { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 11px; line-height: 18px; background: var(--code-bg); color: var(--muted); white-space: nowrap; }
+.chip.persist { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
+.chip.new { background: var(--code-bg); color: var(--text, inherit); font-weight: 600; }
+.chip.link { border: none; cursor: pointer; font-family: inherit; text-decoration: underline; }
 .chip.warn { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
 .chip.did { background: var(--ok-bg); color: var(--ok); }
 
@@ -727,6 +738,12 @@ button.small.run { width: auto; padding: 3px 10px; font-size: 12px; }
 button.main-run-btn {
   flex: 1; padding: 5px 8px; font-size: 12.5px; line-height: 1.3; border-radius: 6px; font-weight: 600;
 }
+/* 「前回の続きから」。実行ボタンの左。実行ボタンより目立たせない（主は、いつもの実行ボタン） */
+button.continue-run-btn {
+  grid-column: span 2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding: 5px 8px; font-size: 12.5px; line-height: 1.3; border-radius: 6px; font-weight: 600; background: var(--field); border: 1px solid var(--line); cursor: pointer;
+}
+button.continue-run-btn:disabled { opacity: 0.5; cursor: default; }
 .cancel-btn {
   flex: none; padding: 5px 10px; font-size: 12.5px; border-color: var(--bad); color: var(--bad); background: var(--field); border-radius: 6px; cursor: pointer;
 }

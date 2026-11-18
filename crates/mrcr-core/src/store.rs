@@ -45,6 +45,25 @@ impl From<&Snapshot> for SnapshotRecord {
     }
 }
 
+/// 「前回のレビュー」への参照。**「前回」の定義はここ 1 か所**: 同じリポジトリ・同じ観点で、成功した直前のレビュー（`recent_ok` の先頭）。
+/// 実行した時点の前回を、記録に残す（あとで新しいレビューが増えても、その時の「前回」が変わらない）。
+/// 観点を問わない「リポジトリの直近」（`last_review`）は、比較元（前回の続き）のためのもので、別物。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PreviousRef {
+    pub id: String,
+    pub created_at: u64,
+    pub findings: usize,
+    /// 前回の連番（「潜在バグ_2」の 2）。古い記録には無い
+    #[serde(default)]
+    pub seq: Option<u32>,
+}
+
+impl PreviousRef {
+    pub fn of(r: &ReviewRecord) -> Self {
+        Self { id: r.id.clone(), created_at: r.created_at, findings: r.findings.len(), seq: r.seq }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReviewRecord {
     pub id: String,
@@ -69,6 +88,12 @@ pub struct ReviewRecord {
     /// 前回の「対応」「待ち」の指摘が、今回どうなったか。
     #[serde(default)]
     pub fates: Vec<Fate>,
+    /// 実行した時点の「前回」。無ければ初回（古い記録にも無い）。
+    #[serde(default)]
+    pub previous: Option<PreviousRef>,
+    /// 同じリポジトリ・同じ観点の中の連番（「潜在バグ_1」の 1）。実行して記録に残すときに決める（`append_numbered`）。無ければ None（番号を振る前の記録）
+    #[serde(default)]
+    pub seq: Option<u32>,
     /// 実行メモ（除外した件数など）。画面の指摘タブの上に出す。古い記録には無い。
     #[serde(default)]
     pub notes: Vec<String>,
@@ -120,6 +145,8 @@ pub struct ReviewSummary {
     pub verified: usize,
     pub total_tokens: Option<u64>,
     pub failed: bool,
+    /// 連番（「潜在バグ_1」の 1）。無ければ None
+    pub seq: Option<u32>,
     /// 仕分けの件数。読み取りに失敗したときは None（間違った数を出さない）。履歴の一覧を作るときだけ、入れる
     pub counts: Option<TriageCounts>,
 }
@@ -143,6 +170,7 @@ impl From<&ReviewRecord> for ReviewSummary {
             verified: r.findings.iter().filter(|f| f.verified).count(),
             total_tokens: total_tokens(r.usage.input_tokens, r.usage.output_tokens),
             failed: !r.is_ok(),
+            seq: r.seq,
             counts: None,
         }
     }
@@ -178,7 +206,7 @@ pub(crate) fn insert(conn: &Connection, rec: &ReviewRecord, or_ignore: bool) -> 
     let sql = format!(
         "INSERT {} INTO reviews (id, created_at, repo, recipe_id, recipe_title, provider_id, provider_label, model, ok, \
          findings_count, verified_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, \
-         duration_ms, record) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",
+         duration_ms, record, seq) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
         if or_ignore { "OR IGNORE" } else { "" }
     );
     conn.execute(
@@ -202,14 +230,46 @@ pub(crate) fn insert(conn: &Connection, rec: &ReviewRecord, or_ignore: bool) -> 
             rec.cost_usd,
             rec.duration_ms as i64,
             json,
+            rec.seq.map(i64::from),
         ],
     )
     .map(|_| ())
     .map_err(|e| format!("履歴に書けない: {e}"))
 }
 
+/// 履歴に足す。**連番もここで決める**（同じリポジトリ・同じ観点の、これまでの最大 + 1。履歴を消しても、使った番号は使い回さない）。
+/// 番号を決めて書くまでを 1 つの書き込みにする（同時に走っても、同じ番号にならない）。決めた番号は、`rec.seq` に入る。
+pub fn append_numbered(dir: &Path, rec: &mut ReviewRecord) -> Result<(), String> {
+    let mut conn = db::open(dir)?;
+    let w = |e: rusqlite::Error| format!("履歴に書けない: {e}");
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(w)?;
+    let (repo, recipe) = (rec.repo.clone(), rec.recipe.id.clone());
+    let last: i64 = tx
+        .query_row("SELECT COALESCE(MAX(m), 0) FROM (SELECT MAX(seq) AS m FROM reviews WHERE repo = ?1 AND recipe_id = ?2 UNION ALL SELECT last FROM review_seq WHERE repo = ?1 AND recipe_id = ?2)", params![repo, recipe], |r| r.get(0))
+        .map_err(w)?;
+    let next = u32::try_from(last + 1).map_err(|_| "連番が大きすぎます".to_string())?;
+    let prev_seq = rec.seq.replace(next);
+    if let Err(e) = insert(&tx, rec, false) {
+        rec.seq = prev_seq; // 履歴に書けなかったので、番号も使っていない（トランザクションごと捨てる）
+        return Err(e);
+    }
+    // 連番の最終値は、消した番号を使い回さないための補助。書けなくても、実行（LLM の呼び出し）まで済んだ結果の保存を、巻き込まない
+    // （次の番号は、履歴の最大値からも決まるので、番号が飛ぶことも、重なることもない。使い回しだけ、最新を消したあとに起こりうる）
+    if let Err(e) = tx.execute(
+        "INSERT INTO review_seq (repo, recipe_id, last) VALUES (?1, ?2, ?3) ON CONFLICT (repo, recipe_id) DO UPDATE SET last = excluded.last",
+        params![repo, recipe, next],
+    ) {
+        eprintln!("警告: 連番の最終値を書けませんでした（履歴は保存します）: {e}");
+    }
+    tx.commit().map_err(|e| {
+        rec.seq = prev_seq;
+        w(e)
+    })
+}
+
+/// 番号を振って履歴に足す（呼んだ側の記録は変えない）。決めた番号を使うときは、`append_numbered`。
 pub fn append(dir: &Path, rec: &ReviewRecord) -> Result<(), String> {
-    insert(&db::open(dir)?, rec, false)
+    append_numbered(dir, &mut rec.clone())
 }
 
 fn records(conn: &Connection, sql: &str, args: &[&dyn rusqlite::ToSql]) -> Vec<ReviewRecord> {
@@ -314,7 +374,7 @@ pub fn try_get(dir: &Path, id: &str) -> Result<Option<ReviewRecord>, String> {
     }
 }
 
-/// 同じリポジトリ・同じ観点の、成功したレビュー。新しい順に `limit` 件。引き継ぎの候補。
+/// 同じリポジトリ・同じ観点の、成功したレビュー。新しい順に `limit` 件。引き継ぎの候補。先頭が「前回」（`PreviousRef`）。
 pub fn recent_ok(dir: &Path, repo: &str, recipe_id: &str, limit: usize) -> Vec<ReviewRecord> {
     let Ok(conn) = db::open(dir) else { return Vec::new() };
     records(
@@ -401,7 +461,7 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
     let Ok(conn) = db::open(dir) else { return Vec::new() };
     let Ok(mut stmt) = conn.prepare(
         "SELECT id, created_at, repo, recipe_title, provider_label, findings_count, verified_count, \
-         input_tokens, output_tokens, ok FROM reviews WHERE (?2 IS NULL OR repo = ?2) \
+         input_tokens, output_tokens, ok, seq FROM reviews WHERE (?2 IS NULL OR repo = ?2) \
          ORDER BY created_at DESC, rowid DESC LIMIT ?1",
     ) else {
         return Vec::new();
@@ -419,6 +479,7 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
             verified: r.get::<_, i64>(6)?.max(0) as usize,
             total_tokens: total_tokens(input.map(|n| n as u64), output.map(|n| n as u64)),
             failed: !r.get::<_, bool>(9)?,
+            seq: r.get::<_, Option<i64>>(10)?.and_then(|n| u32::try_from(n).ok()),
             counts: None,
         })
     }) else {
@@ -502,6 +563,8 @@ pub fn sample_record(id: &str, at: u64) -> ReviewRecord {
         findings: vec![],
         carries: vec![],
         fates: vec![],
+        previous: None,
+        seq: None,
         notes: vec![],
         related: None,
         repo_overrides: vec![],
@@ -1093,6 +1156,117 @@ mod tests {
         assert_eq!((many["/r"], many["/other"], many["/third"], many["/none"]), (2, 3, 4, 0));
         assert!(open_counts(&conn, &[]).unwrap().is_empty());
         drop(conn);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn numbered(id: &str, at: u64, repo: &str, recipe: &str) -> ReviewRecord {
+        let mut r = sample_record(id, at);
+        r.repo = repo.into();
+        r.recipe.id = recipe.into();
+        r
+    }
+
+    fn seq_of(d: &Path, id: &str) -> Option<u32> {
+        summaries_in(d, None, 100).into_iter().find(|s| s.id == id).and_then(|s| s.seq)
+    }
+
+    #[test]
+    fn review_numbers_count_per_repo_and_recipe_and_are_never_reused_after_deleting() {
+        let d = scratch("seq");
+        for (id, at, repo, recipe) in [("a1", 1, "/r", "bugs"), ("a2", 2, "/r", "bugs"), ("e1", 3, "/r", "errors"), ("o1", 4, "/other", "bugs"), ("a3", 5, "/r", "bugs")] {
+            let mut r = numbered(id, at, repo, recipe);
+            append_numbered(&d, &mut r).unwrap();
+            assert_eq!(get(&d, id).unwrap().seq, r.seq, "記録に残った番号と、呼んだ側の番号が同じ");
+        }
+        assert_eq!([("a1", 1), ("a2", 2), ("a3", 3), ("e1", 1), ("o1", 1)].map(|(id, n)| seq_of(&d, id) == Some(n)), [true; 5], "リポジトリ × 観点ごとに数える");
+        // 最新を消して、次を足す: 3 を使い回さず、4
+        delete_reviews(&d, &["a3".to_string()]).unwrap();
+        let mut r = numbered("a4", 6, "/r", "bugs");
+        append_numbered(&d, &mut r).unwrap();
+        assert_eq!(r.seq, Some(4), "消した番号は、使い回さない");
+        // 途中を消しても、他の番号は変わらない
+        delete_reviews(&d, &["a1".to_string()]).unwrap();
+        assert_eq!((seq_of(&d, "a2"), seq_of(&d, "a4")), (Some(2), Some(4)));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn databases_without_numbers_get_them_once_in_run_order_and_keep_going_after() {
+        let d = scratch("seq-migrate");
+        // 古い版の状態を作る: 番号が無く、user_version が 3
+        for (id, at) in [("late", 30), ("early", 10), ("mid", 20)] {
+            append(&d, &numbered(id, at, "/r", "bugs")).unwrap();
+        }
+        let other = numbered("other", 5, "/r", "errors");
+        append(&d, &other).unwrap();
+        {
+            let conn = db::open(&d).unwrap();
+            conn.execute("UPDATE reviews SET seq = NULL, record = json_remove(record, '$.seq')", []).unwrap();
+            conn.execute("DELETE FROM review_seq", []).unwrap();
+            conn.pragma_update(None, "user_version", 3).unwrap();
+        }
+        assert_eq!(seq_of(&d, "early"), Some(1), "実行時刻の順に振る");
+        assert_eq!((seq_of(&d, "mid"), seq_of(&d, "late"), seq_of(&d, "other")), (Some(2), Some(3), Some(1)));
+        assert_eq!(get(&d, "mid").unwrap().seq, Some(2), "記録の JSON にも入る");
+        // 2 回目に開いても、振り直さない。続きの番号は 4
+        let mut r = numbered("new", 40, "/r", "bugs");
+        append_numbered(&d, &mut r).unwrap();
+        assert_eq!((r.seq, seq_of(&d, "early")), (Some(4), Some(1)));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_failed_append_neither_burns_a_number_nor_keeps_the_new_one_on_the_record() {
+        let d = scratch("seq-dup");
+        let mut first = numbered("same", 1, "/r", "bugs");
+        append_numbered(&d, &mut first).unwrap();
+        assert_eq!(first.seq, Some(1));
+        // 同じ id をもう一度: 履歴に書けない
+        let mut dup = numbered("same", 2, "/r", "bugs");
+        assert!(append_numbered(&d, &mut dup).is_err());
+        assert_eq!(dup.seq, None, "呼んだ側の記録は、元の値（番号なし）に戻る");
+        // 続きは 2（失敗した分の番号を、飛ばさない）
+        let mut next = numbered("next", 3, "/r", "bugs");
+        append_numbered(&d, &mut next).unwrap();
+        assert_eq!(next.seq, Some(2));
+        assert_eq!(summaries_in(&d, None, 10).len(), 2, "履歴は、増えていない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_failure_to_write_the_last_number_does_not_lose_the_review() {
+        let d = scratch("seq-last-fails");
+        db::open(&d).unwrap().execute_batch("CREATE TRIGGER fail_seq BEFORE INSERT ON review_seq BEGIN SELECT RAISE(FAIL, 'boom'); END;").unwrap();
+        let mut a = numbered("a", 1, "/r", "bugs");
+        append_numbered(&d, &mut a).expect("連番の最終値を書けなくても、結果は履歴に残す");
+        assert_eq!(get(&d, "a").map(|r| r.seq), Some(Some(1)));
+        let mut b = numbered("b", 2, "/r", "bugs");
+        append_numbered(&d, &mut b).unwrap();
+        assert_eq!(b.seq, Some(2), "次の番号は、履歴の最大値から決まる。飛ばない・重ならない");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn concurrent_appends_never_get_the_same_number() {
+        let d = scratch("seq-threads");
+        db::open(&d).unwrap(); // 表を先に作る
+        let threads: Vec<_> = (0..2)
+            .map(|t| {
+                let d = d.clone();
+                std::thread::spawn(move || {
+                    (0..5)
+                        .map(|i| {
+                            let mut r = numbered(&format!("t{t}-{i}"), (t * 10 + i) as u64, "/r", "bugs");
+                            append_numbered(&d, &mut r).unwrap();
+                            r.seq.unwrap()
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        let mut all: Vec<u32> = threads.into_iter().flat_map(|t| t.join().unwrap()).collect();
+        all.sort_unstable();
+        assert_eq!(all, (1..=10).collect::<Vec<u32>>(), "10 件が、1〜10 で、重ならない");
         let _ = std::fs::remove_dir_all(&d);
     }
 }
