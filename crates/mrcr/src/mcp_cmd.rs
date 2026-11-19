@@ -161,7 +161,7 @@ fn tools_def() -> Vec<Value> {
                 "properties": {
                     "repo": {
                         "type": "string",
-                        "description": "対象リポジトリのパス（省略時は現在のカレントディレクトリ）"
+                        "description": "対象リポジトリ名またはパス（例: 'MrDiff', './MrDiff'。カレントディレクトリが Git リポジトリでない場合は必須）"
                     },
                     "review_id": {
                         "type": "string",
@@ -216,7 +216,7 @@ fn tools_def() -> Vec<Value> {
                 "properties": {
                     "repo": {
                         "type": "string",
-                        "description": "対象リポジトリのパス（省略時は現在のカレントディレクトリ）"
+                        "description": "対象リポジトリ名またはパス（例: 'MrDiff', './MrDiff'。カレントディレクトリが Git リポジトリでない場合は必須）"
                     }
                 }
             }
@@ -246,7 +246,14 @@ fn call_tool(dir: &Path, params: Option<&Value>) -> Value {
 
             match handoff_cmd::get(dir, &repo, review_id, as_json) {
                 Ok((out, _)) => tool_ok(&out),
-                Err(e) => tool_error(&e),
+                Err(e) => {
+                    let hint = if e.contains("git のリポジトリではありません") || e.contains("パスが見つかりません") {
+                        format!("{e}。対象のリポジトリ（例: repo: \"MrDiff\"）を指定してください。")
+                    } else {
+                        e
+                    };
+                    tool_error(&hint)
+                }
             }
         }
         "mrcr_report" => {
@@ -284,7 +291,14 @@ fn call_tool(dir: &Path, params: Option<&Value>) -> Value {
 
             match handoff_cmd::list(dir, &repo, false) {
                 Ok((out, _)) => tool_ok(&out),
-                Err(e) => tool_error(&e),
+                Err(e) => {
+                    let hint = if e.contains("git のリポジトリではありません") || e.contains("パスが見つかりません") {
+                        format!("{e}。対象のリポジトリ（例: repo: \"MrDiff\"）を指定してください。")
+                    } else {
+                        e
+                    };
+                    tool_error(&hint)
+                }
             }
         }
         _ => tool_error(&format!("未定義のツールです: {name}")),
