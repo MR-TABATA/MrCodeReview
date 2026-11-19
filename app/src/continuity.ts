@@ -78,15 +78,17 @@ export interface Flow {
 }
 
 /**
- * 同じリポジトリ・同じ観点の流れ（「1 → 2 → [3]」）。履歴にある分だけで、番号の無い記録は入れない（「0」などと出さない）。
+ * 同じリポジトリ・同じ観点の流れ（「1 → 2 → [3]」）。履歴にある分だけで、番号・作成時刻の無い記録は入れない（「0」などと出さない。日ごとに連番が戻るので、並びは時刻で決める）。
  * 長いときは、いまのレビューの近くの `max` 件だけ。2 件に満たなければ null（出さない）。
  */
 export function flowOf(history: readonly ReviewSummary[], r: { id: string; repo: string; recipe: { title: string } }, max = 8): Flow | null {
   const all = history
-    .filter((s): s is ReviewSummary & { seq: number } => s.repo === r.repo && s.recipe_title === r.recipe.title && typeof s.seq === 'number' && s.seq > 0)
+    .filter((s): s is ReviewSummary & { seq: number } => s.repo === r.repo && s.recipe_title === r.recipe.title && typeof s.seq === 'number' && s.seq > 0 && Number.isFinite(s.created_at) && s.created_at > 0)
     .sort((a, b) => a.created_at - b.created_at || a.seq - b.seq);
   if (all.length < 2) return null;
-  const at = Math.max(0, all.findIndex((s) => s.id === r.id));
+  // 時刻の欠けた記録は並べられない。いまのレビューがそれなら、位置が決まらないので出さない
+  const at = all.findIndex((s) => s.id === r.id);
+  if (at < 0) return null;
   const from = Math.max(0, Math.min(at - Math.floor(max / 2), all.length - max));
   const items = all.slice(from, from + max).map((s) => ({ id: s.id, seq: s.seq, failed: s.failed, findings: s.findings, created_at: s.created_at, now: s.id === r.id }));
   return { items, hasBefore: from > 0, hasAfter: from + max < all.length };

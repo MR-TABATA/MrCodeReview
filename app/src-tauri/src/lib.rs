@@ -2802,6 +2802,10 @@ mod tests {
         let d = make("plain", "MyApp-dev");
         assert_eq!(find_repo_icon(d.to_str().unwrap().to_string()).unwrap(), expect(dev));
 
+        // パスのどこにも dev が無い場合は、icon-dev.svg があっても通常のアイコン
+        let d = make("plain", "MyApp");
+        assert_eq!(find_repo_icon(d.to_str().unwrap().to_string()).unwrap(), expect(normal));
+
         // 途中のフォルダにだけ dev が含まれる場合は、通常のアイコン
         let d = make("dev", "MyApp");
         assert_eq!(find_repo_icon(d.to_str().unwrap().to_string()).unwrap(), expect(normal));

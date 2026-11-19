@@ -43,6 +43,17 @@ pub enum Commands {
         #[command(subcommand)]
         action: HandoffAction,
     },
+    /// MCP（Model Context Protocol）サーバーを起動し、コーディングエージェント（agy, Claude Code 等）と双方向連携する
+    Mcp {
+        #[command(subcommand)]
+        action: Option<McpAction>,
+    },
+}
+
+#[derive(Subcommand, Debug, PartialEq)]
+pub enum McpAction {
+    /// 各エージェント（agy, Claude Code）の設定ファイルに mrcr mcp を登録する
+    Setup,
 }
 
 #[derive(Subcommand, Debug)]

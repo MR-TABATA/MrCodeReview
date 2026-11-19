@@ -206,7 +206,7 @@ pub(crate) fn insert(conn: &Connection, rec: &ReviewRecord, or_ignore: bool) -> 
     let sql = format!(
         "INSERT {} INTO reviews (id, created_at, repo, recipe_id, recipe_title, provider_id, provider_label, model, ok, \
          findings_count, verified_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, \
-         duration_ms, record, seq) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+         duration_ms, record, seq, day) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,date(?2 / 1000, 'unixepoch', 'localtime'))",
         if or_ignore { "OR IGNORE" } else { "" }
     );
     conn.execute(
@@ -244,13 +244,16 @@ pub fn append_numbered(dir: &Path, rec: &mut ReviewRecord) -> Result<(), String>
     let w = |e: rusqlite::Error| format!("履歴に書けない: {e}");
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(w)?;
     let (repo, recipe) = (rec.repo.clone(), rec.recipe.id.clone());
+    // 作成時刻が日付にならない（範囲外など）ときは、空の日付で番号を決めず、はっきりエラーにする
+    let created = i64::try_from(rec.created_at).map_err(|_| format!("履歴に書けない: 作成時刻が範囲外です（{}）", rec.created_at))?;
     let today: String = tx
-        .query_row("SELECT date(?1 / 1000, 'unixepoch', 'localtime')", params![rec.created_at as i64], |r| r.get(0))
-        .map_err(w)?;
+        .query_row("SELECT date(?1 / 1000, 'unixepoch', 'localtime')", params![created], |r| r.get::<_, Option<String>>(0))
+        .map_err(w)?
+        .ok_or_else(|| format!("履歴に書けない: 作成時刻（{created}）から日付を決められません"))?;
     let last: i64 = tx
         .query_row(
             "SELECT COALESCE(MAX(m), 0) FROM (
-                SELECT MAX(seq) AS m FROM reviews WHERE repo = ?1 AND recipe_id = ?2 AND date(created_at / 1000, 'unixepoch', 'localtime') = ?3
+                SELECT MAX(seq) AS m FROM reviews WHERE repo = ?1 AND recipe_id = ?2 AND COALESCE(day, date(created_at / 1000, 'unixepoch', 'localtime')) = ?3
                 UNION ALL
                 SELECT last FROM review_seq WHERE repo = ?1 AND recipe_id = ?2 AND day = ?3
             )",
@@ -260,20 +263,25 @@ pub fn append_numbered(dir: &Path, rec: &mut ReviewRecord) -> Result<(), String>
         .map_err(w)?;
     let next = u32::try_from(last + 1).map_err(|_| "連番が大きすぎます".to_string())?;
     let prev_seq = rec.seq.replace(next);
-    if let Err(e) = insert(&tx, rec, false) {
-        rec.seq = prev_seq; // 履歴に書けなかったので、番号も使っていない（トランザクションごと捨てる）
-        return Err(e);
-    }
-    // 連番の最終値は、消した番号を使い回さないための補助。書けなくても、実行（LLM の呼び出し）まで済んだ結果の保存を、巻き込まない
-    // （次の番号は、履歴の最大値からも決まるので、番号が飛ぶことも、重なることもない。使い回しだけ、最新を消したあとに起こりうる）
+    let prev_notes = rec.notes.len();
+    // 連番の最終値は、消した番号を使い回さないための補助。書けなくても、実行（LLM の呼び出し）まで済んだ結果の保存は巻き込まない。
+    // ただし黙らない: 実行メモに残して画面に出し、標準エラーにも出す（次の番号は、履歴の最大値からも決まるので、番号が飛ぶことも、
+    // 重なることもない。使い回しだけ、最新を消したあとに起こりうる）
     if let Err(e) = tx.execute(
-        "INSERT INTO review_seq (repo, recipe_id, day, last) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (repo, recipe_id, day) DO UPDATE SET last = excluded.last",
+        "INSERT INTO review_seq (repo, recipe_id, day, last) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (repo, recipe_id, day) DO UPDATE SET last = MAX(last, excluded.last)",
         params![repo, recipe, today, next],
     ) {
         eprintln!("警告: 連番の最終値を書けませんでした（履歴は保存します）: {e}");
+        rec.notes.push(format!("連番の最終値を書けませんでした（{e}）。この日の最新のレビューを消すと、同じ番号が再び付くことがあります"));
+    }
+    if let Err(e) = insert(&tx, rec, false) {
+        rec.seq = prev_seq; // 履歴に書けなかったので、番号も使っていない（トランザクションごと捨てる）
+        rec.notes.truncate(prev_notes);
+        return Err(e);
     }
     tx.commit().map_err(|e| {
         rec.seq = prev_seq;
+        rec.notes.truncate(prev_notes);
         w(e)
     })
 }
@@ -1227,6 +1235,34 @@ mod tests {
     }
 
     #[test]
+    fn day_is_fixed_at_insert_and_old_numbers_and_last_values_survive_migration() {
+        let d = scratch("seq-v5-migrate");
+        // 版 4 の状態: 日をまたぐ番号 1〜3、最新（4）は消した。review_seq は日の無い旧形式
+        for (id, at, seq) in [("a", 1700000000000u64, 1u32), ("b", 1700100000000, 2), ("c", 1700200000000, 3)] {
+            append(&d, &numbered(id, at, "/r", "bugs")).unwrap();
+            db::open(&d).unwrap().execute("UPDATE reviews SET seq = ?1 WHERE id = ?2", params![seq, id]).unwrap();
+        }
+        {
+            let conn = db::open(&d).unwrap();
+            conn.execute_batch("DROP TABLE review_seq; CREATE TABLE review_seq (repo TEXT NOT NULL, recipe_id TEXT NOT NULL, last INTEGER NOT NULL, PRIMARY KEY (repo, recipe_id)); INSERT INTO review_seq VALUES ('/r','bugs',4);").unwrap();
+            conn.pragma_update(None, "user_version", 4).unwrap();
+        }
+        let conn = db::open(&d).unwrap();
+        let seqs: Vec<(String, Option<i64>)> = conn.prepare("SELECT id, seq FROM reviews ORDER BY created_at").unwrap().query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().flatten().collect();
+        assert_eq!(seqs.iter().map(|x| x.1).collect::<Vec<_>>(), vec![Some(1), Some(2), Some(3)], "既存の番号は、振り直さない");
+        drop(conn);
+        // 最新の記録の日に、旧い最終値 4 を引き継ぐ: その日の次の番号は 5（消した 4 を使い回さない）
+        let mut r = numbered("n", 1700200001000, "/r", "bugs");
+        append_numbered(&d, &mut r).unwrap();
+        assert_eq!(r.seq, Some(5));
+        // 保存済みの日は、時刻帯が変わっても動かない（day 列）
+        let conn = db::open(&d).unwrap();
+        let day: String = conn.query_row("SELECT day FROM reviews WHERE id = 'n'", [], |r| r.get(0)).unwrap();
+        assert_eq!(day.len(), 10);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn daily_sequence_resets_on_new_day() {
         let d = scratch("seq-daily-reset");
         // 1日目: 1700000000000 ms
@@ -1272,6 +1308,24 @@ mod tests {
         let mut b = numbered("b", 2, "/r", "bugs");
         append_numbered(&d, &mut b).unwrap();
         assert_eq!(b.seq, Some(2), "次の番号は、履歴の最大値から決まる。飛ばない・重ならない");
+        assert!(a.notes.iter().any(|n| n.contains("連番の最終値を書けませんでした")), "黙らず、実行メモに残す: {:?}", a.notes);
+        assert!(get(&d, "a").unwrap().notes.iter().any(|n| n.contains("連番の最終値")), "保存された記録にも残る");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_created_time_that_has_no_date_is_an_error_not_an_empty_day() {
+        let d = scratch("seq-bad-time");
+        let mut r = numbered("x", 1, "/r", "bugs");
+        r.created_at = u64::MAX;
+        let err = append_numbered(&d, &mut r).unwrap_err();
+        assert!(err.contains("作成時刻"), "{err}");
+        assert_eq!(r.seq, None);
+        let mut r2 = numbered("y", 1, "/r", "bugs");
+        r2.created_at = i64::MAX as u64; // SQLite の date() が NULL を返す範囲
+        let err = append_numbered(&d, &mut r2).unwrap_err();
+        assert!(err.contains("日付を決められません"), "{err}");
+        assert_eq!(summaries_in(&d, None, 10).len(), 0, "何も保存しない");
         let _ = std::fs::remove_dir_all(&d);
     }
 

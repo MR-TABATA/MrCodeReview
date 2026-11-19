@@ -245,7 +245,7 @@ fn problems_json(problems: &[Problem]) -> Vec<Value> {
 
 // ── list ──
 
-fn list(dir: &Path, repo: &Path, json: bool) -> Output {
+pub(crate) fn list(dir: &Path, repo: &Path, json: bool) -> Output {
     let keys = repo_keys(repo)?;
     let (mut cands, problems) = candidates(dir, &keys)?;
     let warnings: Vec<String> = problems.iter().map(Problem::text).collect();
@@ -321,7 +321,7 @@ impl Section {
     }
 }
 
-fn get(dir: &Path, repo: &Path, review_id: Option<&str>, json: bool) -> Output {
+pub(crate) fn get(dir: &Path, repo: &Path, review_id: Option<&str>, json: bool) -> Output {
     let keys = repo_keys(repo)?;
     let mut chosen: Vec<Candidate> = Vec::new();
     let mut skipped: Vec<Candidate> = Vec::new();
@@ -589,7 +589,7 @@ fn parse_finding_refs(review_id: &str, s: &str) -> Result<Vec<usize>, String> {
     Ok(out)
 }
 
-fn report(dir: &Path, review_id: &str, finding: &str, verdict: &str, text: &str, client: &str) -> Output {
+pub(crate) fn report(dir: &Path, review_id: &str, finding: &str, verdict: &str, text: &str, client: &str) -> Output {
     let indices = parse_finding_refs(review_id, finding)?;
     // 1 つでも、渡されていない指摘があれば、何も保存しない（コアが、取引で保存する）
     let outcomes = h::report_many_via(dir, review_id, &indices, verdict, text, client, "cli", db::now_ms())?;

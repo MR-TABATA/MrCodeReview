@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS reviews (
   duration_ms        INTEGER NOT NULL,
   record             TEXT NOT NULL,
   -- 同じリポジトリ・同じ観点の中の連番（「潜在バグ_1」の 1）。履歴を消しても、他の番号は変わらない
-  seq                INTEGER
+  seq                INTEGER,
+  -- 採番時に決めた「日」（その時点の端末の時刻帯での日付）。あとから時刻帯が変わっても、保存済みの日は動かさない
+  day                TEXT
 );
 CREATE INDEX IF NOT EXISTS reviews_repo_recipe ON reviews (repo, recipe_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS reviews_created ON reviews (created_at DESC);
@@ -141,11 +143,29 @@ pub fn open(dir: &Path) -> Result<Connection, String> {
         if !has_seq {
             tx.execute("ALTER TABLE reviews ADD COLUMN seq INTEGER", []).map_err(e("seq 列を足せない"))?;
         }
+        let has_review_day: bool = tx
+            .prepare("SELECT 1 FROM pragma_table_info('reviews') WHERE name = 'day'")
+            .and_then(|mut s| s.exists([]))
+            .map_err(e("列を調べられない"))?;
+        if !has_review_day {
+            tx.execute("ALTER TABLE reviews ADD COLUMN day TEXT", []).map_err(e("day 列を足せない"))?;
+        }
+        tx.execute("UPDATE reviews SET day = date(created_at / 1000, 'unixepoch', 'localtime') WHERE day IS NULL", [])
+            .map_err(e("day を振れない"))?;
         let has_day: bool = tx
             .prepare("SELECT 1 FROM pragma_table_info('review_seq') WHERE name = 'day'")
             .and_then(|mut s| s.exists([]))
             .map_err(e("列を調べられない"))?;
         if !has_day {
+            // 旧形式（日の無い最終値）は、捨てずに引き継ぐ。消した最新の番号を、また使わないため。
+            // 日は分からないので、そのリポジトリ・観点の最新の記録の日（記録が無ければ今日）に置く
+            let old: Vec<(String, String, i64)> = {
+                let mut st = tx.prepare("SELECT repo, recipe_id, last FROM review_seq").map_err(e("review_seq を読めない"))?;
+                let rows = st
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                    .map_err(e("review_seq を読めない"))?;
+                rows.collect::<Result<_, _>>().map_err(e("review_seq を読めない"))?
+            };
             tx.execute("DROP TABLE IF EXISTS review_seq", []).map_err(e("古い review_seq を削除できない"))?;
             tx.execute(
                 "CREATE TABLE review_seq (
@@ -158,6 +178,18 @@ pub fn open(dir: &Path) -> Result<Connection, String> {
                 [],
             )
             .map_err(e("review_seq を作れない"))?;
+            for (repo, recipe, last) in old {
+                tx.execute(
+                    "INSERT INTO review_seq (repo, recipe_id, day, last)
+                     VALUES (?1, ?2,
+                        COALESCE((SELECT day FROM reviews WHERE repo = ?1 AND recipe_id = ?2 ORDER BY created_at DESC, rowid DESC LIMIT 1),
+                                 date('now', 'localtime')),
+                        ?3)
+                     ON CONFLICT (repo, recipe_id, day) DO UPDATE SET last = MAX(last, excluded.last)",
+                    params![repo, recipe, last],
+                )
+                .map_err(e("review_seq を引き継げない"))?;
+            }
         }
         backfill_seq_daily_in(&tx)?;
         tx.pragma_update(None, "user_version", SCHEMA_VERSION).map_err(e("user_version"))?;
@@ -167,8 +199,8 @@ pub fn open(dir: &Path) -> Result<Connection, String> {
     Ok(conn)
 }
 
-/// 記録に、同じリポジトリ・同じ観点・同じ日の中で、実行時刻の順に日ごと連番を振る。
-/// 連番の最終値（review_seq）も、ここで揃える。
+/// 番号の無い記録にだけ、同じリポジトリ・同じ観点・同じ日の中で、実行時刻の順に日ごと連番を振る（すでにある番号は、変えない）。
+/// 連番の最終値（review_seq）も、ここで揃える。何度呼んでも、振り直さない。
 pub(crate) fn backfill_seq(conn: &Connection) -> Result<(), String> {
     let tx = conn.unchecked_transaction().map_err(|err| format!("連番を振れない: {err}"))?;
     backfill_seq_daily_in(&tx)?;
@@ -178,34 +210,52 @@ pub(crate) fn backfill_seq(conn: &Connection) -> Result<(), String> {
 /// `backfill_seq` の中身。トランザクションは呼んだ側が持つ。
 fn backfill_seq_daily_in(tx: &Connection) -> Result<(), String> {
     let w = |err: rusqlite::Error| format!("連番を振れない: {err}");
-    tx.execute(
-        "WITH numbered AS (
-            SELECT rowid, ROW_NUMBER() OVER (
-                PARTITION BY repo, recipe_id, date(created_at / 1000, 'unixepoch', 'localtime')
-                ORDER BY created_at, rowid
-            ) AS daily_seq
-            FROM reviews
+    tx.execute("UPDATE reviews SET day = date(created_at / 1000, 'unixepoch', 'localtime') WHERE day IS NULL", []).map_err(w)?;
+    // (リポジトリ, 観点, 日) ごとの、いま使われている最大の番号（履歴の最大値と、記録した最終値の大きいほう）
+    let mut max: HashMap<(String, String, String), i64> = HashMap::new();
+    {
+        let mut st = tx
+            .prepare(
+                "SELECT repo, recipe_id, day, MAX(m) FROM (
+                    SELECT repo, recipe_id, day, MAX(seq) AS m FROM reviews WHERE seq IS NOT NULL GROUP BY repo, recipe_id, day
+                    UNION ALL
+                    SELECT repo, recipe_id, day, last AS m FROM review_seq
+                 ) GROUP BY repo, recipe_id, day",
+            )
+            .map_err(w)?;
+        let rows = st
+            .query_map([], |r| Ok(((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?), r.get::<_, i64>(3)?)))
+            .map_err(w)?;
+        for row in rows {
+            let (k, v) = row.map_err(w)?;
+            max.insert(k, v);
+        }
+    }
+    let todo: Vec<(i64, String, String, String)> = {
+        let mut st = tx
+            .prepare("SELECT rowid, repo, recipe_id, day FROM reviews WHERE seq IS NULL ORDER BY repo, recipe_id, day, created_at, rowid")
+            .map_err(w)?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).map_err(w)?;
+        rows.collect::<Result<_, _>>().map_err(w)?
+    };
+    for (rowid, repo, recipe, day) in todo {
+        let n = max.entry((repo, recipe, day)).or_insert(0);
+        *n += 1;
+        // 記録の JSON にも入れる（壊れた JSON は、触らない）
+        tx.execute(
+            "UPDATE reviews SET seq = ?1, record = CASE WHEN json_valid(record) THEN json_set(record, '$.seq', ?1) ELSE record END WHERE rowid = ?2",
+            params![*n, rowid],
         )
-        UPDATE reviews
-        SET seq = (SELECT daily_seq FROM numbered WHERE numbered.rowid = reviews.rowid),
-            record = CASE
-                WHEN json_valid(record) THEN json_set(record, '$.seq', (SELECT daily_seq FROM numbered WHERE numbered.rowid = reviews.rowid))
-                ELSE record
-            END",
-        [],
-    )
-    .map_err(w)?;
-
-    tx.execute(
-        "INSERT INTO review_seq (repo, recipe_id, day, last)
-         SELECT repo, recipe_id, date(created_at / 1000, 'unixepoch', 'localtime') AS day, MAX(seq) AS last
-         FROM reviews
-         WHERE seq IS NOT NULL
-         GROUP BY repo, recipe_id, date(created_at / 1000, 'unixepoch', 'localtime')
-         ON CONFLICT (repo, recipe_id, day) DO UPDATE SET last = excluded.last",
-        [],
-    )
-    .map_err(w)?;
+        .map_err(w)?;
+    }
+    for ((repo, recipe, day), last) in &max {
+        tx.execute(
+            "INSERT INTO review_seq (repo, recipe_id, day, last) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (repo, recipe_id, day) DO UPDATE SET last = MAX(last, excluded.last)",
+            params![repo, recipe, day, last],
+        )
+        .map_err(w)?;
+    }
     Ok(())
 }
 

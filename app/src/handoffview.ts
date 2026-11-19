@@ -111,7 +111,7 @@ export function handoffTop(info: HandoffInfo, extra?: HTMLElement | null): HTMLE
 }
 
 /** 一覧の一番下: 「対応」が 2 件以上なら「まとめて CLI に渡す」。その下に、まとめて渡す内容と、その文面のコピー。 */
-export function handoffPreview(info: HandoffInfo, ui: HandoffUi, act: HandoffActions, agents: AgentDef[] = []): HTMLElement | null {
+export function handoffPreview(info: HandoffInfo, ui: HandoffUi, act: HandoffActions, _agents: AgentDef[] = []): HTMLElement | null {
   if (info.fix === 0 || !info.text) return null;
   const m = msg(getAppLang()).mainUi;
   return h(
@@ -122,11 +122,17 @@ export function handoffPreview(info: HandoffInfo, ui: HandoffUi, act: HandoffAct
           'div',
           { class: 'row' },
           h('button', { class: 'run copy', disabled: ui.busy, title: m.sendToCliTitle, onclick: () => act.send('all') }, ui.busy && ui.target === 'all' ? m.writingCliBtn : m.sendAllToCliBtn(info.fix)),
-          ...agents.map((a) =>
-            h('button', { class: 'run small', disabled: ui.busy, onclick: () => act.launch(a.id, 'all') }, `${a.name} を起動`)
-          ),
+          h('button', { class: 'small', onclick: () => act.copyText() }, m.copyHandoffTextBtn),
+          ui.copiedText ? h('span', { class: 'muted' }, m.copiedBtn) : null,
+          h('span', { class: 'hint' }, '💡 agy や Claude Code からは MCP (mrcr mcp) で直接対応できます'),
         )
-      : null,
+      : h(
+          'div',
+          { class: 'row' },
+          h('button', { class: 'small', onclick: () => act.copyText() }, m.copyHandoffTextBtn),
+          ui.copiedText ? h('span', { class: 'muted' }, m.copiedBtn) : null,
+          h('span', { class: 'hint' }, '💡 agy や Claude Code からは MCP (mrcr mcp) で直接対応できます'),
+        ),
     handoffResult('all', ui, act),
     h(
       'details',

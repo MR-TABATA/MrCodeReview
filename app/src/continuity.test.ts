@@ -106,6 +106,12 @@ describe('flowOf（同じ観点の流れ）', () => {
     expect(f.items.map((i) => i.now)).toEqual([false, false, true]);
   });
 
+  it('作成時刻の無い記録は流れに入れず、いまのレビューがそれなら出さない', () => {
+    const f = flowOf([S('a', 1, { created_at: 10 }), S('z', 1, { created_at: 0 }), S('b', 2, { created_at: 20 })], cur('b'))!;
+    expect(f.items.map((i) => i.id)).toEqual(['a', 'b']);
+    expect(flowOf([S('a', 1, { created_at: 10 }), S('b', 2, { created_at: 20 }), S('z', 3, { created_at: 0 })], cur('z'))).toBeNull();
+  });
+
   it('番号のある記録が 2 件に満たなければ、出さない', () => {
     expect(flowOf([S('a', 1), S('x', null)], cur('a'))).toBeNull();
     expect(flowOf([], cur('a'))).toBeNull();

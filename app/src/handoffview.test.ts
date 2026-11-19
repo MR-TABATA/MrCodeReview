@@ -149,30 +149,25 @@ describe('handoffTop のヒントは、言語に従う', () => {
   });
 });
 
-describe('エージェント起動ボタン', () => {
+describe('エージェント起動ボタンの廃止と MCP 連携案内', () => {
   const agents = [
     { id: 'claude', name: 'Claude Code', command: 'claude' },
     { id: 'agy', name: 'Antigravity', command: 'agy' },
   ];
 
-  it('handoffPreview に登録エージェントの起動ボタンが並び、押すと launch(all) が呼ばれる', () => {
-    const a = acts();
-    const el = handoffPreview(INFO, ui(), a, agents)!;
-    expect(btn(el, 'Claude Code を起動')).toBeDefined();
-    btn(el, 'Claude Code を起動')!.click();
-    expect(a.launch).toHaveBeenCalledExactlyOnceWith('claude', 'all');
-  });
-
-  it('busy のとき、起動ボタンは disabled になる', () => {
-    const el = handoffPreview(INFO, { ...ui(), busy: true }, acts(), agents)!;
-    expect(btn(el, 'Claude Code を起動')?.hasAttribute('disabled')).toBe(true);
-    expect(btn(el, 'Antigravity を起動')?.hasAttribute('disabled')).toBe(true);
-  });
-
-  it('agents が空のときは起動ボタンが出ない', () => {
-    const el = handoffPreview(INFO, ui(), acts(), [])!;
+  it('handoffPreview に観点ごとの勝手な起動ボタンは並ばず、MCP 連携のヒントが表示される', () => {
+    const el = handoffPreview(INFO, ui(), acts(), agents)!;
     expect(btn(el, 'Claude Code を起動')).toBeUndefined();
     expect(btn(el, 'Antigravity を起動')).toBeUndefined();
+    expect(el.textContent).toContain('MCP (mrcr mcp)');
+  });
+
+  it('まとめて渡す内容のコピーボタンが機能する', () => {
+    const a = acts();
+    const el = handoffPreview(INFO, ui(), a, agents)!;
+    expect(btn(el, 'この文面をコピー')).toBeDefined();
+    btn(el, 'この文面をコピー')!.click();
+    expect(a.copyText).toHaveBeenCalledOnce();
   });
 
   it('launchedMessage があれば handoffResult に表示される', () => {
