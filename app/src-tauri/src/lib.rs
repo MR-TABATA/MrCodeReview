@@ -1402,10 +1402,12 @@ fn to_base64(bytes: &[u8]) -> String {
 #[tauri::command]
 fn find_repo_icon(repo: String) -> Option<String> {
     let base = Path::new(&repo);
-    let is_dev = repo.to_lowercase().contains("dev")
-        || base.file_name().and_then(|n| n.to_str()).map(|n| n.to_lowercase().contains("dev")).unwrap_or(false);
+    // 判定は最後のフォルダ名だけ（/Users/x/dev/MyApp や /Users/x/Developer/… の途中の dev では、開発用にしない）
+    let is_dev = base.file_name().and_then(|n| n.to_str()).map(|n| n.to_lowercase().contains("dev")).unwrap_or(false);
 
     let dev_candidates = [
+        "app/src-tauri/icons/dev/icon.png",
+        "app/src-tauri/icons/dev/32x32.png",
         "src-tauri/icons/dev/icon.png",
         "src-tauri/icons/dev/32x32.png",
         "art/icon-dev.png",
@@ -1428,6 +1430,9 @@ fn find_repo_icon(repo: String) -> Option<String> {
     }
 
     let candidates = [
+        "app/src-tauri/icons/32x32.png",
+        "app/src-tauri/icons/128x128.png",
+        "app/src-tauri/icons/icon.png",
         "src-tauri/icons/32x32.png",
         "src-tauri/icons/128x128.png",
         "src-tauri/icons/icon.png",
@@ -2779,17 +2784,29 @@ mod tests {
 
     #[test]
     fn test_find_repo_icon_prefers_dev_icon_for_dev_repo() {
-        let dir = std::env::temp_dir().join(format!("mrcr-test-dev-icon-{}", std::process::id()));
-        let art = dir.join("art");
-        std::fs::create_dir_all(&art).unwrap();
-        std::fs::write(art.join("icon.svg"), b"<svg id=\"normal\"/>").unwrap();
-        std::fs::write(art.join("icon-dev.svg"), b"<svg id=\"dev\"/>").unwrap();
+        let root = std::env::temp_dir().join(format!("mrcr-test-icon-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let normal = b"<svg id=\"normal\"/>";
+        let dev = b"<svg id=\"dev\"/>";
+        let expect = |b: &[u8]| format!("data:image/svg+xml;base64,{}", to_base64(b));
+        let make = |parent: &str, name: &str| {
+            let d = root.join(parent).join(name);
+            let art = d.join("art");
+            std::fs::create_dir_all(&art).unwrap();
+            std::fs::write(art.join("icon.svg"), normal).unwrap();
+            std::fs::write(art.join("icon-dev.svg"), dev).unwrap();
+            d
+        };
 
-        // ディレクトリ名に dev が含まれる場合、icon-dev.svg を優先
-        let res = find_repo_icon(dir.to_str().unwrap().to_string()).unwrap();
-        assert!(res.starts_with("data:image/svg+xml;base64,"));
+        // 最後のフォルダ名に dev が含まれる場合は、icon-dev.svg を優先（中身まで比べる）
+        let d = make("plain", "MyApp-dev");
+        assert_eq!(find_repo_icon(d.to_str().unwrap().to_string()).unwrap(), expect(dev));
 
-        let _ = std::fs::remove_dir_all(&dir);
+        // 途中のフォルダにだけ dev が含まれる場合は、通常のアイコン
+        let d = make("dev", "MyApp");
+        assert_eq!(find_repo_icon(d.to_str().unwrap().to_string()).unwrap(), expect(normal));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// 偽の ESLint（決まった JSON を返すだけのスクリプト）を入れた、架空のリポジトリ。
