@@ -4,7 +4,7 @@ import { setAppLang } from './i18n';
 import { handoffPath, handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffInfo, type HandoffUi } from './handoffview';
 
 const INFO: HandoffInfo = { fix: 2, done: 0, wait: 1, dismiss: 0, fresh: 3, text: '以下のコードレビューの指摘を直してください。\n…' };
-const acts = () => ({ send: vi.fn(), copyPrompt: vi.fn(), copyText: vi.fn(), close: vi.fn() });
+const acts = () => ({ send: vi.fn(), launch: vi.fn(), copyPrompt: vi.fn(), copyText: vi.fn(), close: vi.fn() });
 const FILE = { path: '/r/.mrcodereview/out/handoff.md', rel: '.mrcodereview/out/handoff.md', count: 1, prompt: '.mrcodereview/out/handoff.md を読んで、直してください。', text: '渡した文面の全文' };
 const ui = (over: Partial<HandoffUi> = {}): HandoffUi => ({ ...newHandoffUi(), ...over });
 const btn = (el: HTMLElement, label: string) => [...el.querySelectorAll('button')].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
@@ -146,5 +146,37 @@ describe('handoffTop のヒントは、言語に従う', () => {
     const hint = handoffTop({ ...INFO, fix: 0, wait: 0, text: '' }).querySelector('.hint')?.textContent ?? '';
     expect(hint).not.toBe('');
     expect(hint).not.toMatch(/[぀-ヿ一-鿿]/);
+  });
+});
+
+describe('エージェント起動ボタン', () => {
+  const agents = [
+    { id: 'claude', name: 'Claude Code', command: 'claude' },
+    { id: 'agy', name: 'Antigravity', command: 'agy' },
+  ];
+
+  it('handoffPreview に登録エージェントの起動ボタンが並び、押すと launch(all) が呼ばれる', () => {
+    const a = acts();
+    const el = handoffPreview(INFO, ui(), a, agents)!;
+    expect(btn(el, 'Claude Code を起動')).toBeDefined();
+    btn(el, 'Claude Code を起動')!.click();
+    expect(a.launch).toHaveBeenCalledExactlyOnceWith('claude', 'all');
+  });
+
+  it('busy のとき、起動ボタンは disabled になる', () => {
+    const el = handoffPreview(INFO, { ...ui(), busy: true }, acts(), agents)!;
+    expect(btn(el, 'Claude Code を起動')?.hasAttribute('disabled')).toBe(true);
+    expect(btn(el, 'Antigravity を起動')?.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('agents が空のときは起動ボタンが出ない', () => {
+    const el = handoffPreview(INFO, ui(), acts(), [])!;
+    expect(btn(el, 'Claude Code を起動')).toBeUndefined();
+    expect(btn(el, 'Antigravity を起動')).toBeUndefined();
+  });
+
+  it('launchedMessage があれば handoffResult に表示される', () => {
+    const res = handoffResult('all', { ...ui(), target: 'all', file: FILE, launchedMessage: 'Antigravity を起動しました' }, acts());
+    expect(res?.textContent).toContain('✓ Antigravity を起動しました');
   });
 });

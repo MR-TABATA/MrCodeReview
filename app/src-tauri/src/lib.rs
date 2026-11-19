@@ -989,6 +989,7 @@ fn run_review_with_base_and_lang(
         error: None,
     };
     let mut inherited: Vec<String> = Vec::new();
+    let mut triage_sources: Vec<&str> = Vec::new();
     match result {
         Ok(resp) => {
             rec.model = resp.model;
@@ -1004,6 +1005,17 @@ fn run_review_with_base_and_lang(
                         }
                     }
                     (rec.carries, rec.fates, inherited, rec.previous) = carry_over(data_dir, &rec.repo, &rec.recipe.id, &f, &settings);
+                    triage_sources = vec![triage::SRC_CARRY; f.len()];
+                    for (i, finding) in f.iter().enumerate() {
+                        // 過去の指摘からの引き継ぎが無い（完全な新規指摘）場合のみ、初期仕分けを適用する
+                        if rec.carries.get(i).and_then(|c| c.as_ref()).is_none() {
+                            let initial = settings.initial_triage(&finding.severity);
+                            if initial != triage::NEW {
+                                inherited[i] = initial.to_string();
+                                triage_sources[i] = triage::SRC_INITIAL;
+                            }
+                        }
+                    }
                     rec.findings = f;
                 }
                 Err(e) => rec.parse_error = Some(e),
@@ -1014,8 +1026,9 @@ fn run_review_with_base_and_lang(
     }
     // 失敗した実行も、送った内容ごと残す。
     store::append_numbered(data_dir, &mut rec)?;
-    // 引き継いだ仕分けを、このレビューの初期値にする
-    triage::put(data_dir, &rec.id, inherited)?;
+    // 引き継いだ仕分け、および初期仕分けを、このレビューの初期値にする
+    let states_with_source: Vec<(String, &str)> = inherited.iter().cloned().zip(triage_sources).collect();
+    triage::put_with_sources(data_dir, &rec.id, &states_with_source)?;
     Ok(rec)
 }
 
@@ -1153,11 +1166,205 @@ fn handoff_triage(data_dir: &Path, id: &str, n: usize) -> Vec<String> {
 }
 
 /// `index` を渡すと、その 1 件だけ。CLI に貼る 1 行と、書いた文面も返す。「対応」が無ければ、エラー。
+fn write_handoff_internal(data_dir: &Path, id: &str, index: Option<usize>, app_name: &str) -> Result<handoff::HandoffFile, String> {
+    let rec = find_review(data_dir, id).ok_or_else(|| format!("レビューが見つからない: {id}"))?;
+    let t = handoff_triage(data_dir, id, rec.findings.len());
+    handoff::write(&rec, &t, index, app_name)
+}
+
 #[tauri::command]
 fn write_handoff(state: tauri::State<'_, AppState>, id: String, index: Option<usize>) -> Result<handoff::HandoffFile, String> {
+    write_handoff_internal(&state.data_dir, &id, index, &state.app_name)
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AgentDef {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    pub args: String,
+}
+
+/// シェル引数として安全に渡すため、シングルクォートで囲む（' は '\'' に置換）
+pub fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// AppleScript の文字列リテラル（ダブルクォート内）用に `\` と `"` をエスケープ
+pub fn applescript_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// 設定の 1 行からエージェント定義を取り出す
+pub fn parse_agent_def(entry: &str) -> Result<AgentDef, String> {
+    let trimmed = entry.trim();
+    if trimmed.is_empty() {
+        return Err("エージェント定義が空です".into());
+    }
+    let def = match trimmed {
+        "claude" => AgentDef {
+            id: "claude".into(),
+            name: "Claude Code".into(),
+            command: "claude".into(),
+            args: "".into(),
+        },
+        "agy" => AgentDef {
+            id: "agy".into(),
+            name: "Antigravity".into(),
+            command: "agy".into(),
+            args: "-i".into(),
+        },
+        "copilot" => AgentDef {
+            id: "copilot".into(),
+            name: "GitHub Copilot".into(),
+            command: "copilot".into(),
+            args: "".into(),
+        },
+        other => {
+            let parts: Vec<&str> = other.split(':').map(|s| s.trim()).collect();
+            match parts.len() {
+                1 => AgentDef {
+                    id: parts[0].to_string(),
+                    name: parts[0].to_string(),
+                    command: parts[0].to_string(),
+                    args: "".into(),
+                },
+                2 => AgentDef {
+                    id: parts[0].to_string(),
+                    name: parts[0].to_string(),
+                    command: parts[1].to_string(),
+                    args: "".into(),
+                },
+                3 => AgentDef {
+                    id: parts[0].to_string(),
+                    name: parts[1].to_string(),
+                    command: parts[2].to_string(),
+                    args: "".into(),
+                },
+                _ => AgentDef {
+                    id: parts[0].to_string(),
+                    name: parts[1].to_string(),
+                    command: parts[2].to_string(),
+                    args: parts[3..].join(":"),
+                },
+            }
+        }
+    };
+
+    let is_safe = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.');
+    if !is_safe(&def.id) {
+        return Err(format!("エージェントID `{}` に不正な文字が含まれています", def.id));
+    }
+    if !is_safe(&def.command) {
+        return Err(format!(
+            "コマンド名 `{}` に不正な文字が含まれています（英数字・ハイフン・アンダースコア・ドットのみ使用可能）",
+            def.command
+        ));
+    }
+
+    Ok(def)
+}
+
+fn command_exists(cmd: &str) -> bool {
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path) {
+            let bin = dir.join(cmd);
+            if bin.is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LaunchAgentResult {
+    pub message: String,
+    pub file: handoff::HandoffFile,
+}
+
+#[tauri::command]
+fn list_agents(state: tauri::State<'_, AppState>) -> Result<Vec<AgentDef>, String> {
+    let settings = settings::load(&state.data_dir)
+        .map_err(|e| format!("エージェント設定の読み込みに失敗しました: {e}"))?;
+    let mut agents = Vec::new();
+    for entry in &settings.agents {
+        match parse_agent_def(entry) {
+            Ok(def) => agents.push(def),
+            Err(e) => eprintln!("エージェント定義 `{entry}` の解釈をスキップしました: {e}"),
+        }
+    }
+    Ok(agents)
+}
+
+#[tauri::command]
+async fn launch_agent(
+    state: tauri::State<'_, AppState>,
+    agent_id: String,
+    id: String,
+    index: Option<usize>,
+) -> Result<LaunchAgentResult, String> {
+    let settings = settings::load(&state.data_dir)
+        .map_err(|e| format!("エージェント設定の読み込みに失敗しました: {e}"))?;
+
+    let mut target_def: Option<AgentDef> = None;
+    for entry in &settings.agents {
+        match parse_agent_def(entry) {
+            Ok(def) if def.id == agent_id => {
+                target_def = Some(def);
+                break;
+            }
+            _ => continue,
+        }
+    }
+    let agent = target_def.ok_or_else(|| format!("エージェント `{agent_id}` は登録されていません"))?;
+
+    if !command_exists(&agent.command) {
+        return Err(format!(
+            "コマンド `{}` が見つかりません。インストールされているか、PATH を確認してください",
+            agent.command
+        ));
+    }
+
     let rec = find_review(&state.data_dir, &id).ok_or_else(|| format!("レビューが見つからない: {id}"))?;
-    let t = handoff_triage(&state.data_dir, &id, rec.findings.len());
-    handoff::write(&rec, &t, index, &state.app_name)
+    // 二重書き出しを解消: launch_agent 内で 1 回だけファイルを書き出し、結果を返す
+    let file = write_handoff_internal(&state.data_dir, &id, index, &state.app_name)?;
+
+    let cmd = if agent.args.is_empty() {
+        format!("{} {}", agent.command, shell_quote(&file.prompt))
+    } else {
+        format!("{} {} {}", agent.command, agent.args, shell_quote(&file.prompt))
+    };
+
+    let repo_quoted = shell_quote(&rec.repo);
+    let shell_cmd = format!("cd {} && {}", repo_quoted, cmd);
+
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "tell application \"Terminal\"\n  activate\n  do script \"{}\"\nend tell",
+            applescript_escape(&shell_cmd)
+        );
+        let output = std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output()
+            .map_err(|e| format!("osascript の実行に失敗しました: {e}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Terminal.app の起動に失敗しました: {}", stderr.trim()));
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        return Err("エージェントの自動起動は現在 macOS（Terminal.app）のみ対応しています".into());
+    }
+
+    Ok(LaunchAgentResult {
+        message: format!("{} を起動しました", agent.name),
+        file,
+    })
 }
 
 /// CUI に貼る文面。「対応」が無ければ空文字。
@@ -1643,6 +1850,8 @@ pub fn run() {
             set_done,
             build_handoff,
             write_handoff,
+            list_agents,
+            launch_agent,
             set_menu_language
         ])
         .build(tauri::generate_context!())
@@ -1875,13 +2084,12 @@ mod tests {
         let rec = run_review_blocking(&data, repo.to_str().unwrap(), "security", "mock").unwrap();
         assert_eq!(rec.findings.len(), 2);
 
-        // 何も仕分けていなければ、コピーするものは無い
-        assert_eq!(view(&data, rec.clone()).triage, vec!["new", "new"]);
+        // 初期仕分け設定（デフォルト）により、medium と high は最初から「対応」になる
+        assert_eq!(view(&data, rec.clone()).triage, vec!["fix", "fix"]);
         let t = triage::get(&data, &rec.id, 2);
-        assert_eq!(triage::handoff_text(&rec, &t, "MrCodeReview"), "");
+        assert!(!triage::handoff_text(&rec, &t, "MrCodeReview").is_empty(), "初期仕分けで対応になっているため、handoff_text に入る");
 
-        // 1 つ目（根拠あり）を「対応」、2 つ目（根拠不一致）を「待ち」に
-        triage::set(&data, &rec.id, 0, "fix", 2).unwrap();
+        // 2 つ目（根拠不一致）を「待ち」に変更
         triage::set(&data, &rec.id, 1, "wait", 2).unwrap();
 
         // 読み戻しても残る（別の呼び出しで取り直す）
@@ -1975,10 +2183,10 @@ mod tests {
         let r3 = run_review_blocking(&data, repo.to_str().unwrap(), "security", "mock").unwrap();
         assert_eq!(view(&data, r3).triage, vec!["wait", "dismiss"]);
 
-        // 別のリポジトリのレビューには引き継がない
+        // 別のリポジトリのレビューには引き継がない（初期仕分けで fix になる）
         let other = demo_repo("carry1-other");
         let r4 = run_review_blocking(&data, other.to_str().unwrap(), "security", "mock").unwrap();
-        assert_eq!(view(&data, r4).triage, vec!["new", "new"]);
+        assert_eq!(view(&data, r4).triage, vec!["fix", "fix"]);
 
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&other);
@@ -2002,9 +2210,9 @@ mod tests {
         .unwrap();
         let r2 = run_review_blocking(&data, repo.to_str().unwrap(), "security", "mock").unwrap();
 
-        // 直した行は、別の指摘（未仕分け）として出る。「対応」はほぼ一致では引き継がない。
+        // 直した行は、別の指摘（初期仕分けで対応）として出る。「対応」はほぼ一致では引き継がない。
         // 無視にした架空の指摘は、そのまま引き継ぐ
-        assert_eq!(view(&data, r2.clone()).triage, vec!["new", "dismiss"]);
+        assert_eq!(view(&data, r2.clone()).triage, vec!["fix", "dismiss"]);
         // 前回「対応」にした指摘は、引用の行がファイルから消えた＝解消
         assert_eq!(r2.fates.len(), 2);
         assert_eq!((r2.fates[0].from_index, r2.fates[0].fate.as_str()), (0, "gone"));
@@ -2033,8 +2241,8 @@ mod tests {
         // 差分から消えただけで「解消」とは言わない。ファイルには引用の行がまだある。
         assert_eq!(r2.fates.len(), 2, "前回の指摘は、仕分けを問わず全件が対象");
         assert_eq!(r2.fates[0].fate, "not_reraised");
-        // 未仕分けだった架空の指摘は、引用が差分に無かった（根拠不一致の見本）。引用の行が、もともと無いので、「消えた」とは言わない（不明）
-        assert_eq!((r2.fates[1].from_index, r2.fates[1].fate.as_str(), r2.fates[1].state_before.as_str()), (1, "unknown", "new"));
+        // 初期仕分けで対応だった架空の指摘は、引用が差分に無かった（根拠不一致の見本）。引用の行が、もともと無いので、「消えた」とは言わない（不明）
+        assert_eq!((r2.fates[1].from_index, r2.fates[1].fate.as_str(), r2.fates[1].state_before.as_str()), (1, "unknown", "fix"));
 
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
@@ -2293,7 +2501,7 @@ mod tests {
             (Some("境界を直した"), Some(3000), Some("def5678"), Some(1000), Some("user"))
         );
         assert_eq!(v["triage"][0], "fix");
-        assert!(fnotes.get(1).is_none_or(|x| x["triage_at"].is_null() && x["memo"] == ""), "仕分けていない指摘は、記録が空");
+        assert!(fnotes.get(1).is_none_or(|x| x["triage_source"] == "initial" && x["memo"] == ""), "初期仕分けされた指摘は、メモが空で source が initial");
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
     }
@@ -3283,6 +3491,90 @@ mod tests {
         .unwrap();
         assert!(rec_paste.prompt.contains("ログイン試行回数は5回まで。"));
         assert!(rec_paste.spec.is_some());
+
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn shell_quote_and_applescript_escape_test() {
+        assert_eq!(shell_quote("normal"), "'normal'");
+        assert_eq!(shell_quote("it's"), "'it'\\''s'");
+        assert_eq!(shell_quote("a\\b"), "'a\\b'");
+        assert_eq!(shell_quote("$(whoami)"), "'$(whoami)'");
+        assert_eq!(shell_quote("`id`"), "'`id`'");
+
+        assert_eq!(applescript_escape("normal"), "normal");
+        assert_eq!(applescript_escape("hello \"world\""), "hello \\\"world\\\"");
+        assert_eq!(applescript_escape("back\\slash"), "back\\\\slash");
+        assert_eq!(applescript_escape("mixed \"and\" \\"), "mixed \\\"and\\\" \\\\");
+    }
+
+    #[test]
+    fn parse_agent_def_test() {
+        // 既定の短縮名
+        let claude = parse_agent_def("claude").unwrap();
+        assert_eq!(claude.id, "claude");
+        assert_eq!(claude.name, "Claude Code");
+        assert_eq!(claude.command, "claude");
+        assert_eq!(claude.args, "");
+
+        let agy = parse_agent_def("agy").unwrap();
+        assert_eq!(agy.id, "agy");
+        assert_eq!(agy.name, "Antigravity");
+        assert_eq!(agy.command, "agy");
+        assert_eq!(agy.args, "-i");
+
+        let copilot = parse_agent_def("copilot").unwrap();
+        assert_eq!(copilot.id, "copilot");
+        assert_eq!(copilot.name, "GitHub Copilot");
+
+        // カスタム記法: id:name:command:args
+        let custom = parse_agent_def("my-agent : マイエージェント : custom-cli : --flag").unwrap();
+        assert_eq!(custom.id, "my-agent");
+        assert_eq!(custom.name, "マイエージェント");
+        assert_eq!(custom.command, "custom-cli");
+        assert_eq!(custom.args, "--flag");
+
+        // 空文字や不正なコマンド名の拒否
+        assert!(parse_agent_def("").is_err());
+        assert!(parse_agent_def("   ").is_err());
+        assert!(parse_agent_def("bad:cmd;rm -rf /").is_err(), "セミコロンを含むコマンド名は拒否");
+        assert!(parse_agent_def("bad:$(whoami)").is_err(), "コマンド置換構文は拒否");
+        assert!(parse_agent_def("bad:cmd&").is_err(), "アンパサンドは拒否");
+    }
+
+    #[test]
+    fn carried_triage_is_not_overwritten_by_initial_triage_and_source_is_recorded() {
+        let repo = demo_repo("carry-initial-triage");
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-carry-init-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+
+        // 1回目のレビュー実行（security: 2件 medium, high）
+        let rec1 = run_review_blocking(&data, repo.to_str().unwrap(), "security", "mock").unwrap();
+        assert_eq!(rec1.findings.len(), 2);
+
+        // 1件目を "wait" に変更する
+        triage::set(&data, &rec1.id, 0, "wait", 2).unwrap();
+
+        // 2回目のレビュー実行（同じ差分で再レビュー）
+        let rec2 = run_review_blocking(&data, repo.to_str().unwrap(), "security", "mock").unwrap();
+        assert_eq!(rec2.findings.len(), 2);
+
+        // 1件目は carry で "wait" を引き継ぎ、初期仕分け (fix) で上書きされないこと！
+        let t2 = triage::get(&data, &rec2.id, 2);
+        assert_eq!(t2[0], "wait", "carry された wait は、初期仕分け (fix) に上書きされない");
+        assert_eq!(t2[1], "fix", "carry された fix も維持される");
+
+        // triage_log の出所を確認: rec2 は carry から記録されていること
+        let conn = db::open(&data).unwrap();
+        let mut stmt = conn.prepare("SELECT idx, state, source FROM triage_log WHERE review_id = ?1 ORDER BY id").unwrap();
+        let logs: Vec<(i64, String, String)> = stmt.query_map([&rec2.id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        }).unwrap().map(|r| r.unwrap()).collect();
+
+        assert_eq!(logs[0], (0, "wait".into(), "carry".into()));
+        assert_eq!(logs[1], (1, "fix".into(), "carry".into()));
 
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);

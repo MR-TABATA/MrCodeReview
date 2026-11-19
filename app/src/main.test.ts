@@ -190,8 +190,8 @@ describe('一括「対応」と handoffBar（レビュー指摘の修正）', ()
         ['high', 'medium', 'low'].some((sev) => b.textContent?.includes(sev) || b.textContent === m.fixAllSevBtn(sev, 1)),
       );
 
-      // high を「対応」に（1）と、low を「無視」に（1）の 2 つ。medium は、すでに「対応」なので出ない
-      expect(sevButtons.map((b) => b.textContent)).toEqual([m.fixAllSevBtn('high', 1), m.dismissAllSevBtn('low', 1)]);
+      // high を「対応」に（1）、low を「対応」に（1）、low を「無視」に（1）の 3 つ。medium は、すでに「対応」なので出ない
+      expect(sevButtons.map((b) => b.textContent)).toEqual([m.fixAllSevBtn('high', 1), m.fixAllSevBtn('low', 1), m.dismissAllSevBtn('low', 1)]);
 
       // withExpandAll = false
       const barWithoutExpand = handoffBar(review, false);

@@ -21,6 +21,7 @@ import { detailPanel } from './detailview';
 import { findingOrder, isDoneFinding } from './findingorder';
 import { agentBox, agentDone, agentNotice, agentStatus, agentStatusBar, foldedRow, newAgentUi, refreshAgentReportsOnFocus, type AgentActions } from './agentview';
 import { handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffActions, type HandoffTarget } from './handoffview';
+import type { AgentDef } from './types';
 import { displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
 import { providerLabel, providerNote } from './providertext';
 import { ut } from './uitext';
@@ -226,6 +227,8 @@ const state = {
   specFiles: [] as string[],
   /** 選んだレビューの「対応」を、CUI に貼る文面にしたもの。空ならコピーするものが無い。 */
   handoff: '',
+  /** 登録されている連携エージェント */
+  agents: [] as AgentDef[],
   /** 「CLI に渡す」の、確認・書き出し後の状態 */
   handoffUi: newHandoffUi(),
   agentUi: newAgentUi(),
@@ -782,6 +785,25 @@ async function copyHandoffPrompt(): Promise<void> {
   render();
 }
 
+/** エージェントをターミナルで起動してタスクを投入する */
+async function launchAgent(agentId: string, target: HandoffTarget): Promise<void> {
+  const r = state.selected;
+  if (!r || state.handoffUi.busy) return;
+  state.handoffUi = { ...newHandoffUi(), target, busy: true };
+  render();
+  try {
+    interface LaunchAgentResult {
+      message: string;
+      file: HandoffFile;
+    }
+    const res = await invoke<LaunchAgentResult>('launch_agent', { id: r.id, agentId, index: target === 'all' ? null : target });
+    state.handoffUi = { ...newHandoffUi(), target, file: res.file, copiedPrompt: true, launchedMessage: res.message };
+  } catch (e) {
+    state.handoffUi = { ...newHandoffUi(), target, error: String(e) };
+  }
+  render();
+}
+
 /** 「対応内容を取り込む」。初めては、ログを読む許可を聞く（許可されるまで、ログには触らない）。 */
 async function fetchAgent(consent: boolean): Promise<void> {
   const r = state.selected;
@@ -819,6 +841,7 @@ const agentActs = (): AgentActions => ({
 
 const handoffActs = (): HandoffActions => ({
   send: (t) => void writeHandoff(t),
+  launch: (agentId, t) => void launchAgent(agentId, t),
   copyPrompt: () => void copyHandoffPrompt(),
   copyText: () => void copyHandoffText(),
   close: closeHandoff,
@@ -2969,7 +2992,7 @@ function resultView(): HTMLElement {
       ...findingOrder(r.findings.length, (i) => isDoneFinding(r.triage[i] ?? 'new', r.finding_notes?.[i], r.agent_reports?.[i]), (i) => r.findings[i].severity)
         .filter((i) => shownByContinuity(continuityOf(r), state.continuity, i))
         .map((i) => findingCard(r.id, r.findings[i], i, r.triage[i] ?? 'new', r.carries?.[i], false, r.finding_notes?.[i], true, r.agent_reports?.[i])),
-      r.findings.length ? handoffPreview(handoffInfo(r), state.handoffUi, handoffActs()) : null,
+      r.findings.length ? handoffPreview(handoffInfo(r), state.handoffUi, handoffActs(), state.agents) : null,
     );
   } else if (state.tab === 'diff') {
     body = diffTab(r);
@@ -3112,6 +3135,13 @@ async function boot(): Promise<void> {
   }
   state.providers = await invoke<ProviderInfo[]>('list_providers');
   if (!state.providers.some((p) => p.id === state.providerId)) state.providerId = state.providers[0]?.id ?? '';
+  try {
+    state.agents = await invoke<AgentDef[]>('list_agents');
+  } catch (e) {
+    console.error('list_agents 失敗:', e);
+    state.agents = [];
+    if (!state.runError) state.runError = `エージェント設定の読み込みに失敗しました: ${String(e)}`;
+  }
 
   // 登録は Rust（SQLite）が持つ。以前の版が画面に持っていた登録は、初回だけ取り込む（取り込み済みなら、読むだけ。元の値は消さない）
   const booted = await bootRepos({

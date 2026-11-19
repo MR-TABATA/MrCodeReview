@@ -51,19 +51,26 @@ pub fn get(dir: &Path, review_id: &str, n: usize) -> Vec<String> {
     try_get(dir, review_id, n).unwrap_or_else(|_| vec![NEW.to_string(); n])
 }
 
-/// 履歴の「だれが」: あなたが操作した／前回のレビューから引き継いだ。
+/// 履歴の「だれが」: あなたが操作した／前回のレビューから引き継いだ／設定による初期仕分け。
 pub const SRC_USER: &str = "user";
 pub const SRC_CARRY: &str = "carry";
+pub const SRC_INITIAL: &str = "initial";
 
 /// 引き継いだ仕分けを、新しいレビューの初期値として書く（未仕分けは書かない）。履歴には、「引き継ぎ」として残す。
 pub fn put(dir: &Path, review_id: &str, states: Vec<String>) -> Result<(), String> {
-    if states.iter().all(|s| s == NEW) {
+    let items: Vec<(String, &str)> = states.into_iter().map(|s| (s, SRC_CARRY)).collect();
+    put_with_sources(dir, review_id, &items)
+}
+
+/// 引き継いだ仕分け、または初期仕分けを出所とともに書く。
+pub fn put_with_sources(dir: &Path, review_id: &str, states_with_source: &[(String, &str)]) -> Result<(), String> {
+    if states_with_source.iter().all(|(s, _)| s == NEW) {
         return Ok(());
     }
     let at = db::now_ms();
     let mut conn = db::open(dir)?;
     let tx = conn.transaction().map_err(|e| format!("仕分けを書き始められない: {e}"))?;
-    for (i, s) in states.iter().enumerate().filter(|(_, s)| is_stored_state(s)) {
+    for (i, (s, source)) in states_with_source.iter().enumerate().filter(|(_, (s, _))| is_stored_state(s)) {
         tx.execute(
             "INSERT INTO triage (review_id, idx, state) VALUES (?1, ?2, ?3) \
              ON CONFLICT (review_id, idx) DO UPDATE SET state = excluded.state",
@@ -72,7 +79,7 @@ pub fn put(dir: &Path, review_id: &str, states: Vec<String>) -> Result<(), Strin
         .map_err(|e| format!("仕分けを書けない: {e}"))?;
         tx.execute(
             "INSERT INTO triage_log (review_id, idx, state, at, head, source) VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
-            params![review_id, i as i64, s, at as i64, SRC_CARRY],
+            params![review_id, i as i64, s, at as i64, *source],
         )
         .map_err(|e| format!("仕分けの履歴を書けない: {e}"))?;
     }

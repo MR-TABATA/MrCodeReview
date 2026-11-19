@@ -298,6 +298,14 @@ export interface Note {
   triage_source: 'user' | 'carry' | null;
 }
 
+/** 連携エージェントの設定定義。 */
+export interface AgentDef {
+  id: string;
+  name: string;
+  command: string;
+  args?: string[];
+}
+
 /** 「対応」の指摘を、CLI に渡すために書き出したファイル。 */
 export interface HandoffFile {
   /** 絶対パス */

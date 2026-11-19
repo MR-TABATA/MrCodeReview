@@ -71,21 +71,21 @@ describe('fixAllSeverityButtons', () => {
   const triage: TriageState[] = ['new', 'fix', 'fix', 'new'];
   const label = (severity: string, count: number, status: string) => `${status}('${severity}', ${count})`;
 
-  it('high/medium は「対応」に、low は「無視」に。未仕分けの数がある重大度だけを、数えて出す', () => {
+  it('high/medium は「対応」に、low は「対応」と「無視」の両方に。未仕分けの数がある重大度だけを、数えて出す', () => {
     const buttons = fixAllSeverityButtons(findings, triage, true, label, vi.fn());
-    expect(buttons.map((button) => button.textContent)).toEqual(["fix('high', 1)", "dismiss('low', 1)"]);
+    expect(buttons.map((button) => button.textContent)).toEqual(["fix('high', 1)", "fix('low', 1)", "dismiss('low', 1)"]);
   });
 
-  it('low のボタンは、「対応」「待ち」「無視」にした low を数えない', () => {
+  it('low のボタンは、未仕分け（new）の数だけを出す（自分で無視・待ちにした指摘は上書きしない）', () => {
     const lows = [{ severity: 'low' }, { severity: 'low' }, { severity: 'low' }, { severity: 'low' }];
     const buttons = fixAllSeverityButtons(lows, ['new', 'fix', 'wait', 'dismiss'], true, label, vi.fn());
-    expect(buttons.map((button) => button.textContent)).toEqual(["dismiss('low', 1)"]);
+    expect(buttons.map((button) => button.textContent)).toEqual(["fix('low', 1)", "dismiss('low', 1)"]);
   });
 
   it('押すと、重大度と、変える先の状態を渡す', () => {
     const onFix = vi.fn();
     const buttons = fixAllSeverityButtons(findings, triage, true, label, onFix);
-    buttons[1].click();
+    buttons[2].click();
     expect(onFix).toHaveBeenCalledExactlyOnceWith('low', 'dismiss');
   });
 
@@ -112,5 +112,24 @@ describe('fixAllBySeverity（無視へ）', () => {
     }, 'dismiss');
 
     expect(setTriage).toHaveBeenCalledExactlyOnceWith(0, 'dismiss');
+  });
+
+  it('low を「対応」にするときも、まだ仕分けていない low だけを保存する（自分で「無視」「待ち」にした指摘は触らない）', async () => {
+    const review = {
+      findings: [{ severity: 'low' }, { severity: 'low' }, { severity: 'low' }, { severity: 'low' }, { severity: 'high' }],
+      triage: ['new', 'fix', 'wait', 'dismiss', 'new'] as TriageState[],
+    };
+    const setTriage = vi.fn().mockResolvedValue(handling(['fix']));
+
+    await fixAllBySeverity(review, 'low', {
+      setTriage,
+      applyHandling: vi.fn(),
+      onError: vi.fn(),
+      refreshHistory: vi.fn(),
+      refreshHandoff: vi.fn().mockResolvedValue(undefined),
+      render: vi.fn(),
+    }, 'fix');
+
+    expect(setTriage).toHaveBeenCalledExactlyOnceWith(0, 'fix');
   });
 });

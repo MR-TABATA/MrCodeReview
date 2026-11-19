@@ -152,12 +152,29 @@ export function settingsPanel(st: SettingsPanelState, act: SettingsActions, extr
 
   const control = (m: SettingMeta): { el: HTMLElement; setInput: () => void } => {
     if (m.kind === 'select') {
-      const sel = h(
-        'select',
-        { class: 'sinput select' },
-        h('option', { value: 'auto' }, dict.autoLanguageOptionLabel),
-        ...SUPPORTED_LANGS.map((l) => h('option', { value: l.code }, dict.languageNames[l.code] ?? l.nativeName)),
-      ) as HTMLSelectElement;
+      let sel: HTMLSelectElement;
+      if (m.key === 'language') {
+        sel = h(
+          'select',
+          { class: 'sinput select' },
+          h('option', { value: 'auto' }, dict.autoLanguageOptionLabel),
+          ...SUPPORTED_LANGS.map((l) => h('option', { value: l.code }, dict.languageNames[l.code] ?? l.nativeName)),
+        ) as HTMLSelectElement;
+      } else if (m.key.startsWith('initial_triage_')) {
+        const options = [
+          { value: 'fix', label: lang === 'ja' ? '対応' : 'Fix' },
+          { value: 'new', label: lang === 'ja' ? '未仕分け' : 'Unsorted' },
+          { value: 'dismiss', label: lang === 'ja' ? '無視' : 'Dismiss' },
+          { value: 'wait', label: lang === 'ja' ? '待ち' : 'Wait' },
+        ];
+        sel = h(
+          'select',
+          { class: 'sinput select' },
+          ...options.map((o) => h('option', { value: o.value }, o.label)),
+        ) as HTMLSelectElement;
+      } else {
+        sel = h('select', { class: 'sinput select' }) as HTMLSelectElement;
+      }
       const setInput = () => void (sel.value = String(st.draft[m.key] ?? m.recommended));
       setInput();
       sel.addEventListener('change', () => {

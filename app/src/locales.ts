@@ -568,7 +568,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       { id: 'run', label: '実行', desc: 'LLM やツールの待ち時間と、実行の上限。', groups: ['実行'] },
       { id: 'triage', label: '仕分け', desc: '前回の仕分けの引き継ぎ。', groups: ['仕分けの引き継ぎ'] },
       { id: 'display', label: '画面', desc: '履歴の表示件数と、表示言語。', groups: ['画面'] },
-      { id: 'link', label: '連携', desc: 'エージェントの会話の記録を読む許可。', groups: [] },
+      { id: 'link', label: '連携', desc: 'エージェントの登録と、会話の記録を読む許可。', groups: ['連携'] },
     ],
     otherTab: { id: 'other', label: 'その他', desc: 'ほかのタブに入らない項目', groups: [] },
     settingsUi: {
@@ -1199,7 +1199,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       { id: 'run', label: 'Execution', desc: 'Timeouts and execution limits for LLM and tools.', groups: ['実行'] },
       { id: 'triage', label: 'Triage', desc: 'Carry-over of triage decisions from the previous review.', groups: ['仕分けの引き継ぎ'] },
       { id: 'display', label: 'Display', desc: 'History display count and display language.', groups: ['画面'] },
-      { id: 'link', label: 'Integration', desc: 'Consent to read agent conversation logs.', groups: [] },
+      { id: 'link', label: 'Integration', desc: 'Agent registration and consent to read conversation logs.', groups: ['連携'] },
     ],
     otherTab: { id: 'other', label: 'Other', desc: 'Settings not in other tabs', groups: [] },
     settingsUi: {

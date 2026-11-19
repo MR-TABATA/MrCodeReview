@@ -16,6 +16,10 @@ use std::time::Duration;
 
 pub const FILE: &str = "settings.json";
 
+pub fn default_agents() -> Vec<String> {
+    vec!["claude".into(), "agy".into()]
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
@@ -42,6 +46,13 @@ pub struct Settings {
     // 画面
     pub history_limit: usize,
     pub language: String,
+    // 初期仕分け（レビュー完了時に自動で割り当てる仕分け: "fix" | "new" | "dismiss" | "wait"）
+    pub initial_triage_high: String,
+    pub initial_triage_medium: String,
+    pub initial_triage_low: String,
+    // 連携エージェント
+    #[serde(default = "default_agents")]
+    pub agents: Vec<String>,
 }
 
 impl Default for Settings {
@@ -66,6 +77,10 @@ impl Default for Settings {
             related_skip_over_hits: related::SKIP_OVER_HITS,
             history_limit: 500,
             language: "auto".into(),
+            initial_triage_high: "fix".into(),
+            initial_triage_medium: "fix".into(),
+            initial_triage_low: "new".into(),
+            agents: default_agents(),
         }
     }
 }
@@ -101,6 +116,15 @@ impl Settings {
 
     pub fn llm_timeout(&self) -> Duration {
         Duration::from_secs(self.llm_timeout_secs)
+    }
+
+    pub fn initial_triage(&self, severity: &str) -> &str {
+        match severity.to_ascii_lowercase().as_str() {
+            "high" => &self.initial_triage_high,
+            "medium" => &self.initial_triage_medium,
+            "low" => &self.initial_triage_low,
+            _ => "new",
+        }
     }
 
     /// 各レビューの記録に残す、そのとき使った設定（あとで「なぜ違ったか」を説明できるように）。
@@ -233,6 +257,48 @@ pub fn meta() -> Vec<Meta> {
             recommended: json!(d.fuzzy_min_tokens),
             min: Some(1.0),
             max: Some(50.0),
+            repo_scope: true,
+        },
+        Meta {
+            key: "initial_triage_high",
+            group: "仕分けの引き継ぎ",
+            label: "High（重大）の初期仕分け",
+            kind: "select",
+            unit: "",
+            description: "レビュー完了時に、重大度 High の指摘へ自動で割り当てる仕分けです。",
+            why_recommended: "重大なバグは対応が前提となるため、最初から「対応」にしておくことで手動の仕分けステップを省きます。",
+            when_to_change: "自動で「対応」にしたくない（確認してから決めたい）ときは「未仕分け」にします。",
+            recommended: json!(d.initial_triage_high),
+            min: None,
+            max: None,
+            repo_scope: true,
+        },
+        Meta {
+            key: "initial_triage_medium",
+            group: "仕分けの引き継ぎ",
+            label: "Medium（警告）の初期仕分け",
+            kind: "select",
+            unit: "",
+            description: "レビュー完了時に、重大度 Medium の指摘へ自動で割り当てる仕分けです。",
+            why_recommended: "警告レベルの指摘も通常は修正対象となるため、最初から「対応」にしておくことで手動の仕分けステップを省きます。",
+            when_to_change: "手動で確認してから決めたいときは「未仕分け」にします。",
+            recommended: json!(d.initial_triage_medium),
+            min: None,
+            max: None,
+            repo_scope: true,
+        },
+        Meta {
+            key: "initial_triage_low",
+            group: "仕分けの引き継ぎ",
+            label: "Low（軽微）の初期仕分け",
+            kind: "select",
+            unit: "",
+            description: "レビュー完了時に、重大度 Low の指摘へ自動で割り当てる仕分けです。",
+            why_recommended: "軽微な指摘はスタイルや好みが含まれるため、自動で対応にせず未仕分けのまま人間が確認できるようにします。",
+            when_to_change: "軽微な指摘もすべて対応したいときは「対応」に、すべて無視したいときは「無視」にします。",
+            recommended: json!(d.initial_triage_low),
+            min: None,
+            max: None,
             repo_scope: true,
         },
         Meta {
@@ -389,6 +455,20 @@ pub fn meta() -> Vec<Meta> {
             max: None,
             repo_scope: false,
         },
+        Meta {
+            key: "agents",
+            group: "連携",
+            label: "連携エージェント",
+            kind: "list",
+            unit: "",
+            description: "ワンクリックで起動できるコーディングエージェントのコマンド名一覧です（claude, agy など）。",
+            why_recommended: "claude と agy が既定で登録されており、手動コピペ不要でターミナルから直接起動できます。",
+            when_to_change: "お使いのエージェントを追加またはカスタマイズしたいときに設定します（1 行に 1 つ）。",
+            recommended: json!(d.agents),
+            min: None,
+            max: None,
+            repo_scope: false,
+        },
     ]
 }
 
@@ -433,6 +513,20 @@ pub fn validate(s: &Settings) -> Result<(), String> {
     }
     if !crate::i18n::Lang::is_valid_setting(&s.language) {
         return Err(format!("設定 `language` は {} のいずれかを指定してください: {:?}", crate::i18n::Lang::valid_setting_list(), s.language));
+    }
+    for (key, val) in [
+        ("initial_triage_high", &s.initial_triage_high),
+        ("initial_triage_medium", &s.initial_triage_medium),
+        ("initial_triage_low", &s.initial_triage_low),
+    ] {
+        if !matches!(val.as_str(), "new" | "fix" | "dismiss" | "wait") {
+            return Err(format!("設定 `{key}` は 'fix', 'new', 'dismiss', 'wait' のいずれかを指定してください: {:?}", val));
+        }
+    }
+    for agent_entry in &s.agents {
+        if agent_entry.trim().is_empty() {
+            return Err("設定 `agents` に空のエントリが含まれています".into());
+        }
     }
     Ok(())
 }
@@ -876,7 +970,7 @@ mod tests {
         let m = meta();
         let repo_ok: Vec<&str> = m.iter().filter(|x| x.repo_scope).map(|x| x.key).collect();
         let user_only: Vec<&str> = m.iter().filter(|x| !x.repo_scope).map(|x| x.key).collect();
-        assert_eq!(user_only, vec!["llm_timeout_secs", "tool_timeout_secs", "max_tool_files", "max_raw_bytes", "history_limit", "language"]);
+        assert_eq!(user_only, vec!["llm_timeout_secs", "tool_timeout_secs", "max_tool_files", "max_raw_bytes", "history_limit", "language", "agents"]);
         assert!(repo_ok.contains(&"max_file_bytes") && repo_ok.contains(&"carry_window") && repo_ok.contains(&"related_max_bytes"));
         assert_eq!(repo_ok.len() + user_only.len(), m.len());
     }
@@ -893,5 +987,23 @@ mod tests {
         write(&d, r#"{"ignored_lockfiles": ["bun.lockb"]}"#);
         assert_eq!(load(&d).unwrap().ignored_lockfiles, vec!["bun.lockb"], "空にも差し替えにもできる");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn initial_triage_defaults_and_validation() {
+        let d = Settings::default();
+        assert_eq!(d.initial_triage("high"), "fix");
+        assert_eq!(d.initial_triage("medium"), "fix");
+        assert_eq!(d.initial_triage("low"), "new");
+        assert_eq!(d.initial_triage("critical"), "new", "未知の重大度は new になる");
+
+        let scratch_dir = scratch("initial_triage");
+        write(&scratch_dir, r#"{"initial_triage_high": "invalid"}"#);
+        assert!(load(&scratch_dir).unwrap_err().contains("initial_triage_high"));
+        write(&scratch_dir, r#"{"initial_triage_medium": "Fix"}"#);
+        assert!(load(&scratch_dir).unwrap_err().contains("initial_triage_medium"), "大文字 Fix は拒否される");
+        write(&scratch_dir, r#"{"initial_triage_low": "dismiss"}"#);
+        assert_eq!(load(&scratch_dir).unwrap().initial_triage_low, "dismiss");
+        let _ = std::fs::remove_dir_all(&scratch_dir);
     }
 }

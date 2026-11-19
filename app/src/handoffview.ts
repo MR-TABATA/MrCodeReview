@@ -13,7 +13,7 @@
 import { h } from './dom';
 import { getAppLang, msg } from './i18n';
 import { ut } from './uitext';
-import type { HandoffFile } from './types';
+import type { AgentDef, HandoffFile } from './types';
 
 /** 渡す相手: 'all' = 「対応」の全部、数字 = その番号（0 始まり）の指摘 1 件 */
 export type HandoffTarget = 'all' | number;
@@ -29,9 +29,11 @@ export interface HandoffUi {
   copiedText: boolean;
   /** 書き出し中 */
   busy: boolean;
+  /** エージェント起動完了メッセージ */
+  launchedMessage?: string;
 }
 
-export const newHandoffUi = (): HandoffUi => ({ target: null, file: null, error: '', copiedPrompt: false, copiedText: false, busy: false });
+export const newHandoffUi = (): HandoffUi => ({ target: null, file: null, error: '', copiedPrompt: false, copiedText: false, busy: false, launchedMessage: '' });
 
 export interface HandoffInfo {
   /** まだ渡していない「対応」（エージェントが「対応した」と申告したものは、含めない） */
@@ -48,6 +50,8 @@ export interface HandoffInfo {
 export interface HandoffActions {
   /** 「CLI に渡す」: ファイルに書き出して、貼る 1 行をコピーする */
   send(target: HandoffTarget): void;
+  /** エージェントをターミナルで直接起動する */
+  launch(agentId: string, target: HandoffTarget): void;
   /** 貼る 1 行を、もう一度、コピーする */
   copyPrompt(): void;
   /** 「まとめて渡す内容」の文面を、コピーする */
@@ -93,6 +97,7 @@ export function handoffResult(target: HandoffTarget, ui: HandoffUi, act: Handoff
     h('pre', { class: 'prompt hprompt' }, f.prompt),
     h('details', {}, h('summary', {}, t.viewContent), h('pre', { class: 'prompt hprompt' }, f.text)),
     h('div', { class: 'row' }, h('button', { onclick: () => act.copyPrompt() }, t.copyAgain), h('button', { onclick: () => act.close() }, t.close)),
+    ui.launchedMessage ? h('p', { class: 'ok agent-msg' }, `✓ ${ui.launchedMessage}`) : null,
   );
 }
 
@@ -106,7 +111,7 @@ export function handoffTop(info: HandoffInfo, extra?: HTMLElement | null): HTMLE
 }
 
 /** 一覧の一番下: 「対応」が 2 件以上なら「まとめて CLI に渡す」。その下に、まとめて渡す内容と、その文面のコピー。 */
-export function handoffPreview(info: HandoffInfo, ui: HandoffUi, act: HandoffActions): HTMLElement | null {
+export function handoffPreview(info: HandoffInfo, ui: HandoffUi, act: HandoffActions, agents: AgentDef[] = []): HTMLElement | null {
   if (info.fix === 0 || !info.text) return null;
   const m = msg(getAppLang()).mainUi;
   return h(
@@ -117,6 +122,9 @@ export function handoffPreview(info: HandoffInfo, ui: HandoffUi, act: HandoffAct
           'div',
           { class: 'row' },
           h('button', { class: 'run copy', disabled: ui.busy, title: m.sendToCliTitle, onclick: () => act.send('all') }, ui.busy && ui.target === 'all' ? m.writingCliBtn : m.sendAllToCliBtn(info.fix)),
+          ...agents.map((a) =>
+            h('button', { class: 'run small', disabled: ui.busy, onclick: () => act.launch(a.id, 'all') }, `${a.name} を起動`)
+          ),
         )
       : null,
     handoffResult('all', ui, act),

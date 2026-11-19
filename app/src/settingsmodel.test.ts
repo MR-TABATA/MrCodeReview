@@ -125,6 +125,7 @@ describe('設定画面のタブ', () => {
     expect(tabIdOf('実行')).toBe('run');
     expect(tabIdOf('仕分けの引き継ぎ')).toBe('triage');
     expect(tabIdOf('画面')).toBe('display');
+    expect(tabIdOf('連携')).toBe('link');
     expect(tabIdOf('新しいグループ')).toBe(OTHER_TAB.id);
   });
 

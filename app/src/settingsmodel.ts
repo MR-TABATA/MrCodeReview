@@ -70,6 +70,15 @@ export function formatValue(m: SettingMeta, v: unknown, lang: Lang = DEFAULT_LAN
     const found = SUPPORTED_LANGS.find((l) => l.code === v);
     if (found) return found.nativeName;
   }
+  if (m.key.startsWith('initial_triage_')) {
+    const labels: Record<string, string> = {
+      fix: lang === 'ja' ? '対応' : 'Fix',
+      new: lang === 'ja' ? '未仕分け' : 'Unsorted',
+      dismiss: lang === 'ja' ? '無視' : 'Dismiss',
+      wait: lang === 'ja' ? '待ち' : 'Wait',
+    };
+    return labels[String(v)] ?? String(v);
+  }
   const unit = settingMetaUnit(m, lang);
   if (Array.isArray(v)) return v.length ? v.join(dict.listSeparator) : dict.noneParen;
   if (typeof v === 'number') return `${nf.format(v)}${unit}`;
@@ -84,6 +93,8 @@ export function validate(meta: SettingMeta[], draft: Values, lang: Lang = getApp
     const v = draft[m.key];
     if (m.kind === 'select') {
       if (m.key === 'language' && !isValidLangSetting(v)) {
+        errors[m.key] = t.pickOption;
+      } else if (m.key.startsWith('initial_triage_') && !['fix', 'new', 'dismiss', 'wait'].includes(String(v))) {
         errors[m.key] = t.pickOption;
       }
       continue;
