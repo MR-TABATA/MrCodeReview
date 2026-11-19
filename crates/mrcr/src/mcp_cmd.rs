@@ -389,8 +389,12 @@ fn register_mcp_to_file(path: &Path) -> Result<bool, String> {
         })
         .ok_or_else(|| "mcpServers オブジェクトを作成できませんでした".to_string())?;
 
+    let exe_path = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "mrcr".to_string());
+
     let target = json!({
-        "command": "mrcr",
+        "command": exe_path,
         "args": ["mcp"]
     });
 
