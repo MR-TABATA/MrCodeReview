@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 const FILE: &str = "mrcodereview.sqlite3";
 const LEGACY_FLAG: &str = "imported_legacy_json";
 
