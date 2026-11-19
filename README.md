@@ -191,6 +191,20 @@ claude "Read .mrcodereview/out/review.md and fix the findings"
 
 > Claude Code custom skill available in [`skills/mrcr-handoff`](skills/mrcr-handoff).
 
+### 3. Two-way Integration via MCP (Recommended)
+
+With `mrcr mcp`, coding agents like Claude Code, `agy` (Google Antigravity), and VS Code Copilot can directly query and update the local MrCodeReview SQLite database via the standard Model Context Protocol. No manual file management or sync clicks required.
+
+```bash
+# Automatically register mrcr mcp in agy / Claude Code config
+mrcr mcp setup
+```
+
+Once registered, simply ask your agent in your everyday terminal session:
+> "Check MrCodeReview findings for MrDiff and fix them."
+
+The agent fetches the triaged items, applies the fixes, and records the resolution in the DB. The desktop app updates to "Resolved" in real-time.
+
 ---
 
 ## License

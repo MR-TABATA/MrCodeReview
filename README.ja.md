@@ -192,6 +192,20 @@ claude ".mrcodereview/out/review.md の指摘を確認してコードを修正�
 
 > Claude Code 用のスキルを [`skills/mrcr-handoff`](skills/mrcr-handoff) に同梱しています。
 
+### 3. MCP（Model Context Protocol）による双方向連携（推奨）
+
+`mrcr mcp` により、Claude Code や `agy`（Google Antigravity）、VS Code Copilot から直接 MCR の SQLite DB を読み書きできます。手動でファイルを開いたり取り込みボタンを押す必要はありません。
+
+```bash
+# agy や Claude Code の設定ファイルに自動登録
+mrcr mcp setup
+```
+
+登録後は、普段通りターミナルでエージェントに伝えるだけです：
+> 「MrDiff の指摘を確認して直して」
+
+エージェントが自動で指摘一覧を読み取り、コードを修正し、MCR の DB に「対応完了」を書き戻します。デスクトップアプリの画面もリアルタイムに「対応済み」に同期します。
+
 ---
 
 ## ライセンス
