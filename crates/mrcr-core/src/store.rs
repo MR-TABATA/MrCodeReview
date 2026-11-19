@@ -237,15 +237,26 @@ pub(crate) fn insert(conn: &Connection, rec: &ReviewRecord, or_ignore: bool) -> 
     .map_err(|e| format!("履歴に書けない: {e}"))
 }
 
-/// 履歴に足す。**連番もここで決める**（同じリポジトリ・同じ観点の、これまでの最大 + 1。履歴を消しても、使った番号は使い回さない）。
+/// 履歴に足す。**連番もここで決める**（同じリポジトリ・同じ観点・同じ日の、最大 + 1。履歴を消しても、使った番号は使い回さない）。
 /// 番号を決めて書くまでを 1 つの書き込みにする（同時に走っても、同じ番号にならない）。決めた番号は、`rec.seq` に入る。
 pub fn append_numbered(dir: &Path, rec: &mut ReviewRecord) -> Result<(), String> {
     let mut conn = db::open(dir)?;
     let w = |e: rusqlite::Error| format!("履歴に書けない: {e}");
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(w)?;
     let (repo, recipe) = (rec.repo.clone(), rec.recipe.id.clone());
+    let today: String = tx
+        .query_row("SELECT date(?1 / 1000, 'unixepoch', 'localtime')", params![rec.created_at as i64], |r| r.get(0))
+        .map_err(w)?;
     let last: i64 = tx
-        .query_row("SELECT COALESCE(MAX(m), 0) FROM (SELECT MAX(seq) AS m FROM reviews WHERE repo = ?1 AND recipe_id = ?2 UNION ALL SELECT last FROM review_seq WHERE repo = ?1 AND recipe_id = ?2)", params![repo, recipe], |r| r.get(0))
+        .query_row(
+            "SELECT COALESCE(MAX(m), 0) FROM (
+                SELECT MAX(seq) AS m FROM reviews WHERE repo = ?1 AND recipe_id = ?2 AND date(created_at / 1000, 'unixepoch', 'localtime') = ?3
+                UNION ALL
+                SELECT last FROM review_seq WHERE repo = ?1 AND recipe_id = ?2 AND day = ?3
+            )",
+            params![repo, recipe, today],
+            |r| r.get(0),
+        )
         .map_err(w)?;
     let next = u32::try_from(last + 1).map_err(|_| "連番が大きすぎます".to_string())?;
     let prev_seq = rec.seq.replace(next);
@@ -256,8 +267,8 @@ pub fn append_numbered(dir: &Path, rec: &mut ReviewRecord) -> Result<(), String>
     // 連番の最終値は、消した番号を使い回さないための補助。書けなくても、実行（LLM の呼び出し）まで済んだ結果の保存を、巻き込まない
     // （次の番号は、履歴の最大値からも決まるので、番号が飛ぶことも、重なることもない。使い回しだけ、最新を消したあとに起こりうる）
     if let Err(e) = tx.execute(
-        "INSERT INTO review_seq (repo, recipe_id, last) VALUES (?1, ?2, ?3) ON CONFLICT (repo, recipe_id) DO UPDATE SET last = excluded.last",
-        params![repo, recipe, next],
+        "INSERT INTO review_seq (repo, recipe_id, day, last) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (repo, recipe_id, day) DO UPDATE SET last = excluded.last",
+        params![repo, recipe, today, next],
     ) {
         eprintln!("警告: 連番の最終値を書けませんでした（履歴は保存します）: {e}");
     }
@@ -1212,6 +1223,24 @@ mod tests {
         let mut r = numbered("new", 40, "/r", "bugs");
         append_numbered(&d, &mut r).unwrap();
         assert_eq!((r.seq, seq_of(&d, "early")), (Some(4), Some(1)));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn daily_sequence_resets_on_new_day() {
+        let d = scratch("seq-daily-reset");
+        // 1日目: 1700000000000 ms
+        let day1_1 = numbered("d1_1", 1700000000000, "/r", "bugs");
+        append(&d, &day1_1).unwrap();
+        let day1_2 = numbered("d1_2", 1700000010000, "/r", "bugs");
+        append(&d, &day1_2).unwrap();
+        // 2日目: 1700100000000 ms（約27時間後）
+        let day2_1 = numbered("d2_1", 1700100000000, "/r", "bugs");
+        append(&d, &day2_1).unwrap();
+
+        assert_eq!(seq_of(&d, "d1_1"), Some(1));
+        assert_eq!(seq_of(&d, "d1_2"), Some(2));
+        assert_eq!(seq_of(&d, "d2_1"), Some(1), "日が変わると 1 から始まる");
         let _ = std::fs::remove_dir_all(&d);
     }
 

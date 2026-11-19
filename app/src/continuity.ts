@@ -84,7 +84,7 @@ export interface Flow {
 export function flowOf(history: readonly ReviewSummary[], r: { id: string; repo: string; recipe: { title: string } }, max = 8): Flow | null {
   const all = history
     .filter((s): s is ReviewSummary & { seq: number } => s.repo === r.repo && s.recipe_title === r.recipe.title && typeof s.seq === 'number' && s.seq > 0)
-    .sort((a, b) => a.seq - b.seq);
+    .sort((a, b) => a.created_at - b.created_at || a.seq - b.seq);
   if (all.length < 2) return null;
   const at = Math.max(0, all.findIndex((s) => s.id === r.id));
   const from = Math.max(0, Math.min(at - Math.floor(max / 2), all.length - max));

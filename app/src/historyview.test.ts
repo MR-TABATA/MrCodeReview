@@ -1,12 +1,32 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { countsLine, dayKey, displayRecipeTitle, formatWhen, historyPanel, needsAttention, prunePicks, RECENT_KEEP, splitHistory } from './historyview';
+import { circleNumber, countsLine, dayKey, displayRecipeTitle, formatWhen, historyPanel, needsAttention, prunePicks, RECENT_KEEP, reviewName, splitHistory } from './historyview';
 import type { ReviewSummary } from './types';
 
 const S = (id: string, over: Partial<ReviewSummary> = {}): ReviewSummary => ({ id, created_at: 1_793_000_000_000, repo: '/Users/me/Git/MrkDown', recipe_title: '潜在バグ', provider_label: 'Claude', findings: 3, verified: 2, total_tokens: 1820, failed: false, counts: { open: 1, done: 1, wait: 0, dismiss: 1 }, ...over });
 const ITEMS = [S('a'), S('b', { failed: true, total_tokens: null }), S('c')];
 const acts = () => ({ open: vi.fn(), detail: vi.fn(), toggle: vi.fn(), toggleDay: vi.fn(), toggleAll: vi.fn(), report: vi.fn(), remove: vi.fn() });
 const render = (picked: string[], a = acts(), openId: string | null = null, items = ITEMS, openDays: string[] = []) => ({ el: historyPanel(items, openId, new Set(picked), 'Git/MrkDown', '/Users/me/Git/MrkDown', 'まだありません', a, new Set(openDays)), a });
+
+describe('reviewName and circleNumber', () => {
+  it('1〜50 は Unicode 丸数字に変換し、51 以降は (n) にフォールバックする', () => {
+    expect(circleNumber(1)).toBe('①');
+    expect(circleNumber(20)).toBe('⑳');
+    expect(circleNumber(21)).toBe('㉑');
+    expect(circleNumber(35)).toBe('㉟');
+    expect(circleNumber(36)).toBe('㊱');
+    expect(circleNumber(50)).toBe('㊿');
+    expect(circleNumber(51)).toBe('(51)');
+  });
+
+  it('reviewName は観点名と半角スペース + 丸数字を組み合わせる。番号なしは観点名のみ', () => {
+    expect(reviewName('潜在バグ', 1)).toBe('潜在バグ ①');
+    expect(reviewName('潜在バグ', 2)).toBe('潜在バグ ②');
+    expect(reviewName('潜在バグ', null)).toBe('潜在バグ');
+    expect(reviewName('潜在バグ', undefined)).toBe('潜在バグ');
+    expect(reviewName('bugs', 3, 'en')).toBe('Latent Bugs ③');
+  });
+});
 
 describe('prunePicks', () => {
   it('履歴に無い識別子は、選んだままにしない', () => {

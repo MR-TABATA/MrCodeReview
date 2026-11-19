@@ -27,10 +27,18 @@ export function displayRecipeTitle(title: string, lang: Lang = getAppLang()): st
   return msg(lang).builtinRecipeTitles[title] ?? title;
 }
 
-/** レビューの名前。「潜在バグ_3」（観点の名前 + 連番）。番号を振る前の記録は、観点の名前だけ。 */
+/** 連番を丸数字（①〜⑳、㉑〜㉟、㊱〜㊵）に変換する。50を超える場合は (n) */
+export function circleNumber(n: number): string {
+  if (n >= 1 && n <= 20) return String.fromCharCode(0x2460 + n - 1);
+  if (n >= 21 && n <= 35) return String.fromCharCode(0x3251 + n - 21);
+  if (n >= 36 && n <= 50) return String.fromCharCode(0x32b1 + n - 36);
+  return `(${n})`;
+}
+
+/** レビューの名前。「潜在バグ ①」（観点の名前 + スペース + 丸数字連番）。番号を振る前の記録は、観点の名前だけ。 */
 export function reviewName(title: string, seq: number | null | undefined, lang: Lang = getAppLang()): string {
   const t = displayRecipeTitle(title, lang);
-  return seq ? `${t}_${seq}` : t;
+  return seq ? `${t} ${circleNumber(seq)}` : t;
 }
 
 /** 日時の表示。言語（`bcp47`）に合わせる。 */

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 const FILE: &str = "mrcodereview.sqlite3";
 const LEGACY_FLAG: &str = "imported_legacy_json";
 
@@ -93,12 +93,13 @@ CREATE TABLE IF NOT EXISTS finding_note (
   PRIMARY KEY (review_id, idx)
 );
 
--- 連番の最終値。履歴の最新を消しても、同じ番号を使い回さないために、記録とは別に持つ。
+-- 連番の最終値。日ごと（その日の 0:00〜23:59）の採番。履歴の最新を消しても、同じ番号を使い回さないために、記録とは別に持つ。
 CREATE TABLE IF NOT EXISTS review_seq (
   repo      TEXT NOT NULL,
   recipe_id TEXT NOT NULL,
+  day       TEXT NOT NULL,
   last      INTEGER NOT NULL,
-  PRIMARY KEY (repo, recipe_id)
+  PRIMARY KEY (repo, recipe_id, day)
 );
 
 CREATE TABLE IF NOT EXISTS meta (
@@ -131,10 +132,8 @@ pub fn open(dir: &Path) -> Result<Connection, String> {
     }
     conn.execute_batch(SCHEMA).map_err(e("表を作れない"))?;
     if version < SCHEMA_VERSION {
-        // 列の追加・連番の振り直し・版の更新は、1 つのトランザクション。途中で失敗したら、すべて元に戻す
-        // （列だけ足されて版が古いまま、になると、次に開くたびに、やり直しが半端に走る）
+        // 列の追加・日ごと連番の振り直し・版の更新は、1 つのトランザクション。途中で失敗したら、すべて元に戻す
         let tx = conn.unchecked_transaction().map_err(e("移行を始められない"))?;
-        // 古いデータベースには seq 列が無い（CREATE TABLE IF NOT EXISTS は、既存の表を直さない）
         let has_seq: bool = tx
             .prepare("SELECT 1 FROM pragma_table_info('reviews') WHERE name = 'seq'")
             .and_then(|mut s| s.exists([]))
@@ -142,7 +141,25 @@ pub fn open(dir: &Path) -> Result<Connection, String> {
         if !has_seq {
             tx.execute("ALTER TABLE reviews ADD COLUMN seq INTEGER", []).map_err(e("seq 列を足せない"))?;
         }
-        backfill_seq_in(&tx)?;
+        let has_day: bool = tx
+            .prepare("SELECT 1 FROM pragma_table_info('review_seq') WHERE name = 'day'")
+            .and_then(|mut s| s.exists([]))
+            .map_err(e("列を調べられない"))?;
+        if !has_day {
+            tx.execute("DROP TABLE IF EXISTS review_seq", []).map_err(e("古い review_seq を削除できない"))?;
+            tx.execute(
+                "CREATE TABLE review_seq (
+                  repo      TEXT NOT NULL,
+                  recipe_id TEXT NOT NULL,
+                  day       TEXT NOT NULL,
+                  last      INTEGER NOT NULL,
+                  PRIMARY KEY (repo, recipe_id, day)
+                )",
+                [],
+            )
+            .map_err(e("review_seq を作れない"))?;
+        }
+        backfill_seq_daily_in(&tx)?;
         tx.pragma_update(None, "user_version", SCHEMA_VERSION).map_err(e("user_version"))?;
         tx.commit().map_err(e("移行を確定できない"))?;
     }
@@ -150,50 +167,45 @@ pub fn open(dir: &Path) -> Result<Connection, String> {
     Ok(conn)
 }
 
-/// 番号の無い記録に、同じリポジトリ・同じ観点の中で、実行時刻の順に連番を振る（すでにある番号のあとから）。
-/// 連番の最終値（review_seq）も、ここで揃える。何度呼んでも、振り直さない。
+/// 記録に、同じリポジトリ・同じ観点・同じ日の中で、実行時刻の順に日ごと連番を振る。
+/// 連番の最終値（review_seq）も、ここで揃える。
 pub(crate) fn backfill_seq(conn: &Connection) -> Result<(), String> {
     let tx = conn.unchecked_transaction().map_err(|err| format!("連番を振れない: {err}"))?;
-    backfill_seq_in(&tx)?;
+    backfill_seq_daily_in(&tx)?;
     tx.commit().map_err(|err| format!("連番を確定できない: {err}"))
 }
 
-/// `backfill_seq` の中身。トランザクションは、呼んだ側が持つ（移行の中で、ほかの手順と一緒に 1 つにするため）。
-fn backfill_seq_in(tx: &Connection) -> Result<(), String> {
+/// `backfill_seq` の中身。トランザクションは呼んだ側が持つ。
+fn backfill_seq_daily_in(tx: &Connection) -> Result<(), String> {
     let w = |err: rusqlite::Error| format!("連番を振れない: {err}");
-    let mut max: HashMap<(String, String), i64> = HashMap::new();
-    {
-        let mut st = tx.prepare("SELECT repo, recipe_id, COALESCE(MAX(seq), 0) FROM reviews GROUP BY repo, recipe_id").map_err(w)?;
-        let rows = st.query_map([], |r| Ok(((r.get::<_, String>(0)?, r.get::<_, String>(1)?), r.get::<_, i64>(2)?))).map_err(w)?;
-        for row in rows {
-            let (k, v) = row.map_err(w)?;
-            max.insert(k, v);
-        }
-    }
-    let todo: Vec<(i64, String, String)> = {
-        let mut st = tx
-            .prepare("SELECT rowid, repo, recipe_id FROM reviews WHERE seq IS NULL ORDER BY repo, recipe_id, created_at, rowid")
-            .map_err(w)?;
-        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(w)?;
-        rows.collect::<Result<_, _>>().map_err(w)?
-    };
-    for (rowid, repo, recipe) in todo {
-        let n = max.entry((repo, recipe)).or_insert(0);
-        *n += 1;
-        // 記録の JSON にも入れる（壊れた JSON は、触らない）
-        tx.execute(
-            "UPDATE reviews SET seq = ?1, record = CASE WHEN json_valid(record) THEN json_set(record, '$.seq', ?1) ELSE record END WHERE rowid = ?2",
-            params![*n, rowid],
+    tx.execute(
+        "WITH numbered AS (
+            SELECT rowid, ROW_NUMBER() OVER (
+                PARTITION BY repo, recipe_id, date(created_at / 1000, 'unixepoch', 'localtime')
+                ORDER BY created_at, rowid
+            ) AS daily_seq
+            FROM reviews
         )
-        .map_err(w)?;
-    }
-    for ((repo, recipe), last) in &max {
-        tx.execute(
-            "INSERT INTO review_seq (repo, recipe_id, last) VALUES (?1, ?2, ?3) ON CONFLICT (repo, recipe_id) DO UPDATE SET last = MAX(last, excluded.last)",
-            params![repo, recipe, last],
-        )
-        .map_err(w)?;
-    }
+        UPDATE reviews
+        SET seq = (SELECT daily_seq FROM numbered WHERE numbered.rowid = reviews.rowid),
+            record = CASE
+                WHEN json_valid(record) THEN json_set(record, '$.seq', (SELECT daily_seq FROM numbered WHERE numbered.rowid = reviews.rowid))
+                ELSE record
+            END",
+        [],
+    )
+    .map_err(w)?;
+
+    tx.execute(
+        "INSERT INTO review_seq (repo, recipe_id, day, last)
+         SELECT repo, recipe_id, date(created_at / 1000, 'unixepoch', 'localtime') AS day, MAX(seq) AS last
+         FROM reviews
+         WHERE seq IS NOT NULL
+         GROUP BY repo, recipe_id, date(created_at / 1000, 'unixepoch', 'localtime')
+         ON CONFLICT (repo, recipe_id, day) DO UPDATE SET last = excluded.last",
+        [],
+    )
+    .map_err(w)?;
     Ok(())
 }
 
