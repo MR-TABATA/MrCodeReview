@@ -1402,6 +1402,31 @@ fn to_base64(bytes: &[u8]) -> String {
 #[tauri::command]
 fn find_repo_icon(repo: String) -> Option<String> {
     let base = Path::new(&repo);
+    let is_dev = repo.to_lowercase().contains("dev")
+        || base.file_name().and_then(|n| n.to_str()).map(|n| n.to_lowercase().contains("dev")).unwrap_or(false);
+
+    let dev_candidates = [
+        "src-tauri/icons/dev/icon.png",
+        "src-tauri/icons/dev/32x32.png",
+        "art/icon-dev.png",
+        "art/icon-dev.svg",
+        "icon-dev.svg",
+    ];
+
+    if is_dev {
+        for rel in dev_candidates {
+            let p = base.join(rel);
+            if p.is_file() {
+                if let Ok(bytes) = std::fs::read(&p) {
+                    if !bytes.is_empty() && bytes.len() <= 1_500_000 {
+                        let mime = if rel.ends_with(".svg") { "image/svg+xml" } else { "image/png" };
+                        return Some(format!("data:{};base64,{}", mime, to_base64(&bytes)));
+                    }
+                }
+            }
+        }
+    }
+
     let candidates = [
         "src-tauri/icons/32x32.png",
         "src-tauri/icons/128x128.png",
@@ -2748,6 +2773,21 @@ mod tests {
         std::fs::write(art.join("icon.png"), b"fakepngdata").unwrap();
         let url = find_repo_icon(dir.to_str().unwrap().to_string()).unwrap();
         assert!(url.starts_with("data:image/png;base64,"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_find_repo_icon_prefers_dev_icon_for_dev_repo() {
+        let dir = std::env::temp_dir().join(format!("mrcr-test-dev-icon-{}", std::process::id()));
+        let art = dir.join("art");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::write(art.join("icon.svg"), b"<svg id=\"normal\"/>").unwrap();
+        std::fs::write(art.join("icon-dev.svg"), b"<svg id=\"dev\"/>").unwrap();
+
+        // ディレクトリ名に dev が含まれる場合、icon-dev.svg を優先
+        let res = find_repo_icon(dir.to_str().unwrap().to_string()).unwrap();
+        assert!(res.starts_with("data:image/svg+xml;base64,"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
