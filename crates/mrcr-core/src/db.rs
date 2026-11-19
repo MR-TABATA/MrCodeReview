@@ -408,4 +408,38 @@ mod tests {
         assert_eq!(seq_col(&conn, "a"), Some(1));
         let _ = std::fs::remove_dir_all(&d);
     }
+
+    #[test]
+    fn migration_from_schema_v5_adds_day_column_to_reviews_and_fills_dates() {
+        let d = scratch("migrate-v5-to-v6");
+        {
+            let conn = open(&d).unwrap();
+            // スキーマ 5 の状態を作る: reviews に day 列がない、user_version = 5
+            raw_insert(&conn, "r1", 1700000000000, "/r", "bugs", "{}");
+            conn.execute("ALTER TABLE reviews DROP COLUMN day", []).unwrap();
+            conn.pragma_update(None, "user_version", 5).unwrap();
+        }
+        // 開き直すとスキーマ 6 へ移行する
+        let conn = open(&d).expect("スキーマ 5 から 6 への移行が成功する");
+        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 6, "user_version が 6 に更新される");
+        let has_day: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('reviews') WHERE name = 'day'")
+            .unwrap()
+            .exists([])
+            .unwrap();
+        assert!(has_day, "reviews テーブルに day 列が存在する");
+        let day: String = conn.query_row("SELECT day FROM reviews WHERE id = 'r1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(day.len(), 10, "day 列に YYYY-MM-DD 形式の日付が補填されている");
+
+        // 二重移行（版 6 の DB を再度開く）しても何も壊れない
+        drop(conn);
+        let conn2 = open(&d).expect("版 6 の DB を再オープンできる");
+        let v2: i64 = conn2.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v2, 6);
+        let day2: String = conn2.query_row("SELECT day FROM reviews WHERE id = 'r1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(day2, day);
+
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }
