@@ -329,19 +329,53 @@ fn tool_error(msg: &str) -> Value {
     })
 }
 
+/// npm の起動役（`npm/mrcr/bin/mrcr.js`）が、バイナリを起動するときに付ける環境変数。
+/// 付いているとき、実行ファイルは npx のキャッシュの中にあり、あとで消えうる。
+const VIA_NPX_ENV: &str = "MRCR_VIA_NPX";
+
+/// エージェントの設定に書く、mrcr mcp の起動方法。
+/// npm 経由（`via_npx`）のときは、実行ファイルのパスではなく、**版を固定した** npx 形式を書く
+/// （版を固定しないと、起動のたびに最新のコードが実行される）。
+fn server_entry(via_npx: bool, version: &str, exe: &str) -> Value {
+    if via_npx {
+        json!({ "command": "npx", "args": ["-y", format!("mrcr@{version}"), "mcp"] })
+    } else {
+        json!({ "command": exe, "args": ["mcp"] })
+    }
+}
+
+/// 環境変数の値が「npm 経由」を示すか。**"1" のときだけ**真（未設定・空・"0"・ほかの値は偽）。
+fn is_via_npx(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|v| v == "1")
+}
+
 /// 各エージェントへの設定を支援する
 fn setup() -> i32 {
     println!("=== MrCodeReview MCP 設定アシスタント ===");
     println!();
 
     let mut configured = Vec::new();
+    let npx = is_via_npx(std::env::var_os(VIA_NPX_ENV).as_deref());
+    // npm 経由のときは、実行ファイルの場所を使わない（npx の形式を書く）。
+    // そうでないときに場所が分からなければ、別の値で続けず、止める
+    // （"mrcr" に置き換えると、PATH に無い環境でも「追加しました」と出て、エージェント側で起動に失敗する）。
+    let exe = match std::env::current_exe() {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(_) if npx => String::new(),
+        Err(e) => {
+            eprintln!("エラー: 実行ファイルの場所を取得できませんでした: {e}");
+            eprintln!("設定ファイルは変更していません。`mrcr` のフルパスで起動し直してください。");
+            return 1;
+        }
+    };
+    let target = server_entry(npx, env!("CARGO_PKG_VERSION"), &exe);
 
     // 1. agy の設定 (~/.gemini/config/mcp_config.json)
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
         let agy_config_dir = home.join(".gemini").join("config");
         let agy_config_path = agy_config_dir.join("mcp_config.json");
 
-        match register_mcp_to_file(&agy_config_path) {
+        match register_mcp_to_file(&agy_config_path, &target) {
             Ok(true) => {
                 println!("✓ agy (Google Antigravity): 設定ファイルに追加しました ({})", agy_config_path.display());
                 configured.push("agy");
@@ -364,25 +398,26 @@ fn setup() -> i32 {
     println!();
     println!("【Claude Code】");
     println!("  以下のコマンドを実行して MCP サーバーを登録できます:");
-    println!("    claude mcp add mrcodereview -- mrcr mcp");
+    if npx {
+        println!("    claude mcp add mrcodereview -- npx -y mrcr@{} mcp", env!("CARGO_PKG_VERSION"));
+    } else {
+        println!("    claude mcp add mrcodereview -- mrcr mcp");
+    }
     println!();
     println!("【VS Code / Copilot】");
     println!("  `.vscode/mcp.json` に以下を記述してください:");
-    println!(r#"    {{
-      "mcpServers": {{
-        "mrcodereview": {{
-          "command": "mrcr",
-          "args": ["mcp"]
-        }}
-      }}
-    }}"#);
+    let shown = if npx { target.clone() } else { server_entry(false, env!("CARGO_PKG_VERSION"), "mrcr") };
+    let shown = serde_json::to_string_pretty(&json!({ "mcpServers": { "mrcodereview": shown } })).unwrap_or_default();
+    for line in shown.lines() {
+        println!("    {line}");
+    }
     println!();
 
     0
 }
 
 /// 指定パスの mcp_config.json に mrcodereview サーバーを追加する（変更があれば true）
-fn register_mcp_to_file(path: &Path) -> Result<bool, String> {
+fn register_mcp_to_file(path: &Path, target: &Value) -> Result<bool, String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
@@ -403,20 +438,11 @@ fn register_mcp_to_file(path: &Path) -> Result<bool, String> {
         })
         .ok_or_else(|| "mcpServers オブジェクトを作成できませんでした".to_string())?;
 
-    let exe_path = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "mrcr".to_string());
-
-    let target = json!({
-        "command": exe_path,
-        "args": ["mcp"]
-    });
-
-    if servers.get("mrcodereview") == Some(&target) {
+    if servers.get("mrcodereview") == Some(target) {
         return Ok(false);
     }
 
-    servers.insert("mrcodereview".to_string(), target);
+    servers.insert("mrcodereview".to_string(), target.clone());
 
     let pretty = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
     std::fs::write(path, format!("{pretty}\n")).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -464,6 +490,64 @@ mod tests {
         assert!(names.contains(&"mrcr_get_handoff"));
         assert!(names.contains(&"mrcr_report"));
         assert!(names.contains(&"mrcr_list_handoffs"));
+    }
+
+    #[test]
+    fn server_entry_uses_exe_path_normally() {
+        let e = server_entry(false, "1.11.0", "/opt/homebrew/bin/mrcr");
+        assert_eq!(e, json!({ "command": "/opt/homebrew/bin/mrcr", "args": ["mcp"] }));
+    }
+
+    #[test]
+    fn server_entry_via_npx_pins_version_and_never_uses_cache_path() {
+        let e = server_entry(true, "1.11.0", "/Users/x/.npm/_npx/abc/node_modules/@s/mrcr-darwin/bin/mrcr");
+        assert_eq!(e, json!({ "command": "npx", "args": ["-y", "mrcr@1.11.0", "mcp"] }));
+        assert!(!e.to_string().contains("_npx"), "キャッシュの中のパスを設定に書かない");
+    }
+
+    #[test]
+    fn register_writes_target_and_is_idempotent() {
+        let dir = std::env::temp_dir().join(format!("mrcr-mcp-reg-{}", std::process::id()));
+        let path = dir.join("cfg").join("mcp_config.json");
+        let target = server_entry(true, "1.11.0", "x");
+        assert_eq!(register_mcp_to_file(&path, &target), Ok(true));
+        assert_eq!(register_mcp_to_file(&path, &target), Ok(false), "同じ内容なら変更なし");
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(doc["mcpServers"]["mrcodereview"], target);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn via_npx_is_true_only_for_exactly_1() {
+        use std::ffi::OsStr;
+        assert!(!is_via_npx(None), "未設定");
+        assert!(is_via_npx(Some(OsStr::new("1"))));
+        assert!(!is_via_npx(Some(OsStr::new("0"))));
+        assert!(!is_via_npx(Some(OsStr::new(""))), "空文字");
+        assert!(!is_via_npx(Some(OsStr::new("true"))));
+        assert!(!is_via_npx(Some(OsStr::new("11"))));
+    }
+
+    #[test]
+    fn register_replaces_an_old_exe_path_entry_and_keeps_other_servers() {
+        let dir = std::env::temp_dir().join(format!("mrcr-mcp-replace-{}", std::process::id()));
+        let path = dir.join("mcp_config.json");
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = json!({
+            "mcpServers": {
+                "mrcodereview": { "command": "/old/mrcr", "args": ["mcp"] },
+                "other": { "command": "other-server", "args": ["--x"] }
+            }
+        });
+        std::fs::write(&path, serde_json::to_string_pretty(&old).unwrap()).unwrap();
+
+        let target = server_entry(true, "1.11.0", "/ignored");
+        assert_eq!(register_mcp_to_file(&path, &target), Ok(true), "実行ファイルのパスの登録は、npx の形式に置き換わる");
+
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(doc["mcpServers"]["mrcodereview"], target);
+        assert_eq!(doc["mcpServers"]["other"], old["mcpServers"]["other"], "ほかのサーバーは残る");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
