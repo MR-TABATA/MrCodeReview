@@ -26,12 +26,30 @@ if [ "$CARGO_VER" != "$VERSION" ]; then
   exit 1
 fi
 
+# バイナリが、この版の、universal（arm64 と x86_64）であること（release.sh と同じ規則）。
+# 違うものが、別の版・片方の CPU だけのまま公開されると、setup が書く版固定の npx 形式とずれ、片方の Mac で動かない。
+GOT="$("$BIN" --version 2>/dev/null || true)"
+if [ "$GOT" != "mrcr $VERSION" ]; then
+  echo "バイナリの版が違う: --version が「$GOT」（期待は「mrcr $VERSION」）: $BIN" >&2
+  exit 1
+fi
+ARCHS=" $(lipo -archs "$BIN" 2>/dev/null || true) "
+for A in arm64 x86_64; do
+  case "$ARCHS" in
+    *" $A "*) ;;
+    *) echo "バイナリに $A が無い（universal ではない）: $BIN（${ARCHS}）" >&2; exit 1 ;;
+  esac
+done
+
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/mrcr/bin" "$STAGE/mrcr-darwin/bin"
 
 cp npm/mrcr/bin/mrcr.js "$STAGE/mrcr/bin/mrcr.js"
 cp "$BIN" "$STAGE/mrcr-darwin/bin/mrcr"
+cp npm/mrcr/README.md "$STAGE/mrcr/README.md"
+cp LICENSE "$STAGE/mrcr/LICENSE"
+cp LICENSE "$STAGE/mrcr-darwin/LICENSE"
 chmod +x "$STAGE/mrcr/bin/mrcr.js" "$STAGE/mrcr-darwin/bin/mrcr"
 
 # 版を、2 つの package.json（と、本体の optionalDependencies）に入れる
@@ -44,6 +62,7 @@ for (const [src, dst, fix] of [
 ]) {
   const j = JSON.parse(fs.readFileSync(src, "utf8"));
   j.version = v;
+  delete j.private; // 元の package.json は、誤って公開されないよう private。公開用に組み立てるときだけ外す
   fix(j);
   fs.writeFileSync(dst, JSON.stringify(j, null, 2) + "\n");
 }

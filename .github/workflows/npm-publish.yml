@@ -1,0 +1,87 @@
+# npm への公開（mrcr と @mr-tabata/mrcr-darwin）。**手動で実行するだけ**（workflow_dispatch）。タグの push では動かない。
+#
+# 使い方: Actions の「Publish to npm」→ Run workflow → 版（例: 1.11.0）を入れる。
+#   - dry_run（既定: true）のあいだは、tarball を作って検査し、`npm publish --dry-run` までで止まる。何も公開しない。
+#   - 公開するには、dry_run を外す。順序は、プラットフォーム別 → 本体（本体が先だと、存在しない依存を指す瞬間ができる）。
+#
+# 前提（先に、人がやること。手順は MrCodeReview-dev の docs/specs/npx-distribution.md の「公開の手順」）:
+#   - GitHub Release v<版> が出ていること（配布物の zip を、そこから取る。同じバイナリを、Homebrew と npm で配るため）
+#   - 実行する commit の crates/mrcr/Cargo.toml が、その版であること（scripts/npm-pack.sh が検査する）
+#   - npm 側の設定（初回は手動で公開 → 各パッケージに trusted publisher を設定）。**未検証**: この workflow は、まだ 1 度も動かしていない
+#
+# 認証は npm の trusted publishing（OIDC）。トークンは使わない。npm CLI 11.5.1 以上・Node 22.14 以上が要る（下で確かめる）。
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版（v を付けない。例: 1.11.0）。GitHub Release v<版> が出ていること'
+        required: true
+        type: string
+      dry_run:
+        description: '公開せずに、検査と npm publish --dry-run までで止める'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # trusted publishing（OIDC）と来歴（provenance）
+
+jobs:
+  publish:
+    # 非公開の派生（MrCodeReview-dev など）では、動かさない
+    if: github.repository == 'MR-TABATA/MrCodeReview'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: npm の版を確かめる（trusted publishing は 11.5.1 以上）
+        run: |
+          npm --version
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); if (a<11 || (a===11 && (b<5 || (b===5 && c<1)))) { console.error("npm が古い: "+process.argv[1]); process.exit(1) }' "$(npm --version)"
+
+      - name: 配布物（Release の zip）を取って、sha256 を Release の記載と照合する
+        id: zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          case "$VERSION" in *[!0-9.]*|'') echo "版は数字とドットだけ: $VERSION" >&2; exit 1;; esac
+          mkdir -p dist/npm-in
+          gh release download "v$VERSION" -p "mrcr-$VERSION-macos.zip" -D dist/npm-in
+          EXPECT=$(gh release view "v$VERSION" --json body -q .body | grep -o '[0-9a-f]\{64\}' | head -n 1)
+          ACTUAL=$(shasum -a 256 "dist/npm-in/mrcr-$VERSION-macos.zip" | cut -d' ' -f1)
+          echo "Release の記載: $EXPECT"
+          echo "ダウンロード:   $ACTUAL"
+          [ -n "$EXPECT" ] && [ "$EXPECT" = "$ACTUAL" ] || { echo "sha256 が一致しない" >&2; exit 1; }
+          unzip -q "dist/npm-in/mrcr-$VERSION-macos.zip" -d dist/npm-in/bin
+
+      - name: 試験（tarball を作る scripts と、起動役）
+        run: |
+          sh scripts/npm-pack-test.sh
+          node --test npm/mrcr/test
+
+      - name: tarball を作る（版・universal の検査つき）
+        env:
+          VERSION: ${{ inputs.version }}
+        run: sh scripts/npm-pack.sh "$VERSION" dist/npm-in/bin/mrcr dist/npm-out
+
+      - name: 公開する（dry-run のあいだは、検査だけ）
+        env:
+          VERSION: ${{ inputs.version }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          set -eu
+          FLAGS="--provenance --access public"
+          [ "$DRY" = "true" ] && FLAGS="$FLAGS --dry-run"
+          # 順序: プラットフォーム別 → 本体
+          npm publish "dist/npm-out/mr-tabata-mrcr-darwin-$VERSION.tgz" $FLAGS
+          npm publish "dist/npm-out/mrcr-$VERSION.tgz" $FLAGS
