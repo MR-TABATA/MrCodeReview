@@ -1,7 +1,7 @@
 {
   "name": "@mr-tabata/mrcr-darwin",
   "version": "0.0.0",
-  "description": "mrcr binary for macOS (universal: arm64 + x86_64). Install `mrcr`, not this package.",
+  "description": "mrcr binary for macOS (universal: arm64 + x86_64). Install `@mr-tabata/mrcr`, not this package.",
   "license": "MIT",
   "repository": {
     "type": "git",
