@@ -45,6 +45,16 @@
 brew install mr-tabata/tap/mrcr
 ```
 
+#### npx（macOS・インストール不要）
+
+Node.js 18 以降が要ります。版は固定してください。版を付けないと、`npx` は起動のたびに最新のコードを実行します。
+
+```bash
+npx @mr-tabata/mrcr@1.11.2 --help
+```
+
+いまは macOS だけです。バイナリは universal（Apple Silicon と Intel）ですが、動作を確かめたのは Apple Silicon だけです。
+
 #### Cargo でビルド
 
 ```bash
@@ -200,6 +210,27 @@ claude ".mrcodereview/out/review.md の指摘を確認してコードを修正�
 # agy や Claude Code の設定ファイルに自動登録
 mrcr mcp setup
 ```
+
+`mrcr` をインストールせずに、`npx` でも使えます。ここでも版を固定してください。
+
+```bash
+npx @mr-tabata/mrcr@1.11.2 mcp setup
+```
+
+設定を自分で書く場合（たとえば `.vscode/mcp.json`）:
+
+```json
+{
+  "mcpServers": {
+    "mrcodereview": {
+      "command": "npx",
+      "args": ["-y", "@mr-tabata/mrcr@1.11.2", "mcp"]
+    }
+  }
+}
+```
+
+版を上げたときは、この設定の版も、自分で更新してください。新しい版はレビューの DB を更新し、固定した古い版は、新しい DB を開けません（「このアプリを更新してください」と出ます）。Dock や Finder から起動したエージェントは、`PATH` に `npx` が無いことがあります。その場合は、`command` に `npx` のフルパスを書いてください。
 
 登録後は、普段通りターミナルでエージェントに伝えるだけです：
 > 「MrDiff の指摘を確認して直して」

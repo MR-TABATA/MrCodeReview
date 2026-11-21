@@ -45,6 +45,16 @@ Download the DMG from the official site or GitHub Releases:
 brew install mr-tabata/tap/mrcr
 ```
 
+#### npx (macOS, no install)
+
+Needs Node.js 18 or later. Pin the version: without one, `npx` runs the latest code on every start.
+
+```bash
+npx @mr-tabata/mrcr@1.11.2 --help
+```
+
+macOS only for now. The binary is universal (Apple Silicon and Intel); it has been tested on Apple Silicon only.
+
 #### Build with Cargo
 
 ```bash
@@ -199,6 +209,27 @@ With `mrcr mcp`, coding agents like Claude Code, `agy` (Google Antigravity), and
 # Automatically register mrcr mcp in agy / Claude Code config
 mrcr mcp setup
 ```
+
+Without installing `mrcr`, you can use `npx` instead. Pin the version here too:
+
+```bash
+npx @mr-tabata/mrcr@1.11.2 mcp setup
+```
+
+Or write the entry yourself (for example `.vscode/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "mrcodereview": {
+      "command": "npx",
+      "args": ["-y", "@mr-tabata/mrcr@1.11.2", "mcp"]
+    }
+  }
+}
+```
+
+Update the version in this entry yourself when you upgrade. Newer versions upgrade the review database, and an older pinned version refuses to open a newer database ("update this app"). If the agent is launched from the Dock or Finder, its `PATH` may not contain `npx`; in that case, give the full path to `npx` as `command`.
 
 Once registered, simply ask your agent in your everyday terminal session:
 > "Check MrCodeReview findings for MrDiff and fix them."
