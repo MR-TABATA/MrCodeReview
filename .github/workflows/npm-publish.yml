@@ -67,7 +67,7 @@ jobs:
       - name: 試験（tarball を作る scripts と、起動役）
         run: |
           sh scripts/npm-pack-test.sh
-          node --test npm/mrcr/test
+          node --test 'npm/mrcr/test/*.test.js'
 
       - name: tarball を作る（版・universal の検査つき）
         env:

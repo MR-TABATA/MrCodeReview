@@ -1,4 +1,4 @@
-// 起動役（bin/mrcr.js）の試験。`node --test npm/mrcr/test` で動く。npm には公開しない。
+// 起動役（bin/mrcr.js）の試験。`node --test 'npm/mrcr/test/*.test.js'` で動く（ディレクトリ指定は、Node 24 では動かない）。npm には公開しない。
 // ダミーの「プラットフォーム別パッケージ」を、一時の場所に組み立てて、本物の起動役をそこへ置いて動かす。
 'use strict';
 
