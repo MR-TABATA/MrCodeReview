@@ -124,14 +124,14 @@ export function handoffPreview(info: HandoffInfo, ui: HandoffUi, act: HandoffAct
           h('button', { class: 'run copy', disabled: ui.busy, title: m.sendToCliTitle, onclick: () => act.send('all') }, ui.busy && ui.target === 'all' ? m.writingCliBtn : m.sendAllToCliBtn(info.fix)),
           h('button', { class: 'small', onclick: () => act.copyText() }, m.copyHandoffTextBtn),
           ui.copiedText ? h('span', { class: 'muted' }, m.copiedBtn) : null,
-          h('span', { class: 'hint' }, '💡 agy や Claude Code からは MCP (mrcr mcp) で直接対応できます'),
+          h('span', { class: 'hint' }, m.mcpHint),
         )
       : h(
           'div',
           { class: 'row' },
           h('button', { class: 'small', onclick: () => act.copyText() }, m.copyHandoffTextBtn),
           ui.copiedText ? h('span', { class: 'muted' }, m.copiedBtn) : null,
-          h('span', { class: 'hint' }, '💡 agy や Claude Code からは MCP (mrcr mcp) で直接対応できます'),
+          h('span', { class: 'hint' }, m.mcpHint),
         ),
     handoffResult('all', ui, act),
     h(

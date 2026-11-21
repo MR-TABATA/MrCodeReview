@@ -486,6 +486,8 @@ export interface Messages {
     sendAllToCliBtn: (count: number) => string;
     viewAllHandoffSummary: (count: number) => string;
     copyHandoffTextBtn: string;
+    /** 「まとめて渡す内容」の横の、MCP で直接対応できるという案内（1 行） */
+    mcpHint: string;
     fetchAgentBtn: string;
     fetchingAgentBtn: string;
     fetchAgentTitle: string;
@@ -992,6 +994,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       sendAllToCliBtn: (count) => `対応 ${count} 件を、まとめて CLI に渡す`,
       viewAllHandoffSummary: (count) => `まとめて渡す内容を見る（対応 ${count} 件）`,
       copyHandoffTextBtn: 'この文面をコピー',
+      mcpHint: '💡 agy や Claude Code からは MCP (mrcr mcp) で直接対応できます',
       fetchAgentBtn: '対応内容を取り込む',
       fetchingAgentBtn: '取り込んでいます…',
       fetchAgentTitle: 'エージェントが書いた「最後の報告」を、会話の記録から、取り込みます（`mrcr handoff report` で保存された分は、すでに入っています）',
@@ -1683,6 +1686,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       sendAllToCliBtn: (count) => `Send ${count} "Fix" items to CLI`,
       viewAllHandoffSummary: (count) => `View handoff text (${count} "Fix" items)`,
       copyHandoffTextBtn: 'Copy this text',
+      mcpHint: '💡 From agy or Claude Code, you can handle these directly over MCP (mrcr mcp)',
       fetchAgentBtn: 'Import agent reports',
       fetchingAgentBtn: 'Importing…',
       fetchAgentTitle: 'Import the final status report written by your coding agent from conversation logs (reports saved with `mrcr handoff report` are already here)',

@@ -87,3 +87,14 @@ describe('登録できるリポジトリの数の説明', () => {
     }
   });
 });
+
+describe('MCP の案内（mcpHint）', () => {
+  it('英語には、日本語の文字が混ざらない（日本語の直書きが、英語の画面に出ていた）', () => {
+    expect(msg('en').mainUi.mcpHint).not.toMatch(/[\u3040-\u30ff\u3400-\u9fff]/);
+    expect(msg('ja').mainUi.mcpHint).toMatch(/[\u3040-\u30ff\u3400-\u9fff]/);
+  });
+  it('どちらの言語でも、MCP のコマンド（mrcr mcp）を案内する', () => {
+    expect(msg('en').mainUi.mcpHint).toContain('mrcr mcp');
+    expect(msg('ja').mainUi.mcpHint).toContain('mrcr mcp');
+  });
+});
