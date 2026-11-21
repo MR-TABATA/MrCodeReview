@@ -1,0 +1,14 @@
+{
+  "name": "mrcr",
+  "version": "0.0.0",
+  "description": "AI code review CLI on your uncommitted changes (npx launcher)",
+  "license": "MIT",
+  "homepage": "https://mrktools.app/en/codereview/",
+  "repository": { "type": "git", "url": "git+https://github.com/MR-TABATA/MrCodeReview.git" },
+  "bin": { "mrcr": "bin/mrcr.js" },
+  "files": ["bin/mrcr.js"],
+  "engines": { "node": ">=18" },
+  "optionalDependencies": {
+    "@mr-tabata/mrcr-darwin": "0.0.0"
+  }
+}
