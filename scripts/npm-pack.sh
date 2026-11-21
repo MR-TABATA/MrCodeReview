@@ -4,7 +4,7 @@
 #     sh scripts/npm-pack.sh 1.11.0 path/to/mrcr [出力先]
 #
 # 第 2 引数: universal binary（release.sh の zip を解凍したもの）。出力先の既定は dist/npm。
-# 出力: <出力先>/mrcr-<版>.tgz と <出力先>/mr-tabata-mrcr-darwin-<版>.tgz
+# 出力: <出力先>/mr-tabata-mrcr-<版>.tgz（本体 @mr-tabata/mrcr）と <出力先>/mr-tabata-mrcr-darwin-<版>.tgz
 # 版は crates/mrcr/Cargo.toml と一致していなければ止まる（release.sh と同じ規則）。
 set -eu
 
@@ -79,6 +79,6 @@ pack() {
   echo "$OUT_ABS/$NAME" >&2
 }
 
-rm -f "$OUT_ABS"/mrcr-"$VERSION".tgz "$OUT_ABS"/mr-tabata-mrcr-darwin-"$VERSION".tgz
+rm -f "$OUT_ABS"/mr-tabata-mrcr-"$VERSION".tgz "$OUT_ABS"/mr-tabata-mrcr-darwin-"$VERSION".tgz
 pack "$STAGE/mrcr-darwin"
 pack "$STAGE/mrcr"

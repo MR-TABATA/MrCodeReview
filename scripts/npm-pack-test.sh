@@ -45,7 +45,7 @@ ls "$WORK"/out-arm/*.tgz >/dev/null 2>&1 && ng "arm64 だけのバイナリで�
 # 3. 一致
 OUT="$WORK/out-ok"
 sh scripts/npm-pack.sh "$REAL" "$WORK/good" "$OUT" >/dev/null 2>&1 || ng "一致するのに、失敗した"
-MAIN="$OUT/mrcr-$REAL.tgz"; PLAT="$OUT/mr-tabata-mrcr-darwin-$REAL.tgz"
+MAIN="$OUT/mr-tabata-mrcr-$REAL.tgz"; PLAT="$OUT/mr-tabata-mrcr-darwin-$REAL.tgz"
 [ -f "$MAIN" ] || ng "本体の tgz が無い"
 [ -f "$PLAT" ] || ng "プラットフォーム別の tgz が無い"
 

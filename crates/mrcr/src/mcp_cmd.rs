@@ -332,13 +332,16 @@ fn tool_error(msg: &str) -> Value {
 /// npm の起動役（`npm/mrcr/bin/mrcr.js`）が、バイナリを起動するときに付ける環境変数。
 /// 付いているとき、実行ファイルは npx のキャッシュの中にあり、あとで消えうる。
 const VIA_NPX_ENV: &str = "MRCR_VIA_NPX";
+/// npm の本体パッケージの名前。**`mrcr` は npm に、類似名（mri・micro・crc・rc）として拒否された**ので、自分のスコープの下に置く。
+/// npm/mrcr/package.json の name と、同じ値でなければならない（試験 npm_package_name_matches_package_json）。
+const NPM_PACKAGE: &str = "@mr-tabata/mrcr";
 
 /// エージェントの設定に書く、mrcr mcp の起動方法。
 /// npm 経由（`via_npx`）のときは、実行ファイルのパスではなく、**版を固定した** npx 形式を書く
 /// （版を固定しないと、起動のたびに最新のコードが実行される）。
 fn server_entry(via_npx: bool, version: &str, exe: &str) -> Value {
     if via_npx {
-        json!({ "command": "npx", "args": ["-y", format!("mrcr@{version}"), "mcp"] })
+        json!({ "command": "npx", "args": ["-y", format!("{NPM_PACKAGE}@{version}"), "mcp"] })
     } else {
         json!({ "command": exe, "args": ["mcp"] })
     }
@@ -399,7 +402,7 @@ fn setup() -> i32 {
     println!("【Claude Code】");
     println!("  以下のコマンドを実行して MCP サーバーを登録できます:");
     if npx {
-        println!("    claude mcp add mrcodereview -- npx -y mrcr@{} mcp", env!("CARGO_PKG_VERSION"));
+        println!("    claude mcp add mrcodereview -- npx -y {}@{} mcp", NPM_PACKAGE, env!("CARGO_PKG_VERSION"));
     } else {
         println!("    claude mcp add mrcodereview -- mrcr mcp");
     }
@@ -493,6 +496,14 @@ mod tests {
     }
 
     #[test]
+    fn npm_package_name_matches_package_json() {
+        // 名前がずれると、setup が書く npx 形式が、存在しないパッケージを指す
+        let text = include_str!("../../../npm/mrcr/package.json");
+        let j: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(j["name"], NPM_PACKAGE);
+    }
+
+    #[test]
     fn server_entry_uses_exe_path_normally() {
         let e = server_entry(false, "1.11.0", "/opt/homebrew/bin/mrcr");
         assert_eq!(e, json!({ "command": "/opt/homebrew/bin/mrcr", "args": ["mcp"] }));
@@ -501,7 +512,7 @@ mod tests {
     #[test]
     fn server_entry_via_npx_pins_version_and_never_uses_cache_path() {
         let e = server_entry(true, "1.11.0", "/Users/x/.npm/_npx/abc/node_modules/@s/mrcr-darwin/bin/mrcr");
-        assert_eq!(e, json!({ "command": "npx", "args": ["-y", "mrcr@1.11.0", "mcp"] }));
+        assert_eq!(e, json!({ "command": "npx", "args": ["-y", "@mr-tabata/mrcr@1.11.0", "mcp"] }));
         assert!(!e.to_string().contains("_npx"), "キャッシュの中のパスを設定に書かない");
     }
 

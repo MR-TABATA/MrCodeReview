@@ -1,4 +1,4 @@
-# npm への公開（mrcr と @mr-tabata/mrcr-darwin）。**手動で実行するだけ**（workflow_dispatch）。タグの push では動かない。
+# npm への公開（@mr-tabata/mrcr と @mr-tabata/mrcr-darwin）。**手動で実行するだけ**（workflow_dispatch）。タグの push では動かない。
 #
 # 使い方: Actions の「Publish to npm」→ Run workflow → 版（例: 1.11.0）を入れる。
 #   - dry_run（既定: true）のあいだは、tarball を作って検査し、`npm publish --dry-run` までで止まる。何も公開しない。
@@ -84,4 +84,4 @@ jobs:
           [ "$DRY" = "true" ] && FLAGS="$FLAGS --dry-run"
           # 順序: プラットフォーム別 → 本体
           npm publish "dist/npm-out/mr-tabata-mrcr-darwin-$VERSION.tgz" $FLAGS
-          npm publish "dist/npm-out/mrcr-$VERSION.tgz" $FLAGS
+          npm publish "dist/npm-out/mr-tabata-mrcr-$VERSION.tgz" $FLAGS

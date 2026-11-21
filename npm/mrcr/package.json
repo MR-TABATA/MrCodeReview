@@ -1,5 +1,5 @@
 {
-  "name": "mrcr",
+  "name": "@mr-tabata/mrcr",
   "version": "0.0.0",
   "description": "AI code review CLI on your uncommitted changes (npx launcher)",
   "license": "MIT",
