@@ -2,10 +2,6 @@
 
 - 作成日: 2026-11-19
 - 状態: 下書き
-- 会話を再開するには（ターミナルに貼る）:
-  ```
-  cd /Users/hitoshi/Git/MrCodeReview && agy --resume 0894724a-3d11-4eaa-8827-4f06e840bd6d
-  ```
 
 ## 目的
 MCR のレビュー指摘をコーディングエージェント（agy、Claude Code、Copilot 等）と双方向に同期し、Terminal 窓が勝手に開く騒々しさや、修正結果の手動取り込みの手間をなくす。
