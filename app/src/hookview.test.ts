@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { currentRecipes, currentSpec, enableBlock, groupedRecipes, groupOf, hookSection, newHookUi, selectableRecipes, type HookActions, type HookUiState } from './hookview';
-import type { HookStatus, Recipe } from './types';
+import { runLogView, currentRecipes, currentSpec, enableBlock, groupedRecipes, groupOf, hookSection, newHookUi, selectableRecipes, type HookActions, type HookUiState } from './hookview';
+import type { HookRun, HookStatus, Recipe } from './types';
 
 const recipe = (id: string, over: Partial<Recipe> = {}): Recipe => ({ id, title: `観点 ${id}`, source: 'builtin', prompt: '', kind: 'llm', ...over });
 const status = (over: Partial<HookStatus> = {}): HookStatus => ({
@@ -11,13 +11,16 @@ const status = (over: Partial<HookStatus> = {}): HookStatus => ({
   spec: null,
   installed: false,
   cli: '/opt/homebrew/bin/mrcr',
+  hook_cli: null,
   blocked: null,
   target_missing: false,
   last_run: null,
+  recent: [],
+  log_unreadable: 0,
   ...over,
 });
 const ui = (over: Partial<HookUiState> = {}): HookUiState => ({ ...newHookUi(), status: status(), ...over });
-const noop: HookActions = { toggle: () => {}, save: () => {}, pick: () => {} };
+const noop: HookActions = { toggle: () => {}, save: () => {}, pick: () => {}, refresh: () => {} };
 const text = (el: HTMLElement): string => el.textContent ?? '';
 const buttons = (el: HTMLElement): HTMLButtonElement[] => [...el.querySelectorAll('button')];
 const btn = (el: HTMLElement, label: string): HTMLButtonElement => buttons(el).find((b) => b.textContent === label)!;
@@ -120,8 +123,44 @@ describe('hookSection', () => {
   });
 
   it('フックが呼ぶ mrcr が消えているときは、入れ直しを案内する', () => {
-    const el = hookSection(ui({ status: status({ enabled: true, installed: true, cli: null, target_missing: true }) }), true, [recipe('bugs')], noop, 'ja');
+    const el = hookSection(ui({ status: status({ enabled: true, installed: true, cli: null, hook_cli: '/gone/mrcr', target_missing: true }) }), true, [recipe('bugs')], noop, 'ja');
     expect(text(el)).toContain('フックが呼ぶ mrcr が見つかりません');
+  });
+
+  describe('フックが呼び出す mrcr の表示', () => {
+    const lines = (s: Partial<HookStatus>) => text(hookSection(ui({ status: status(s) }), true, [recipe('bugs')], noop, 'ja'));
+
+    it('まだ入っていないときは、ON にしたときに使うもの（いま見つかるもの）を出す', () => {
+      const t = lines({ installed: false, hook_cli: null, cli: '/opt/homebrew/bin/mrcr' });
+      expect(t).toContain('ON にすると、フックが呼び出す mrcr: /opt/homebrew/bin/mrcr');
+      expect(t).not.toContain('いま見つかる mrcr は');
+    });
+
+    it('入っているときは、フックに実際に書かれているパスを出す。いま見つかるものと同じなら、注記は無い', () => {
+      const t = lines({ enabled: true, installed: true, hook_cli: '/opt/homebrew/bin/mrcr', cli: '/opt/homebrew/bin/mrcr' });
+      expect(t).toContain('フックが呼び出す mrcr: /opt/homebrew/bin/mrcr');
+      expect(t).not.toContain('いま見つかる mrcr は');
+      expect(t).not.toContain('ON にすると、フックが');
+    });
+
+    it('書かれているパスと、いま見つかるものが違えば、両方を出して、入れ直しを案内する', () => {
+      const t = lines({ enabled: true, installed: true, hook_cli: '/old/bin/mrcr', cli: '/new/bin/mrcr' });
+      expect(t).toContain('フックが呼び出す mrcr: /old/bin/mrcr');
+      expect(t).toContain('いま見つかる mrcr は /new/bin/mrcr です');
+      expect(t).toContain('OFF にしてから ON にし直す');
+    });
+
+    it('入っていて、いま mrcr が見つからなくても、書かれているパスがあれば、「見つかりません」とは言わない（消えていれば、別の警告が出る）', () => {
+      const t = lines({ enabled: true, installed: true, hook_cli: '/opt/x/mrcr', cli: null, target_missing: false });
+      expect(t).toContain('フックが呼び出す mrcr: /opt/x/mrcr');
+      expect(t).not.toContain('mrcr（CLI）が見つかりません');
+    });
+
+    it('どちらも無ければ、入れ方を案内する。英語でも出る', () => {
+      expect(lines({ installed: false, hook_cli: null, cli: null })).toContain('mrcr（CLI）が見つかりません');
+      const en = text(hookSection(ui({ status: status({ installed: false, hook_cli: null, cli: '/x/mrcr' }) }), true, [recipe('bugs')], noop, 'en'));
+      expect(en).toContain('When turned ON, the hook will call mrcr: /x/mrcr');
+    });
   });
 
   it('フックを置けないリポジトリは、理由を出して押せない', () => {
@@ -170,12 +209,40 @@ describe('hookSection', () => {
     expect(picked).toEqual([['bugs', 'errors']]);
   });
 
-  it('直近の実行: 失敗は理由つきで出し、まだ無ければ、そう言う', () => {
+  it('実行ログ: まだ無ければ、そう言う', () => {
     expect(text(hookSection(ui(), true, [], noop, 'ja'))).toContain('まだ実行されていません');
-    const failed = ui({ status: status({ last_run: { at_ms: 1_700_000_000_000, code: 2, message: 'API キーがありません' } }) });
-    const t = text(hookSection(failed, true, [], noop, 'ja'));
-    expect(t).toContain('失敗');
-    expect(t).toContain('API キーがありません');
+  });
+
+  it('実行ログ: コミット・状態・観点ごとの結果が、新しい順に出る', () => {
+    const recent = [run({ commit: 'bbb2222', subject: '新しい' }), run({ commit: 'aaa1111', subject: '古い' })];
+    const t = text(hookSection(ui({ status: status({ recent }) }), true, [], noop, 'ja'));
+    expect(t).toContain('コミット bbb2222「新しい」');
+    expect(t.indexOf('bbb2222')).toBeLessThan(t.indexOf('aaa1111'));
+    expect(t).toContain('[1/2]');
+    expect(t).toContain('指摘 3 件');
+    expect(t).toContain('7.5 秒');
+  });
+
+  it('読めないログ行があれば、その数を知らせる。無ければ、何も出さない', () => {
+    const t = text(hookSection(ui({ status: status({ log_unreadable: 3 }) }), true, [], noop, 'ja'));
+    expect(t).toContain('読めない行が 3 行あります');
+    expect(text(hookSection(ui(), true, [], noop, 'ja'))).not.toContain('読めない行');
+    expect(text(hookSection(ui({ status: status({ log_unreadable: 1 }) }), true, [], noop, 'en'))).toContain('1 unreadable line');
+  });
+
+  it('操作の失敗と、読み取りの失敗は、別々に出る（状態があるときも）', () => {
+    const both = text(hookSection(ui({ error: '設計書が要ります', loadError: '接続できません' }), true, [], noop, 'ja'));
+    expect(both).toContain('操作に失敗しました: 設計書が要ります');
+    expect(both).toContain('最新の状態を読み取れませんでした: 接続できません');
+    expect(text(hookSection(ui({ loadError: '接続できません' }), true, [], noop, 'ja'))).not.toContain('操作に失敗しました');
+    expect(text(hookSection({ ...newHookUi(), loadError: 'x' }, true, [], noop, 'ja'))).toContain('x');
+  });
+
+  it('実行ログの「更新」を押すと refresh が呼ばれる', () => {
+    let n = 0;
+    const el = hookSection(ui(), true, [], { ...noop, refresh: () => n++ }, 'ja');
+    btn(el, '更新').click();
+    expect(n).toBe(1);
   });
 
   it('英語でも出る', () => {
@@ -258,5 +325,66 @@ describe('観点のグルーピング', () => {
     const el = hookSection(ui(), true, ALL, noop, 'en');
     expect(el.querySelector('.hookgroup-head')!.textContent).toContain('Code');
     expect(text(el)).toContain('Select all');
+  });
+});
+
+const run = (over: Partial<HookRun> = {}): HookRun => ({
+  run: 'r1',
+  started_at_ms: 1_700_000_000_000,
+  commit: 'abc1234',
+  subject: '件名',
+  recipes: ['bugs', 'spec'],
+  steps: [
+    { recipe: 'bugs', index: 1, total: 2, ok: true, findings: 3, ms: 7500, error: null },
+    { recipe: 'spec', index: 2, total: 2, ok: true, findings: 0, ms: 4000, error: null },
+  ],
+  state: 'done',
+  code: 1,
+  message: 'レビュー完了（指摘あり 3 件）',
+  findings: 3,
+  ms: 11600,
+  ...over,
+});
+
+describe('runLogView', () => {
+  it('完了: コミット・状態・件数・全体の時間・各観点・終わりのメッセージ', () => {
+    const t = text(runLogView(run(), 'ja'));
+    expect(t).toContain('コミット abc1234「件名」');
+    expect(t).toContain('完了');
+    expect(t).toContain('指摘 3 件・11.6 秒');
+    expect(t).toContain('[1/2]');
+    expect(t).toContain('bugs');
+    expect(t).toContain('→ レビュー完了（指摘あり 3 件）');
+  });
+
+  it('失敗した観点は、理由つきで赤く出る。失敗した実行は、失敗の印が付く', () => {
+    const failed = run({
+      state: 'failed',
+      code: 2,
+      message: '一部の観点が失敗しました',
+      steps: [
+        { recipe: 'bugs', index: 1, total: 2, ok: true, findings: 1, ms: 1000, error: null },
+        { recipe: 'spec', index: 2, total: 2, ok: false, findings: 0, ms: 200, error: 'API キーがありません' },
+      ],
+    });
+    const el = runLogView(failed, 'ja');
+    expect(el.className).toContain('hookrun-failed');
+    expect(el.querySelector('.hookstep-failed')!.textContent).toContain('失敗: API キーがありません');
+    expect(text(el)).toContain('失敗');
+  });
+
+  it('実行中: まだ終わっていない次の観点が「実行中…」と出る。件数や時間は、まだ出さない', () => {
+    const running = run({ state: 'running', code: null, message: null, findings: null, ms: null, steps: [{ recipe: 'bugs', index: 1, total: 2, ok: true, findings: 3, ms: 7500, error: null }] });
+    const el = runLogView(running, 'ja');
+    expect(text(el)).toContain('実行中');
+    expect(el.querySelector('.hookstep-running')!.textContent).toContain('spec');
+    expect(el.querySelector('.hookstep-running')!.textContent).toContain('実行中…');
+    expect(el.querySelector('.hookrun-head')!.textContent).not.toContain('秒');
+  });
+
+  it('コミットの記録が無い従来の 1 行も、出せる。中断も、そう出る。英語でも出る', () => {
+    expect(text(runLogView(run({ commit: null, subject: null, steps: [] }), 'ja'))).toContain('コミットの記録なし');
+    expect(text(runLogView(run({ state: 'aborted' }), 'ja'))).toContain('中断');
+    expect(text(runLogView(run(), 'en'))).toContain('Commit abc1234 "件名"');
   });
 });

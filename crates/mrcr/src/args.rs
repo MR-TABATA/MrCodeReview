@@ -77,6 +77,20 @@ pub enum HookAction {
         #[arg(short = 'C', long, default_value = ".")]
         repo: PathBuf,
     },
+    /// 最近の実行の経過を見る（どのコミットを、どの観点で、いつ・何件・何秒で。実行中のものも出る）
+    Log {
+        /// 対象リポジトリのパス
+        #[arg(short = 'C', long, default_value = ".")]
+        repo: PathBuf,
+
+        /// 出す実行の数（新しい順）
+        #[arg(short = 'n', long, default_value_t = 5)]
+        count: usize,
+
+        /// 構造化した JSON で出す
+        #[arg(long)]
+        json: bool,
+    },
     /// 状態を見る（ON/OFF・観点・フックが入っているか・直近の実行の結果）
     Status {
         /// 対象リポジトリのパス
@@ -92,6 +106,10 @@ pub enum HookAction {
     Run {
         /// フックの名前（いまは post-commit だけ）
         name: String,
+
+        /// 経過を、標準エラーに出す（手で実行して、様子を見るとき。経過は、`hooks.log` には、いつも記録される）
+        #[arg(long)]
+        verbose: bool,
 
         /// 試験用: 外部 API を呼ばずにモック応答を使用する
         #[arg(long, hide = true)]
@@ -175,9 +193,9 @@ pub struct ReviewArgs {
     #[arg(short = 'b', long, default_value = "HEAD")]
     pub base: String,
 
-    /// 直近のコミット（HEAD~1..HEAD）だけをレビューする。未コミットの変更は含めない（post-commit のフック用）
-    #[arg(long, conflicts_with = "base")]
-    pub commit: bool,
+    /// コミット 1 つ（REV~1..REV）だけをレビューする。REV を省くと HEAD（直近のコミット）。未コミットの変更は含めない（post-commit のフック用）
+    #[arg(long, value_name = "REV", num_args = 0..=1, default_missing_value = "HEAD", conflicts_with = "base")]
+    pub commit: Option<String>,
 
     /// 出力形式 (md | json)
     #[arg(short = 'f', long, default_value = "md", value_parser = ["md", "json"])]

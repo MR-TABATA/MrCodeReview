@@ -495,6 +495,33 @@ export interface HookLastRun {
   message: string;
 }
 
+/** 実行の中の、観点 1 つの結果。 */
+export interface HookStep {
+  recipe: string;
+  index: number;
+  total: number;
+  ok: boolean;
+  findings: number;
+  ms: number;
+  error: string | null;
+}
+
+/** 1 回の実行（開始・観点ごとの結果・終了）。 */
+export interface HookRun {
+  run: string;
+  started_at_ms: number;
+  commit: string | null;
+  subject: string | null;
+  recipes: string[];
+  steps: HookStep[];
+  /** running（実行中）・done（完了）・failed（失敗）・aborted（終わりが記録されないまま止まった） */
+  state: 'running' | 'done' | 'failed' | 'aborted';
+  code: number | null;
+  message: string | null;
+  findings: number | null;
+  ms: number | null;
+}
+
 export interface HookStatus {
   repo: string;
   enabled: boolean;
@@ -504,9 +531,15 @@ export interface HookStatus {
   installed: boolean;
   /** いま見つかる mrcr（CLI）。無ければ null */
   cli: string | null;
+  /** フックのスクリプトに、実際に書かれている mrcr のパス（フックが入っていないときは null）。cli と違うことがある */
+  hook_cli: string | null;
   /** フックを置けない理由（husky など）。あれば、入れられない */
   blocked: string | null;
   /** フックは入っているが、呼ぶ mrcr が無く、代わりも見つからない（更新・削除で）。入れ直す必要がある */
   target_missing: boolean;
   last_run: HookLastRun | null;
+  /** 最近の実行（新しい順。途中経過つき） */
+  recent: HookRun[];
+  /** 実行ログの中で、読めなかった行の数（ほかのリポジトリの分を含む） */
+  log_unreadable: number;
 }

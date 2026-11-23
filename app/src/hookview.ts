@@ -10,7 +10,7 @@ import { h } from './dom';
 import { formatWhen } from './historyview';
 import { getAppLang, msg, type Lang } from './i18n';
 import { CODE_IDS, DOC_IDS, TERRAFORM_IDS } from './recipescope';
-import type { HookStatus, Recipe } from './types';
+import type { HookRun, HookStatus, Recipe } from './types';
 
 export const INSTALL_CMD = 'brew install mr-tabata/tap/mrcr';
 export const INSTALL_CMD_NPM = 'npm i -g @mr-tabata/mrcr';
@@ -22,10 +22,13 @@ export interface HookUiState {
   /** 画面で入れている設計書のパス。null なら、`status.spec` のまま（空文字は「指定なし」） */
   specDraft: string | null;
   busy: boolean;
+  /** 操作（ON/OFF・保存）の失敗。次の操作を始めるまで、残す（自動更新では、消さない） */
   error: string;
+  /** 状態の読み取りの失敗。次の読み取りが成功したら、消える */
+  loadError: string;
 }
 
-export const newHookUi = (): HookUiState => ({ status: null, draft: null, specDraft: null, busy: false, error: '' });
+export const newHookUi = (): HookUiState => ({ status: null, draft: null, specDraft: null, busy: false, error: '', loadError: '' });
 
 export interface HookActions {
   /** ON/OFF にする。観点と設計書は、いま画面にあるもの（設計書は、空なら null） */
@@ -34,6 +37,8 @@ export interface HookActions {
   save(recipes: string[], spec: string | null): void;
   /** 観点の選択が変わった（まだ保存しない） */
   pick(recipes: string[]): void;
+  /** 状態と実行ログを、いま読み直す（開いている間は、自動でも読み直される） */
+  refresh(): void;
 }
 
 /** フックで選べる観点。LLM の観点（linter は、フックでは走らせない）。設計書が要るものも含む（設計書を指定すれば使える）。 */
@@ -64,6 +69,50 @@ export function groupedRecipes(recipes: Recipe[]): { key: RecipeGroupKey; items:
   return order.map((key) => ({ key, items: recipes.filter((r) => groupOf(r) === key) })).filter((g) => g.items.length > 0);
 }
 
+/** 実行ログの 1 回ぶん（コミット・状態・観点ごとの結果・終了のメッセージ）。 */
+export function runLogView(r: HookRun, lang: Lang = getAppLang()): HTMLElement {
+  const m = msg(lang).hookUi;
+  const commit = r.commit ? m.runCommit(r.commit, r.subject ?? '') : m.runNoCommit;
+  const summary = m.runSummary(r.findings, r.ms === null ? null : m.secs(r.ms));
+  const rows = r.steps.map((st) =>
+    h(
+      'div',
+      { class: `hookstep${st.ok ? '' : ' hookstep-failed'}` },
+      h('span', { class: 'hookstep-pos' }, `[${st.index}/${st.total}]`),
+      h('code', { class: 'hookstep-recipe' }, st.recipe),
+      h('span', { class: 'hookstep-result' }, st.ok ? m.stepOk(st.findings) : `${m.stepFailed}${st.error ? `: ${st.error}` : ''}`),
+      h('span', { class: 'muted hookstep-time' }, m.secs(st.ms)),
+    ),
+  );
+  // 実行中は、次の観点が「実行中…」であることを見せる
+  if (r.state === 'running' && r.recipes.length > r.steps.length) {
+    const i = r.steps.length;
+    rows.push(
+      h(
+        'div',
+        { class: 'hookstep hookstep-running' },
+        h('span', { class: 'hookstep-pos' }, `[${i + 1}/${r.recipes.length}]`),
+        h('code', { class: 'hookstep-recipe' }, r.recipes[i]),
+        h('span', { class: 'hookstep-result' }, m.stepRunning),
+      ),
+    );
+  }
+  return h(
+    'div',
+    { class: `hookrun hookrun-${r.state}` },
+    h(
+      'div',
+      { class: 'hookrun-head' },
+      h('span', { class: 'muted' }, formatWhen(r.started_at_ms, lang)),
+      h('strong', { class: 'hookrun-commit' }, commit),
+      h('span', { class: `hookrun-state hookrun-state-${r.state}` }, m.runState(r.state)),
+      summary ? h('span', { class: 'muted' }, summary) : null,
+    ),
+    ...rows,
+    r.message ? h('div', { class: r.state === 'failed' ? 'err hookrun-msg' : 'muted hookrun-msg' }, `→ ${r.message}`) : null,
+  );
+}
+
 /** 「ON にする」を押せない理由（押せるなら null）。表示用の文は、呼び出し側が出す。 */
 export function enableBlock(st: HookUiState): 'busy' | 'cli' | 'blocked' | 'no-recipes' | null {
   const s = st.status;
@@ -75,12 +124,22 @@ export function enableBlock(st: HookUiState): 'busy' | 'cli' | 'blocked' | 'no-r
   return null;
 }
 
+/** 「フックが呼び出す mrcr」の行。入っているときは、フックに**実際に書かれている**パス（いま見つかるものと違えば、その注記も）。入っていなければ、ON にしたときに使うもの。 */
+function cliLines(s: HookStatus, m: ReturnType<typeof msg>['hookUi']): HTMLElement[] {
+  if (s.installed && s.hook_cli) {
+    const lines = [h('p', { class: 'muted' }, m.cliPath(s.hook_cli))];
+    if (s.cli && s.cli !== s.hook_cli) lines.push(h('p', { class: 'muted' }, m.cliDiffers(s.cli)));
+    return lines;
+  }
+  return [s.cli ? h('p', { class: 'muted' }, m.cliWillUse(s.cli)) : h('p', { class: 'err' }, m.cliMissing(INSTALL_CMD, INSTALL_CMD_NPM))];
+}
+
 export function hookSection(st: HookUiState, repoSelected: boolean, recipes: Recipe[], act: HookActions, lang: Lang = getAppLang()): HTMLElement {
   const m = msg(lang).hookUi;
   const head = [h('h3', {}, m.title), h('p', { class: 'muted' }, m.desc)];
   if (!repoSelected) return h('section', { class: 'sgroup hookview' }, ...head, h('p', { class: 'muted' }, m.noRepo));
-  if (st.error && !st.status) return h('section', { class: 'sgroup hookview' }, ...head, h('p', { class: 'err' }, m.failed(st.error)));
   const s = st.status;
+  if (!s && (st.error || st.loadError)) return h('section', { class: 'sgroup hookview' }, ...head, h('p', { class: 'err' }, m.failed(st.error || st.loadError)));
   if (!s) return h('section', { class: 'sgroup hookview' }, ...head, h('p', { class: 'muted' }, m.loading));
 
   const chosen = currentRecipes(st);
@@ -160,22 +219,24 @@ export function hookSection(st: HookUiState, repoSelected: boolean, recipes: Rec
     ? h('button', { class: 'primary hooksave', disabled: st.busy || chosen.length === 0, onclick: () => act.save(chosen, specNow()) }, m.saveRecipes)
     : null;
 
-  const last = s.last_run;
+  const runs = s.recent ?? [];
   return h(
     'section',
     { class: 'sgroup hookview' },
     ...head,
     h('div', { class: 'hookstate' }, toggle, h('strong', {}, s.enabled ? m.stateOn : m.stateOff), st.busy ? h('span', { class: 'muted' }, m.busy) : null, saveBtn),
     h('p', { class: 'muted' }, s.installed ? m.installedYes : m.installedNo),
-    !s.cli ? h('p', { class: 'err' }, m.cliMissing(INSTALL_CMD, INSTALL_CMD_NPM)) : h('p', { class: 'muted' }, m.cliPath(s.cli)),
+    ...cliLines(s, m),
     s.blocked ? h('p', { class: 'err' }, m.blocked(s.blocked)) : null,
     s.target_missing ? h('p', { class: 'err' }, m.targetMissing) : null,
     h('div', { class: 'hookrecipes' }, h('h4', {}, m.recipesLabel), ...boxes, h('p', { class: 'muted' }, m.recipesNote)),
     h('div', { class: 'hookspecbox' }, h('h4', {}, m.specLabel), specInput, h('p', { class: 'muted' }, m.specHint)),
     st.error ? h('p', { class: 'err' }, m.failed(st.error)) : null,
+    st.loadError ? h('p', { class: 'err' }, m.refreshFailed(st.loadError)) : null,
     h('p', { class: 'muted' }, m.costNote),
     h('p', { class: 'muted' }, m.keyNote),
-    h('h4', {}, m.lastRunTitle),
-    last ? h('p', { class: last.code === 2 ? 'err' : '' }, m.lastRun(last.code, formatWhen(last.at_ms, lang), last.message)) : h('p', { class: 'muted' }, m.lastRunNone),
+    h('div', { class: 'hookruns-head' }, h('h4', {}, m.lastRunTitle), h('button', { class: 'small', disabled: st.busy, onclick: () => act.refresh() }, m.refresh)),
+    s.log_unreadable > 0 ? h('p', { class: 'err hooklog-unreadable' }, m.logUnreadable(s.log_unreadable)) : null,
+    runs.length ? h('div', { class: 'hookruns' }, ...runs.map((r) => runLogView(r, lang))) : h('p', { class: 'muted' }, m.lastRunNone),
   );
 }

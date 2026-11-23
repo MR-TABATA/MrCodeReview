@@ -527,35 +527,69 @@ async function openSettings(): Promise<void> {
   if (state.settings) render();
 }
 
-/** Git フック（post-commit）の状態を読む。リポジトリが選ばれていないときは、何もしない。 */
+let hookPollTimer: ReturnType<typeof setTimeout> | undefined;
+/** 操作（ON/OFF・保存）のたびに進める。操作より前に始めた読み取りの結果で、操作の結果を上書きしないため。 */
+let hookEpoch = 0;
+
+/** 設定を開いている間、Git フックの状態と実行ログを読み直す（実行中は 2 秒ごと、それ以外は 8 秒ごと）。閉じたら止まる。 */
+function scheduleHookPoll(): void {
+  if (hookPollTimer !== undefined) {
+    clearTimeout(hookPollTimer);
+    hookPollTimer = undefined;
+  }
+  if (!state.settings || !state.repo) return;
+  const running = state.hook.status?.recent?.some((r) => r.state === 'running') ?? false;
+  hookPollTimer = setTimeout(() => {
+    hookPollTimer = undefined;
+    void loadHook();
+  }, running ? 2000 : 8000);
+}
+
+/** Git フック（post-commit）の状態と実行ログを読む。リポジトリが選ばれていない・設定を閉じたときは、何もしない。 */
 async function loadHook(): Promise<void> {
   const repo = state.repo;
-  if (!repo) return;
+  if (!repo || !state.settings) return;
+  const epoch = hookEpoch;
+  const before = JSON.stringify([state.hook.status, state.hook.loadError]);
+  let status: HookStatus | null = null;
+  let error = '';
   try {
-    state.hook.status = await invoke<HookStatus>('hook_status', { repo });
-    state.hook.error = '';
+    status = await invoke<HookStatus>('hook_status', { repo });
   } catch (e) {
-    state.hook.error = String(e);
+    error = String(e);
   }
-  if (state.settings) render();
+  if (epoch !== hookEpoch || !state.settings) {
+    scheduleHookPoll(); // 読んでいる間に、操作があった・閉じた。古い結果は、捨てる
+    return;
+  }
+  if (status) state.hook.status = status;
+  // 読み取りのエラーだけを書き換える。操作（ON/OFF・保存）の失敗（state.hook.error）は、自動更新が成功しても、消さない
+  state.hook.loadError = error;
+  // 変わったときだけ描き直す（入力中の欄を、定期の読み直しで邪魔しない）
+  if (JSON.stringify([state.hook.status, state.hook.loadError]) !== before) render();
+  scheduleHookPoll();
 }
 
 /** Git フックの ON/OFF と観点を変える（ON なら、フックを入れる。失敗したら、理由を見せて、状態はそのまま）。 */
 async function setHook(enabled: boolean, recipes: string[], spec: string | null): Promise<void> {
   const repo = state.repo;
-  if (!repo || state.hook.busy) return;
-  state.hook.busy = true;
-  state.hook.error = '';
+  const ui = state.hook; // 始めたときの入れ物。待っているあいだに、リポジトリが変わっても（入れ物が作り直されても）、結果は、こちらにだけ書く
+  if (!repo || ui.busy) return;
+  hookEpoch++;
+  ui.busy = true;
+  ui.error = '';
   render();
   try {
-    state.hook.status = await invoke<HookStatus>('hook_set', { repo, enabled, recipes, spec });
-    state.hook.draft = null;
-    state.hook.specDraft = null;
+    ui.status = await invoke<HookStatus>('hook_set', { repo, enabled, recipes, spec });
+    ui.draft = null;
+    ui.specDraft = null;
   } catch (e) {
-    state.hook.error = String(e);
+    ui.error = String(e);
   }
-  state.hook.busy = false;
-  if (state.settings) render();
+  ui.busy = false;
+  hookEpoch++;
+  if (state.settings && state.hook === ui) render();
+  scheduleHookPoll();
 }
 
 /** BYOK の状態を読む（キーの有無と末尾 4 文字・モデル名・最大出力トークン）。入力中の欄は、読み直した値に合わせる。 */
@@ -1031,6 +1065,13 @@ async function changeRepo(repo: string): Promise<void> {
   state.tab = 'findings';
   state.topOpen = null;
   state.runError = '';
+  // 設定を開いているあいだに、リポジトリが変わったとき: Git フックの状態は、前のリポジトリのもの（または、まだ読んでいない）。
+  // 作り直して、読み直す（前のリポジトリについて、読んでいる途中の結果は、世代番号で捨てる）
+  if (state.settings) {
+    hookEpoch++;
+    state.hook = newHookUi();
+    void loadHook();
+  }
   await refreshHistory();
   await refreshPreview();
 }
@@ -3084,6 +3125,7 @@ function detailView(): HTMLElement {
             state.hook.draft = recipes;
             render();
           },
+          refresh: () => void loadHook(),
         },
         settingsLang,
       ),
@@ -3324,4 +3366,4 @@ if (import.meta.env?.MODE !== 'test') {
   void boot();
 }
 
-export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings };
+export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings, changeRepo };

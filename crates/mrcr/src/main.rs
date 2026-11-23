@@ -169,9 +169,13 @@ fn run_review(args: ReviewArgs) -> i32 {
         }
     };
 
-    let base_label = if args.commit { "直近のコミット".to_string() } else { args.base.clone() };
-    let taken = if args.commit {
-        snapshot::take_last_commit(&repo_str, &snapshot::Limits::default())
+    let base_label = match args.commit.as_deref() {
+        Some("HEAD") => "直近のコミット".to_string(),
+        Some(rev) => format!("コミット {}", rev.chars().take(12).collect::<String>()),
+        None => args.base.clone(),
+    };
+    let taken = if let Some(rev) = args.commit.as_deref() {
+        snapshot::take_commit(&repo_str, &snapshot::Limits::default(), rev)
     } else {
         snapshot::take_with_base(&repo_str, &snapshot::Limits::default(), Some(&args.base))
     };

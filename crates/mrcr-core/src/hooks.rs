@@ -21,8 +21,10 @@ pub const DEFAULT_RECIPES: &[&str] = &["bugs"];
 
 const BEGIN: &str = "# >>> mrcr hook (MrCodeReview が管理。この範囲は、書き換えないでください) >>>";
 const END: &str = "# <<< mrcr hook <<<";
-const LOG_MAX_BYTES: u64 = 256 * 1024;
-const LOG_KEEP_LINES: usize = 200;
+const LOG_MAX_BYTES: u64 = 512 * 1024;
+const LOG_KEEP_LINES: usize = 1500;
+/// 開始のあと、終わりが書かれないまま、これだけ過ぎた実行は「中断」とみなす（プロセスが落ちた・止められた、など）
+const STALE_RUNNING_MS: u64 = 30 * 60 * 1000;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -326,11 +328,17 @@ pub struct Status {
     pub installed: bool,
     /// いま見つかる `mrcr`（無ければ、画面で案内する）
     pub cli: Option<String>,
+    /// フックのスクリプトに、実際に書かれている `mrcr` のパス（フックが入っていないときは `None`）。`cli` と違うことがある
+    pub hook_cli: Option<String>,
     /// フックの置き場に書けない理由（husky など）。あれば、入れられない
     pub blocked: Option<String>,
     /// フックは入っているが、記録した `mrcr` が無く、代わりに使える `mrcr` も見つからない（更新・削除で）。入れ直す必要がある
     pub target_missing: bool,
     pub last_run: Option<LastRun>,
+    /// 最近の実行（新しい順。途中経過つき）
+    pub recent: Vec<RunLog>,
+    /// 実行ログの中で、読めなかった行の数（0 でなければ、画面で知らせる。ほかのリポジトリの分を含む）
+    pub log_unreadable: usize,
 }
 
 pub fn status(dir: &Path, repo: &str) -> Result<Status, String> {
@@ -338,6 +346,7 @@ pub fn status(dir: &Path, repo: &str) -> Result<Status, String> {
     let cfg = load(dir)?;
     let entry = cfg.post_commit.get(&key);
     let cli = find_cli();
+    let log_lines = read_lines(dir, &key); // ログは、1 回だけ読む（前回から変わっていなければ、読み直さない）
     let (installed, blocked, recorded) = match hooks_dir(Path::new(&key)) {
         Ok(h) => {
             let text = std::fs::read_to_string(h.join(HOOK_NAME)).ok().filter(|t| has_block(t));
@@ -353,9 +362,12 @@ pub fn status(dir: &Path, repo: &str) -> Result<Status, String> {
         spec: entry.and_then(|e| e.spec.clone()),
         installed,
         cli: cli.map(|p| p.to_string_lossy().into_owned()),
+        hook_cli: recorded.as_ref().map(|p| p.to_string_lossy().into_owned()),
         blocked,
         target_missing,
-        last_run: last_run(dir, &key),
+        last_run: last_run_from(&log_lines),
+        recent: runs_from(log_lines, 5, now_ms()),
+        log_unreadable: log_unreadable(dir),
     })
 }
 
@@ -380,13 +392,21 @@ pub fn set(dir: &Path, repo: &str, enabled: bool, recipes: &[String], spec: Opti
     cfg.post_commit.insert(key.clone(), RepoHook { enabled, recipes: recipes.to_vec(), spec: spec.map(|s| s.to_string()) });
     if let Err(e) = save(dir, &cfg) {
         if enabled {
-            if let Ok(h) = hook_dir_quiet(&key) {
-                let _ = uninstall_block(&h);
-            }
+            // 入れたフックを外す。外せなかったときは、その旨も伝える（フックだけが残ると、設定は OFF のまま、コミットのたびに動く）
+            let rollback = hook_dir_quiet(&key).and_then(|h| uninstall_block(&h).map(|_| ()));
+            return Err(with_rollback_result(e, rollback));
         }
         return Err(e);
     }
     status(dir, &key)
+}
+
+/// 設定の保存に失敗したときのエラーに、フックを外せたかどうかを添える。外せなかったときだけ、手で消す方法まで書く。
+fn with_rollback_result(save_error: String, rollback: Result<(), String>) -> String {
+    match rollback {
+        Ok(()) => save_error,
+        Err(re) => format!("{save_error}（入れたフックを外せませんでした: {re}。`.git/hooks/post-commit` の `mrcr hook` の範囲を、手で消してください）"),
+    }
 }
 
 fn hook_dir_quiet(key: &str) -> Result<PathBuf, String> {
@@ -397,41 +417,317 @@ fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
-#[derive(Serialize, Deserialize)]
+/// `hooks.log` の 1 行（JSON）。使わない項目は書かない。
+/// - `kind` が無く `code` がある行は、従来の「終了」の 1 行（途中経過を記録する前の版が書いたもの・早い段階の失敗）。
+/// - `kind` が `start` / `recipe` / `end` の行は、`run`（実行の識別子）でまとめて、1 回の実行になる。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct LogLine {
     at_ms: u64,
     repo: String,
-    code: i32,
-    message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    run: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    subject: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recipes: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recipe: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    total: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    findings: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ok: Option<bool>,
 }
 
-/// 実行結果を `hooks.log`（1 行 1 件の JSON）に足す。大きくなったら、新しい側だけ残す。
-pub fn append_log(dir: &Path, repo: &str, code: i32, message: &str) -> Result<(), String> {
+fn write_line(dir: &Path, line: &LogLine) -> Result<(), String> {
     use std::io::Write;
     std::fs::create_dir_all(dir).map_err(|e| format!("データの置き場を作れません: {e}"))?;
     let p = dir.join(LOG);
-    let line = serde_json::to_string(&LogLine { at_ms: now_ms(), repo: repo.into(), code, message: message.chars().take(500).collect() })
-        .map_err(|e| format!("ログを書き出せません: {e}"))?;
+    let text = serde_json::to_string(line).map_err(|e| format!("ログを書き出せません: {e}"))?;
     let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&p).map_err(|e| format!("ログを開けません（{}）: {e}", p.display()))?;
-    writeln!(f, "{line}").map_err(|e| format!("ログを書けません: {e}"))?;
+    writeln!(f, "{text}").map_err(|e| format!("ログを書けません: {e}"))?;
     if std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0) > LOG_MAX_BYTES {
-        if let Ok(text) = std::fs::read_to_string(&p) {
-            let lines: Vec<&str> = text.lines().collect();
-            let keep = lines[lines.len().saturating_sub(LOG_KEEP_LINES)..].join("\n") + "\n";
-            let _ = std::fs::write(&p, keep);
+        if let Ok(all) = std::fs::read_to_string(&p) {
+            // 新しい側から、行数と大きさの**両方**の範囲で残す。大きさ（上限の半分）でも切るのは、1 行が長いと、行数だけでは、
+            // 切り詰めたあとも上限を超えたままになり、書き込むたびに、全体を書き直すことになるため
+            let mut kept: Vec<&str> = Vec::new();
+            let mut bytes = 0usize;
+            for l in all.lines().rev() {
+                if kept.len() >= LOG_KEEP_LINES || bytes + l.len() + 1 > (LOG_MAX_BYTES as usize) / 2 {
+                    break;
+                }
+                bytes += l.len() + 1;
+                kept.push(l);
+            }
+            kept.reverse();
+            let _ = std::fs::write(&p, kept.join("\n") + "\n");
         }
     }
     Ok(())
 }
 
-/// そのリポジトリの、最新の実行結果（無ければ `None`。読めない行は飛ばす）。
+fn cut(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
+}
+
+/// 従来の形の「終了」の 1 行（リポジトリを特定できない・設定を読めない、など、実行を始める前の失敗）。
+pub fn append_log(dir: &Path, repo: &str, code: i32, message: &str) -> Result<(), String> {
+    write_line(dir, &LogLine { at_ms: now_ms(), repo: repo.into(), code: Some(code), message: Some(cut(message, 500)), ..Default::default() })
+}
+
+/// 実行の識別子（時刻とプロセス番号）。
+pub fn new_run_id() -> String {
+    format!("{}-{}", now_ms(), std::process::id())
+}
+
+/// 実行の開始: どのコミットを、どの観点で見るか。
+pub fn log_start(dir: &Path, repo: &str, run: &str, commit: &str, subject: &str, recipes: &[String]) -> Result<(), String> {
+    write_line(
+        dir,
+        &LogLine {
+            at_ms: now_ms(),
+            repo: repo.into(),
+            run: Some(run.into()),
+            kind: Some("start".into()),
+            commit: Some(cut(commit, 40)),
+            subject: Some(cut(subject, 200)),
+            recipes: Some(recipes.to_vec()),
+            ..Default::default()
+        },
+    )
+}
+
+/// 観点 1 つの完了（成功も失敗も）。
+#[allow(clippy::too_many_arguments)]
+pub fn log_step(dir: &Path, repo: &str, run: &str, recipe: &str, index: usize, total: usize, ok: bool, findings: usize, ms: u64, error: Option<&str>) -> Result<(), String> {
+    write_line(
+        dir,
+        &LogLine {
+            at_ms: now_ms(),
+            repo: repo.into(),
+            run: Some(run.into()),
+            kind: Some("recipe".into()),
+            recipe: Some(recipe.into()),
+            index: Some(index),
+            total: Some(total),
+            ok: Some(ok),
+            findings: Some(findings),
+            ms: Some(ms),
+            message: error.map(|e| cut(e, 300)),
+            ..Default::default()
+        },
+    )
+}
+
+/// 実行の終了。0=指摘なし・1=指摘あり・2=失敗（一部の観点の失敗を含む）。
+pub fn log_end(dir: &Path, repo: &str, run: &str, code: i32, message: &str, findings: usize, ms: u64) -> Result<(), String> {
+    write_line(
+        dir,
+        &LogLine {
+            at_ms: now_ms(),
+            repo: repo.into(),
+            run: Some(run.into()),
+            kind: Some("end".into()),
+            code: Some(code),
+            message: Some(cut(message, 500)),
+            findings: Some(findings),
+            ms: Some(ms),
+            ..Default::default()
+        },
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StepLog {
+    pub recipe: String,
+    pub index: usize,
+    pub total: usize,
+    pub ok: bool,
+    pub findings: usize,
+    pub ms: u64,
+    pub error: Option<String>,
+}
+
+/// 1 回の実行（開始・観点ごとの結果・終了を、`run` でまとめたもの）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RunLog {
+    pub run: String,
+    pub started_at_ms: u64,
+    pub commit: Option<String>,
+    pub subject: Option<String>,
+    pub recipes: Vec<String>,
+    pub steps: Vec<StepLog>,
+    /// `running`（実行中）・`done`（完了）・`failed`（失敗）・`aborted`（終わりが書かれないまま止まった）
+    pub state: String,
+    pub code: Option<i32>,
+    pub message: Option<String>,
+    pub findings: Option<usize>,
+    pub ms: Option<u64>,
+}
+
+/// ログ全体を解析した結果。`unreadable` は、JSON として読めなかった行の数（どのリポジトリの行かは、分からない）。
+struct ParsedLog {
+    lines: Vec<LogLine>,
+    unreadable: usize,
+}
+
+type LogCacheEntry = (PathBuf, std::time::SystemTime, u64, std::sync::Arc<ParsedLog>);
+static LOG_CACHE: std::sync::Mutex<Vec<LogCacheEntry>> = std::sync::Mutex::new(Vec::new());
+const LOG_CACHE_ENTRIES: usize = 32;
+
+/// ログ全体を解析する。**ファイルの更新時刻と大きさが前回と同じなら、読み直さない**
+/// （設定画面が 2〜8 秒ごとに読むので、変わっていないあいだは、ファイルの情報を見るだけで済ませる）。
+/// 読めなかった行は、捨てるが、数える（`unreadable`）。
+fn parsed_log(dir: &Path) -> std::sync::Arc<ParsedLog> {
+    let p = dir.join(LOG);
+    let stamp = std::fs::metadata(&p).ok().and_then(|m| m.modified().ok().map(|t| (t, m.len())));
+    if let Some((t, len)) = stamp {
+        if let Ok(cache) = LOG_CACHE.lock() {
+            if let Some(e) = cache.iter().find(|e| e.0 == p && e.1 == t && e.2 == len) {
+                return e.3.clone();
+            }
+        }
+    }
+    let text = std::fs::read_to_string(&p).unwrap_or_default();
+    let mut lines = Vec::new();
+    let mut unreadable = 0usize;
+    for l in text.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<LogLine>(l) {
+            Ok(x) => lines.push(x),
+            Err(_) => unreadable += 1,
+        }
+    }
+    let parsed = std::sync::Arc::new(ParsedLog { lines, unreadable });
+    if let Some((t, len)) = stamp {
+        if let Ok(mut cache) = LOG_CACHE.lock() {
+            cache.retain(|e| e.0 != p);
+            if cache.len() >= LOG_CACHE_ENTRIES {
+                cache.remove(0);
+            }
+            cache.push((p, t, len, parsed.clone()));
+        }
+    }
+    parsed
+}
+
+fn read_lines(dir: &Path, repo: &str) -> Vec<LogLine> {
+    parsed_log(dir).lines.iter().filter(|l| l.repo == repo).cloned().collect()
+}
+
+/// 実行ログの中の、読めなかった行の数（壊れた行・知らない形の行。どのリポジトリの分かは、分からない）。
+pub fn log_unreadable(dir: &Path) -> usize {
+    parsed_log(dir).unreadable
+}
+
+fn state_of(code: Option<i32>) -> String {
+    if code == Some(2) { "failed".into() } else { "done".into() }
+}
+
+/// そのリポジトリの、最近の実行（新しい順）。読めない行は飛ばす。従来の 1 行（途中経過なし）も、1 回の実行として出す。
+pub fn recent_runs(dir: &Path, repo: &str, limit: usize) -> Vec<RunLog> {
+    recent_runs_at(dir, repo, limit, now_ms())
+}
+
+fn recent_runs_at(dir: &Path, repo: &str, limit: usize, now: u64) -> Vec<RunLog> {
+    runs_from(read_lines(dir, repo), limit, now)
+}
+
+/// 読んだ行から、最近の実行を作る（ファイルは、呼び出し側が 1 回だけ読む）。
+fn runs_from(lines: Vec<LogLine>, limit: usize, now: u64) -> Vec<RunLog> {
+    let mut runs: Vec<RunLog> = Vec::new();
+    let blank = |id: String, at: u64| RunLog {
+        run: id,
+        started_at_ms: at,
+        commit: None,
+        subject: None,
+        recipes: Vec::new(),
+        steps: Vec::new(),
+        state: "running".into(),
+        code: None,
+        message: None,
+        findings: None,
+        ms: None,
+    };
+    for l in lines {
+        let Some(id) = l.run.clone() else {
+            // 従来の 1 行
+            if l.code.is_some() {
+                let mut r = blank(format!("legacy-{}", l.at_ms), l.at_ms);
+                r.state = state_of(l.code);
+                r.code = l.code;
+                r.message = l.message;
+                runs.push(r);
+            }
+            continue;
+        };
+        let pos = match runs.iter().position(|r| r.run == id) {
+            Some(i) => i,
+            None => {
+                runs.push(blank(id, l.at_ms));
+                runs.len() - 1
+            }
+        };
+        let r = &mut runs[pos];
+        match l.kind.as_deref() {
+            Some("start") => {
+                r.started_at_ms = l.at_ms;
+                r.commit = l.commit;
+                r.subject = l.subject;
+                r.recipes = l.recipes.unwrap_or_default();
+            }
+            Some("recipe") => r.steps.push(StepLog {
+                recipe: l.recipe.unwrap_or_default(),
+                index: l.index.unwrap_or(0),
+                total: l.total.unwrap_or(0),
+                ok: l.ok.unwrap_or(false),
+                findings: l.findings.unwrap_or(0),
+                ms: l.ms.unwrap_or(0),
+                error: l.message,
+            }),
+            Some("end") => {
+                r.state = state_of(l.code);
+                r.code = l.code;
+                r.message = l.message;
+                r.findings = l.findings;
+                r.ms = l.ms;
+            }
+            _ => {}
+        }
+    }
+    for r in &mut runs {
+        if r.state == "running" && now.saturating_sub(r.started_at_ms) > STALE_RUNNING_MS {
+            r.state = "aborted".into();
+        }
+    }
+    runs.reverse();
+    runs.truncate(limit);
+    runs
+}
+
+/// そのリポジトリの、最新の実行結果（無ければ `None`）。実行中のもの（終わりが無いもの）は、数えない。
 pub fn last_run(dir: &Path, repo: &str) -> Option<LastRun> {
-    let text = std::fs::read_to_string(dir.join(LOG)).ok()?;
-    text.lines()
+    last_run_from(&read_lines(dir, repo))
+}
+
+fn last_run_from(lines: &[LogLine]) -> Option<LastRun> {
+    lines
+        .iter()
         .rev()
-        .filter_map(|l| serde_json::from_str::<LogLine>(l).ok())
-        .find(|l| l.repo == repo)
-        .map(|l| LastRun { at_ms: l.at_ms, code: l.code, message: l.message })
+        .find(|l| l.code.is_some() && (l.kind.is_none() || l.kind.as_deref() == Some("end")))
+        .map(|l| LastRun { at_ms: l.at_ms, code: l.code.unwrap_or(2), message: l.message.clone().unwrap_or_default() })
 }
 
 #[cfg(test)]
@@ -764,5 +1060,253 @@ mod tests {
         assert_eq!(c.post_commit["/r"].spec, None);
         save(&d, &c).unwrap();
         assert!(!std::fs::read_to_string(path(&d)).unwrap().contains("spec"), "無いときは、書き出さない");
+    }
+
+    #[test]
+    fn a_run_is_grouped_from_start_steps_and_end() {
+        let d = tmp("runs");
+        let rs = vec!["bugs".to_string(), "spec".to_string()];
+        log_start(&d, "/r", "run1", "abc1234", "件名です", &rs).unwrap();
+        log_step(&d, "/r", "run1", "bugs", 1, 2, true, 4, 7000, None).unwrap();
+        log_step(&d, "/r", "run1", "spec", 2, 2, false, 0, 100, Some("エラー: LLM 失敗")).unwrap();
+        log_end(&d, "/r", "run1", 2, "一部の観点が失敗しました", 4, 7200).unwrap();
+        let runs = recent_runs(&d, "/r", 5);
+        assert_eq!(runs.len(), 1);
+        let r = &runs[0];
+        assert_eq!((r.commit.as_deref(), r.subject.as_deref()), (Some("abc1234"), Some("件名です")));
+        assert_eq!(r.recipes, rs);
+        assert_eq!(r.steps.len(), 2);
+        assert_eq!((r.steps[0].recipe.as_str(), r.steps[0].findings, r.steps[0].ok), ("bugs", 4, true));
+        assert_eq!((r.steps[1].ok, r.steps[1].error.as_deref()), (false, Some("エラー: LLM 失敗")));
+        assert_eq!((r.state.as_str(), r.code, r.findings, r.ms), ("failed", Some(2), Some(4), Some(7200)));
+    }
+
+    #[test]
+    fn a_run_without_an_end_is_running_then_aborted_when_it_is_old() {
+        let d = tmp("running");
+        log_start(&d, "/r", "run1", "abc", "x", &["bugs".to_string()]).unwrap();
+        log_step(&d, "/r", "run1", "bugs", 1, 3, true, 1, 10, None).unwrap();
+        let now = now_ms();
+        assert_eq!(recent_runs_at(&d, "/r", 5, now)[0].state, "running");
+        assert_eq!(recent_runs_at(&d, "/r", 5, now + STALE_RUNNING_MS + 60_000)[0].state, "aborted");
+        assert!(last_run(&d, "/r").is_none(), "終わっていない実行は、最新の結果に数えない");
+    }
+
+    #[test]
+    fn runs_are_newest_first_limited_per_repo_and_legacy_lines_are_runs_too() {
+        let d = tmp("order");
+        append_log(&d, "/r", 1, "従来の 1 行").unwrap();
+        for i in 0..3 {
+            let id = format!("run{i}");
+            log_start(&d, "/r", &id, &format!("c{i}"), "s", &["bugs".to_string()]).unwrap();
+            log_end(&d, "/r", &id, 0, "完了", 0, 1).unwrap();
+        }
+        log_start(&d, "/other", "o", "zzz", "s", &[]).unwrap();
+        let runs = recent_runs(&d, "/r", 3);
+        assert_eq!(runs.iter().map(|r| r.commit.clone().unwrap_or_default()).collect::<Vec<_>>(), vec!["c2", "c1", "c0"], "新しい順で、件数を絞る");
+        let all = recent_runs(&d, "/r", 10);
+        assert_eq!(all.len(), 4);
+        assert_eq!((all[3].message.as_deref(), all[3].state.as_str(), all[3].commit.as_deref()), (Some("従来の 1 行"), "done", None));
+        assert!(all.iter().all(|r| r.commit.as_deref() != Some("zzz")), "別のリポジトリの実行は、出さない");
+        assert_eq!(last_run(&d, "/r").unwrap().message, "完了");
+    }
+
+    #[test]
+    fn broken_lines_and_unknown_fields_in_the_log_do_not_break_reading() {
+        let d = tmp("broken");
+        log_start(&d, "/r", "run1", "abc", "x", &["bugs".to_string()]).unwrap();
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(d.join(LOG)).unwrap();
+        writeln!(f, "壊れた行").unwrap();
+        writeln!(f, r#"{{"at_ms":1,"repo":"/r","run":"run1","kind":"future-kind","new_field":1}}"#).unwrap();
+        log_end(&d, "/r", "run1", 0, "完了", 0, 5).unwrap();
+        let runs = recent_runs(&d, "/r", 5);
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].state, "done");
+    }
+
+    #[test]
+    fn a_failing_save_rolls_the_hook_back_and_the_error_says_whether_that_worked() {
+        let _lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let (_g, r) = git_repo("rollback");
+        let data = tmp("rollbackdata");
+        let cli = data.join("mrcr");
+        std::fs::write(&cli, "#!/bin/sh\n").unwrap();
+        std::env::set_var("MRCR_CLI", &cli);
+        // 設定の一時ファイルの場所を、フォルダでふさぐ → 保存だけが失敗する
+        std::fs::create_dir_all(data.join("hooks.json.tmp")).unwrap();
+
+        let err = set(&data, r.to_str().unwrap(), true, &["bugs".into()], None).unwrap_err();
+        assert!(err.contains("設定を書けません") || err.contains("hooks.json"), "{err}");
+        assert!(!err.contains("外せませんでした"), "巻き戻せたときは、その旨を足さない: {err}");
+        assert!(!r.join(".git/hooks/post-commit").exists(), "保存に失敗したら、入れたフックは、残さない");
+        assert!(!path(&data).exists(), "設定も、作らない");
+        std::env::remove_var("MRCR_CLI");
+    }
+
+    #[test]
+    fn the_save_error_says_when_the_rollback_failed_and_how_to_remove_the_hook_by_hand() {
+        assert_eq!(with_rollback_result("保存できません".into(), Ok(())), "保存できません");
+        let m = with_rollback_result("保存できません".into(), Err("権限がありません".into()));
+        assert!(m.starts_with("保存できません"), "{m}");
+        assert!(m.contains("外せませんでした: 権限がありません"), "{m}");
+        assert!(m.contains(".git/hooks/post-commit"), "手で消す場所を、教える: {m}");
+    }
+
+    #[test]
+    fn a_subject_with_newlines_and_quotes_keeps_every_log_entry_on_one_line_and_round_trips() {
+        let d = tmp("subject");
+        let subject = "1 行目\n2 行目 \"引用\" \\ バックスラッシュ 日本語";
+        log_start(&d, "/r", "run1", "abc", subject, &["bugs".to_string()]).unwrap();
+        log_end(&d, "/r", "run1", 0, "完了", 0, 1).unwrap();
+        let text = std::fs::read_to_string(d.join(LOG)).unwrap();
+        assert_eq!(text.lines().count(), 2, "改行を含んでも、1 件が 1 行のまま: {text}");
+        assert_eq!(recent_runs(&d, "/r", 5)[0].subject.as_deref(), Some(subject));
+    }
+
+    #[test]
+    fn reading_the_log_only_picks_that_repository_even_with_similar_or_quoted_paths() {
+        let d = tmp("logfilter");
+        for (repo, id) in [("/r", "a"), ("/r2", "b"), ("/r\"x", "c"), ("/日本/リポ", "d")] {
+            log_start(&d, repo, id, id, "s", &[]).unwrap();
+            log_end(&d, repo, id, 0, "完了", 0, 1).unwrap();
+        }
+        for (repo, id) in [("/r", "a"), ("/r2", "b"), ("/r\"x", "c"), ("/日本/リポ", "d")] {
+            let runs = recent_runs(&d, repo, 10);
+            assert_eq!(runs.len(), 1, "{repo}");
+            assert_eq!(runs[0].commit.as_deref(), Some(id), "{repo}");
+        }
+    }
+
+    #[test]
+    fn status_reads_the_log_for_both_the_last_run_and_the_recent_runs() {
+        let _lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let (_g, r) = git_repo("statuslog");
+        let data = tmp("statuslogdata");
+        let key = repo_key(r.to_str().unwrap()).unwrap();
+        log_start(&data, &key, "run1", "abc", "件名", &["bugs".to_string()]).unwrap();
+        log_end(&data, &key, "run1", 1, "レビュー完了（指摘あり 2 件）", 2, 5).unwrap();
+        let s = status(&data, r.to_str().unwrap()).unwrap();
+        assert_eq!(s.last_run.as_ref().map(|l| l.code), Some(1));
+        assert_eq!(s.recent.len(), 1);
+        assert_eq!(s.recent[0].commit.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn status_shows_the_path_written_in_the_hook_and_it_can_differ_from_the_one_found_now() {
+        let _lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let (_g, r) = git_repo("hookcli");
+        let data = tmp("hookclidata");
+        let first = data.join("mrcr-first");
+        let second = data.join("mrcr-second");
+        std::fs::write(&first, "#!/bin/sh\n").unwrap();
+        std::fs::write(&second, "#!/bin/sh\n").unwrap();
+
+        std::env::set_var("MRCR_CLI", &first);
+        let before = status(&data, r.to_str().unwrap()).unwrap();
+        assert_eq!(before.hook_cli, None, "フックが入っていないときは、書かれたパスは無い");
+        assert_eq!(before.cli.as_deref(), Some(first.to_str().unwrap()));
+
+        let on = set(&data, r.to_str().unwrap(), true, &["bugs".into()], None).unwrap();
+        assert_eq!(on.hook_cli.as_deref(), Some(first.to_str().unwrap()), "フックに書いたパス");
+
+        // あとから、見つかる mrcr が変わっても、フックに書かれているパスは、そのまま
+        std::env::set_var("MRCR_CLI", &second);
+        let after = status(&data, r.to_str().unwrap()).unwrap();
+        assert_eq!(after.hook_cli.as_deref(), Some(first.to_str().unwrap()));
+        assert_eq!(after.cli.as_deref(), Some(second.to_str().unwrap()));
+
+        // 入れ直す（OFF → ON）と、新しいほうに切り替わる
+        set(&data, r.to_str().unwrap(), false, &["bugs".into()], None).unwrap();
+        let again = set(&data, r.to_str().unwrap(), true, &["bugs".into()], None).unwrap();
+        assert_eq!(again.hook_cli.as_deref(), Some(second.to_str().unwrap()));
+        std::env::remove_var("MRCR_CLI");
+    }
+
+    #[test]
+    fn with_an_old_single_line_and_a_new_running_run_the_last_result_is_the_old_line() {
+        let d = tmp("mixed");
+        append_log(&d, "/r", 1, "従来の 1 行（指摘あり）").unwrap();
+        log_start(&d, "/r", "run2", "abc", "新しい", &["bugs".to_string()]).unwrap();
+        log_step(&d, "/r", "run2", "bugs", 1, 3, true, 0, 5, None).unwrap();
+        let last = last_run(&d, "/r").unwrap();
+        assert_eq!((last.code, last.message.as_str()), (1, "従来の 1 行（指摘あり）"), "実行中の新しい実行は、最新の結果に数えない");
+        let runs = recent_runs(&d, "/r", 5);
+        assert_eq!(runs.len(), 2);
+        assert_eq!((runs[0].state.as_str(), runs[0].commit.as_deref()), ("running", Some("abc")), "実行ログでは、新しい実行が先頭");
+        assert_eq!(runs[1].run, format!("legacy-{}", runs[1].started_at_ms));
+        // 新しい実行が終われば、そちらが最新の結果になる
+        log_end(&d, "/r", "run2", 0, "完了", 0, 9).unwrap();
+        assert_eq!(last_run(&d, "/r").unwrap().message, "完了");
+    }
+
+    #[test]
+    fn the_log_is_trimmed_to_the_newest_lines_when_it_gets_too_large_and_reading_survives_it() {
+        let d = tmp("trim");
+        let long = "x".repeat(400);
+        for i in 0..2000 {
+            log_step(&d, "/r", "big", &format!("recipe{i}"), i, 2000, true, 0, 1, Some(&long)).unwrap();
+        }
+        log_start(&d, "/r", "last", "newest", "最新", &["bugs".to_string()]).unwrap();
+        log_end(&d, "/r", "last", 0, "最新の完了", 0, 1).unwrap();
+        let size = std::fs::metadata(d.join(LOG)).unwrap().len();
+        assert!(size <= LOG_MAX_BYTES + 1024, "上限を大きく超えて、大きくならない: {size}");
+        let text = std::fs::read_to_string(d.join(LOG)).unwrap();
+        assert!(text.lines().count() <= 2002 && text.lines().count() >= 2, "{}", text.lines().count());
+        assert!(text.lines().last().unwrap().contains("最新の完了"), "新しい側が残る");
+        assert_eq!(log_unreadable(&d), 0, "切り詰めで、行が壊れない（行の単位で、切る）");
+        let runs = recent_runs(&d, "/r", 5);
+        assert_eq!(runs[0].commit.as_deref(), Some("newest"), "最新の実行が、先頭に出る");
+        assert_eq!(runs[0].state, "done");
+        assert_eq!(last_run(&d, "/r").unwrap().message, "最新の完了");
+    }
+
+    #[test]
+    fn a_run_whose_start_line_was_trimmed_away_still_shows_its_steps_without_a_commit() {
+        let d = tmp("orphan");
+        // 開始の行が無く、途中経過と終了だけが残っている（切り詰めの結果）
+        log_step(&d, "/r", "cut", "bugs", 1, 2, true, 3, 100, None).unwrap();
+        log_step(&d, "/r", "cut", "spec", 2, 2, true, 0, 50, None).unwrap();
+        log_end(&d, "/r", "cut", 1, "レビュー完了（指摘あり 3 件）", 3, 150).unwrap();
+        let runs = recent_runs(&d, "/r", 5);
+        assert_eq!(runs.len(), 1);
+        let r = &runs[0];
+        assert_eq!((r.commit.as_deref(), r.steps.len(), r.state.as_str()), (None, 2, "done"), "コミットは分からないが、結果は見える");
+        assert_eq!(r.message.as_deref(), Some("レビュー完了（指摘あり 3 件）"));
+    }
+
+    #[test]
+    fn the_parsed_log_is_reused_while_the_file_is_unchanged_and_read_again_after_a_write() {
+        let d = tmp("cache");
+        log_start(&d, "/r", "run1", "abc", "s", &[]).unwrap();
+        let a = parsed_log(&d);
+        let b = parsed_log(&d);
+        assert!(std::sync::Arc::ptr_eq(&a, &b), "変わっていなければ、読み直さない");
+        log_end(&d, "/r", "run1", 0, "完了", 0, 1).unwrap();
+        let c = parsed_log(&d);
+        assert!(!std::sync::Arc::ptr_eq(&a, &c), "書き込まれたら、読み直す");
+        assert_eq!(c.lines.len(), 2);
+        assert_eq!(recent_runs(&d, "/r", 5)[0].state, "done", "読み直した結果が、使われる");
+    }
+
+    #[test]
+    fn unreadable_log_lines_are_counted_not_silently_dropped_and_status_reports_the_count() {
+        let _lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let (_g, r) = git_repo("unreadable");
+        let data = tmp("unreadabledata");
+        let key = repo_key(r.to_str().unwrap()).unwrap();
+        log_start(&data, &key, "run1", "abc", "s", &["bugs".to_string()]).unwrap();
+        log_end(&data, &key, "run1", 0, "完了", 0, 1).unwrap();
+        assert_eq!(status(&data, r.to_str().unwrap()).unwrap().log_unreadable, 0);
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(data.join(LOG)).unwrap();
+        writeln!(f, "壊れた行 1").unwrap();
+        writeln!(f, "{{\"at_ms\": \"数字ではない\", \"repo\": 1}}").unwrap();
+        writeln!(f).unwrap();
+        drop(f);
+        let s = status(&data, r.to_str().unwrap()).unwrap();
+        assert_eq!(s.log_unreadable, 2, "空行は数えず、壊れた行と、形の違う行を数える");
+        assert_eq!(s.recent.len(), 1, "読める行は、これまでどおり使える");
+        assert_eq!(log_unreadable(&data), 2);
     }
 }

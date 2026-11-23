@@ -166,12 +166,24 @@ export interface Messages {
     cliMissing: (brewCmd: string, npmCmd: string) => string;
     targetMissing: string;
     cliPath: (path: string) => string;
+    cliWillUse: (path: string) => string;
+    cliDiffers: (path: string) => string;
     blocked: (why: string) => string;
     costNote: string;
     keyNote: string;
     lastRunTitle: string;
     lastRunNone: string;
-    lastRun: (code: number, when: string, message: string) => string;
+    refresh: string;
+    refreshFailed: (err: string) => string;
+    logUnreadable: (n: number) => string;
+    runCommit: (commit: string, subject: string) => string;
+    runNoCommit: string;
+    runState: (state: string) => string;
+    runSummary: (findings: number | null, secs: string | null) => string;
+    stepOk: (findings: number) => string;
+    stepFailed: string;
+    stepRunning: string;
+    secs: (ms: number) => string;
     failed: (err: string) => string;
   };
 
@@ -709,13 +721,25 @@ export const MESSAGES: Record<Lang, Messages> = {
         `mrcr（CLI）が見つかりません。フックは CLI を呼び出すので、先に入れてください（例: ${brewCmd}、または ${npmCmd}）。npx で起動したものは、実行ファイルが一時のキャッシュにあり、あとで消えるので使えません。`,
       targetMissing: 'フックが呼ぶ mrcr が見つかりません（更新や削除で消えた可能性があります）。mrcr を入れ直してから、「OFF にする」→「ON にする」で、入れ直してください。',
       cliPath: (path) => `フックが呼び出す mrcr: ${path}`,
+      cliWillUse: (path) => `ON にすると、フックが呼び出す mrcr: ${path}`,
+      cliDiffers: (path) => `いま見つかる mrcr は ${path} です。OFF にしてから ON にし直すと、そちらに切り替わります。`,
       blocked: (why) => `このリポジトリには、自動では入れられません: ${why}`,
       costNote: 'コミットのたびに、LLM の API を使います（従量課金）。',
       keyNote:
         'フックから呼ばれる mrcr は、環境変数 ANTHROPIC_API_KEY を使います。ターミナルから git を使うなら、そのまま引き継がれます。見えないときは、失敗として下に出ます（コミットは止まりません）。',
-      lastRunTitle: '直近の実行',
+      lastRunTitle: '実行ログ（新しい順）',
       lastRunNone: 'まだ実行されていません。',
-      lastRun: (code, when, message) => `${when}: ${code === 2 ? '失敗' : code === 1 ? '指摘あり' : '指摘なし'}（${message}）`,
+      refresh: '更新',
+      refreshFailed: (err) => `最新の状態を読み取れませんでした: ${err}`,
+      logUnreadable: (n) => `実行ログに、読めない行が ${n} 行あります（ほかのリポジトリの分を含みます）。`,
+      runCommit: (commit, subject) => `コミット ${commit}「${subject}」`,
+      runNoCommit: '（コミットの記録なし）',
+      runState: (state) => (state === 'running' ? '実行中' : state === 'done' ? '完了' : state === 'failed' ? '失敗' : '中断'),
+      runSummary: (findings, secs) => [findings === null ? '' : `指摘 ${findings} 件`, secs ?? ''].filter(Boolean).join('・'),
+      stepOk: (findings) => `指摘 ${findings} 件`,
+      stepFailed: '失敗',
+      stepRunning: '実行中…',
+      secs: (ms) => `${(ms / 1000).toFixed(1)} 秒`,
       failed: (err) => `操作に失敗しました: ${err}`,
     },
 
@@ -1390,13 +1414,25 @@ export const MESSAGES: Record<Lang, Messages> = {
       targetMissing:
         'The mrcr that the hook calls was not found (it may have been updated or removed). Reinstall mrcr, then turn the hook OFF and ON again.',
       cliPath: (path) => `mrcr called by the hook: ${path}`,
+      cliWillUse: (path) => `When turned ON, the hook will call mrcr: ${path}`,
+      cliDiffers: (path) => `The mrcr found now is ${path}. Turn the hook OFF and ON again to switch to it.`,
       blocked: (why) => `The hook cannot be installed automatically in this repository: ${why}`,
       costNote: 'Every commit uses the LLM API (pay-as-you-go).',
       keyNote:
         'The mrcr called from the hook uses the ANTHROPIC_API_KEY environment variable. If you use git from a terminal it is inherited. If it is not visible, the run is shown below as a failure (the commit is never blocked).',
-      lastRunTitle: 'Last run',
+      lastRunTitle: 'Run log (newest first)',
       lastRunNone: 'Not run yet.',
-      lastRun: (code, when, message) => `${when}: ${code === 2 ? 'failed' : code === 1 ? 'findings' : 'no findings'} (${message})`,
+      refresh: 'Refresh',
+      refreshFailed: (err) => `Could not read the latest state: ${err}`,
+      logUnreadable: (n) => `The run log has ${n} unreadable line(s) (including other repositories').`,
+      runCommit: (commit, subject) => `Commit ${commit} "${subject}"`,
+      runNoCommit: '(no commit recorded)',
+      runState: (state) => (state === 'running' ? 'Running' : state === 'done' ? 'Done' : state === 'failed' ? 'Failed' : 'Aborted'),
+      runSummary: (findings, secs) => [findings === null ? '' : `${findings} findings`, secs ?? ''].filter(Boolean).join(' · '),
+      stepOk: (findings) => `${findings} findings`,
+      stepFailed: 'Failed',
+      stepRunning: 'Running…',
+      secs: (ms) => `${(ms / 1000).toFixed(1)} s`,
       failed: (err) => `The operation failed: ${err}`,
     },
 

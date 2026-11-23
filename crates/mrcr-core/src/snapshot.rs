@@ -386,28 +386,46 @@ pub fn take_with(repo: &str, limits: &Limits) -> Result<Snapshot, String> {
 
 /// `base` から、いまの作業ツリー（ステージ済み・未ステージ・未追跡）までの差分を固定する。`None` なら `HEAD`（未コミットの変更だけ）。
 pub fn take_with_base(repo: &str, limits: &Limits, base: Option<&str>) -> Result<Snapshot, String> {
-    take_inner(repo, limits, base.unwrap_or("HEAD"), false)
+    take_inner(repo, limits, base.unwrap_or("HEAD"), None)
 }
 
-/// 直近のコミット（`HEAD~1..HEAD`）だけの差分を固定する。最初のコミットは、何も無い状態との差分。
-/// 作業ツリーの未コミットの変更と、未追跡のファイルは、**含めない**（post-commit のフックが、いまのコミットだけを見るため）。
+/// 直近のコミット（`HEAD~1..HEAD`）だけの差分を固定する。
 pub fn take_last_commit(repo: &str, limits: &Limits) -> Result<Snapshot, String> {
-    let top = toplevel(repo)?;
-    let root = Path::new(&top);
-    let spec = if git(root, &["rev-parse", "--verify", "--quiet", "HEAD~1^{commit}"]).is_ok() { "HEAD~1" } else { ROOT_SPEC };
-    take_inner(repo, limits, spec, true)
+    take_commit(repo, limits, "HEAD")
 }
 
-fn take_inner(repo: &str, limits: &Limits, base_spec: &str, committed_only: bool) -> Result<Snapshot, String> {
+/// 指定したコミット（`<rev>~1..<rev>`）だけの差分を固定する。最初のコミットは、何も無い状態との差分。
+/// 作業ツリーの未コミットの変更と、未追跡のファイルは、**含めない**（post-commit のフックが、そのコミットだけを見るため）。
+/// フックは、実行の開始時のコミットのハッシュを渡す（観点の実行中に、次のコミットが入っても、同じコミットを見続けるため）。
+pub fn take_commit(repo: &str, limits: &Limits, rev: &str) -> Result<Snapshot, String> {
+    let rev = rev.trim();
+    if rev.is_empty() || rev.starts_with('-') || rev.contains(char::is_whitespace) {
+        return Err(format!("コミットの指定 `{}` は使えません（コミットのハッシュか、HEAD などの名前を、空白なしで入れてください）", rev.chars().take(60).collect::<String>()));
+    }
     let top = toplevel(repo)?;
     let root = Path::new(&top);
-    let head = git(root, &["rev-parse", "HEAD"])
-        .map_err(|_| "コミットがまだありません（HEAD が無い）".to_string())?
+    let hash = git(root, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")])
+        .map_err(|_| format!("コミット `{rev}` が見つかりません"))?
         .trim()
         .to_string();
+    let spec = if git(root, &["rev-parse", "--verify", "--quiet", &format!("{hash}~1^{{commit}}")]).is_ok() { format!("{hash}~1") } else { ROOT_SPEC.to_string() };
+    take_inner(repo, limits, &spec, Some(&hash))
+}
+
+fn take_inner(repo: &str, limits: &Limits, base_spec: &str, committed_to: Option<&str>) -> Result<Snapshot, String> {
+    let top = toplevel(repo)?;
+    let root = Path::new(&top);
+    let committed_only = committed_to.is_some();
+    let head = match committed_to {
+        Some(h) => h.to_string(),
+        None => git(root, &["rev-parse", "HEAD"])
+            .map_err(|_| "コミットがまだありません（HEAD が無い）".to_string())?
+            .trim()
+            .to_string(),
+    };
     let base = resolve_base(root, base_spec)?;
     let diff = if committed_only {
-        git(root, &["diff", &base.hash, "HEAD", "--no-color", "--no-ext-diff", "--"])?
+        git(root, &["diff", &base.hash, &head, "--no-color", "--no-ext-diff", "--"])?
     } else {
         git(root, &["diff", &base.hash, "--no-color", "--no-ext-diff", "--"])?
     };

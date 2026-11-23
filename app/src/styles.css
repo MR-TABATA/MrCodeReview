@@ -254,6 +254,23 @@ button.run.save { width: auto; padding: 6px 22px; }
 .hookrecipe-id { flex: none; font-size: 11px; color: var(--muted); }
 .hookrecipe-badge { margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; color: var(--accent); background: var(--accent-bg); white-space: nowrap; }
 .hookspecbox { margin-top: 4px; }
+.hookruns-head { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.hookruns-head h4 { margin: 0; }
+.hookruns { display: grid; gap: 8px; margin-top: 8px; }
+.hookrun { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--panel); }
+.hookrun-failed { border-color: var(--bad-line); background: var(--bad-soft); }
+.hookrun-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.hookrun-commit { overflow-wrap: anywhere; }
+.hookrun-state { padding: 0 8px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.hookrun-state-running { color: var(--accent); background: var(--accent-bg); }
+.hookrun-state-done { color: var(--ok); background: var(--ok-bg); }
+.hookrun-state-failed { color: var(--bad); background: var(--bad-bg); }
+.hookrun-state-aborted { color: var(--warn); background: var(--warn-bg); }
+.hookstep { display: grid; grid-template-columns: 52px minmax(110px, 150px) 1fr auto; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 13px; }
+.hookstep-pos { color: var(--muted); font-variant-numeric: tabular-nums; }
+.hookstep-failed .hookstep-result { color: var(--bad); overflow-wrap: anywhere; }
+.hookstep-running .hookstep-result { color: var(--accent); }
+.hookrun-msg { margin-top: 4px; font-size: 13px; }
 .hookstate { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 10px 0; }
 .hookstate .hooksave { margin-left: 4px; }
 /* ON/OFF のスイッチ */
