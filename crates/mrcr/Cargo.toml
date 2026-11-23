@@ -1,6 +1,6 @@
 [package]
 name = "mrcr"
-version = "1.11.2"
+version = "1.12.0"
 edition = "2021"
 description = "AI code review CLI on your uncommitted changes"
 license = "MIT"
