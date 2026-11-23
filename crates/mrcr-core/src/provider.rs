@@ -136,8 +136,11 @@ impl Provider for Mock {
     }
 
     fn run(&self, _prompt: &str) -> Result<LlmResponse, String> {
-        // 試験用: 環境変数で返事を差し替えられる（壊れた返事の試験のため）。`--mock` のときだけ使われる
-        if let Ok(custom) = std::env::var("MRCR_MOCK_RESPONSE") {
+        // 試験用: 環境変数で返事を差し替えられる（壊れた返事の試験のため）。`--mock` のときだけ使われる。
+        // n 回目の呼び出しには `MRCR_MOCK_RESPONSE_<n>`（1 始まり）を優先し、無ければ `MRCR_MOCK_RESPONSE`
+        static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        if let Ok(custom) = std::env::var(format!("MRCR_MOCK_RESPONSE_{n}")).or_else(|_| std::env::var("MRCR_MOCK_RESPONSE")) {
             return Ok(LlmResponse {
                 text: custom,
                 model: "mock-model".into(),

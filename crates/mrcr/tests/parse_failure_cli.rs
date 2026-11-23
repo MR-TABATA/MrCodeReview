@@ -74,6 +74,24 @@ fn unparseable_llm_response_exits_with_code_2_even_without_saving_history() {
 }
 
 #[test]
+fn empty_response_exits_with_code_2() {
+    let (repo, data) = setup_repo();
+    let o = review_with_mock(&repo, &data, Some(""), &[]);
+
+    assert_eq!(o.status.code(), Some(2), "stderr: {}", String::from_utf8_lossy(&o.stderr));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("指摘を読めませんでした"));
+}
+
+#[test]
+fn truncated_json_response_exits_with_code_2() {
+    let (repo, data) = setup_repo();
+    let o = review_with_mock(&repo, &data, Some("{\"findings\": ["), &[]);
+
+    assert_eq!(o.status.code(), Some(2), "stderr: {}", String::from_utf8_lossy(&o.stderr));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("指摘を読めませんでした"));
+}
+
+#[test]
 fn valid_response_with_zero_findings_exits_with_code_0() {
     let (repo, data) = setup_repo();
     let o = review_with_mock(&repo, &data, Some("{\"findings\": []}"), &[]);
@@ -87,4 +105,36 @@ fn valid_response_with_findings_exits_with_code_1() {
     let o = review_with_mock(&repo, &data, None, &[]);
 
     assert_eq!(o.status.code(), Some(1), "stderr: {}", String::from_utf8_lossy(&o.stderr));
+}
+
+#[test]
+fn second_recipe_unparseable_exits_with_code_2_names_it_and_prints_no_report() {
+    let (repo, data) = setup_repo();
+    let o = Command::new(env!("CARGO_BIN_EXE_mrcr"))
+        .args(["review", "--mock", "--stdout", "--recipe", "bugs,errors"])
+        .env("MRCR_DATA_DIR", &data.0)
+        .env_remove("MRCR_MOCK_RESPONSE")
+        .env("MRCR_MOCK_RESPONSE_1", "{\"findings\": []}")
+        .env("MRCR_MOCK_RESPONSE_2", "これは JSON ではありません")
+        .current_dir(&repo.0)
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(2), "stderr: {stderr}");
+    assert!(stderr.contains("観点: errors"), "読めなかった 2 つ目の観点名が出る: {stderr}");
+    assert!(!stderr.contains("観点: bugs)"), "1 つ目の観点は失敗として出さない: {stderr}");
+    assert!(String::from_utf8_lossy(&o.stdout).trim().is_empty(), "レポートは出さない: {}", String::from_utf8_lossy(&o.stdout));
+}
+
+#[test]
+fn unparseable_response_is_kept_in_history_with_its_parse_error() {
+    let (repo, data) = setup_repo();
+    let o = review_with_mock(&repo, &data, Some("これは JSON ではありません"), &[]);
+    assert_eq!(o.status.code(), Some(2));
+
+    let records = mrcr_core::store::load_all(&data.0);
+    assert_eq!(records.len(), 1, "壊れた返事も履歴に 1 件残る");
+    assert!(records[0].parse_error.is_some(), "読めなかった理由が履歴に残る");
+    assert!(records[0].findings.is_empty());
 }
