@@ -12,20 +12,20 @@ use std::process::{Command, Stdio};
 pub fn run(action: HookAction) -> i32 {
     let dir = crate::resolve_data_dir();
     match action {
-        HookAction::Enable { repo, recipe } => {
+        HookAction::Enable { repo, recipe, spec } => {
             let recipes: Vec<String> = recipe.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-            report(hooks::set(&dir, &repo.to_string_lossy(), true, &recipes))
+            report(hooks::set(&dir, &repo.to_string_lossy(), true, &recipes, spec.as_deref()))
         }
         HookAction::Disable { repo } => {
-            // 観点は残す（いまの設定を読んで、そのまま渡す）
-            let recipes = match hooks::status(&dir, &repo.to_string_lossy()) {
-                Ok(s) => s.recipes,
+            // 観点と設計書は残す（いまの設定を読んで、そのまま渡す）
+            let (recipes, spec) = match hooks::status(&dir, &repo.to_string_lossy()) {
+                Ok(s) => (s.recipes, s.spec),
                 Err(e) => {
                     eprintln!("エラー: {e}");
                     return 2;
                 }
             };
-            report(hooks::set(&dir, &repo.to_string_lossy(), false, &recipes))
+            report(hooks::set(&dir, &repo.to_string_lossy(), false, &recipes, spec.as_deref()))
         }
         HookAction::Status { repo, json } => match hooks::status(&dir, &repo.to_string_lossy()) {
             Ok(s) if json => {
@@ -61,6 +61,9 @@ fn report(r: Result<hooks::Status, String>) -> i32 {
 fn print_status(s: &hooks::Status) {
     println!("リポジトリ: {}", s.repo);
     println!("設定: {}（観点: {}）", if s.enabled { "ON" } else { "OFF" }, s.recipes.join(", "));
+    if let Some(sp) = &s.spec {
+        println!("設計書: {sp}");
+    }
     println!("フック: {}", if s.installed { "入っている" } else { "入っていない" });
     println!("mrcr: {}", s.cli.as_deref().unwrap_or("見つかりません（ON にするには、先に入れてください）"));
     if let Some(b) = &s.blocked {
@@ -107,6 +110,9 @@ fn run_hook(dir: &Path, name: &str, mock: bool) -> i32 {
     };
     let mut cmd = Command::new(exe);
     cmd.args(["review", "--commit", "--stdout", "-C", &key, "-r", &entry.recipes.join(",")]);
+    if let Some(sp) = &entry.spec {
+        cmd.args(["--spec", sp]);
+    }
     if mock {
         cmd.arg("--mock");
     }

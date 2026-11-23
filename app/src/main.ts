@@ -541,15 +541,16 @@ async function loadHook(): Promise<void> {
 }
 
 /** Git フックの ON/OFF と観点を変える（ON なら、フックを入れる。失敗したら、理由を見せて、状態はそのまま）。 */
-async function setHook(enabled: boolean, recipes: string[]): Promise<void> {
+async function setHook(enabled: boolean, recipes: string[], spec: string | null): Promise<void> {
   const repo = state.repo;
   if (!repo || state.hook.busy) return;
   state.hook.busy = true;
   state.hook.error = '';
   render();
   try {
-    state.hook.status = await invoke<HookStatus>('hook_set', { repo, enabled, recipes });
+    state.hook.status = await invoke<HookStatus>('hook_set', { repo, enabled, recipes, spec });
     state.hook.draft = null;
+    state.hook.specDraft = null;
   } catch (e) {
     state.hook.error = String(e);
   }
@@ -3077,8 +3078,8 @@ function detailView(): HTMLElement {
         !!state.repo,
         state.recipes,
         {
-          toggle: (enabled, recipes) => void setHook(enabled, recipes),
-          saveRecipes: (recipes) => void setHook(true, recipes),
+          toggle: (enabled, recipes, spec) => void setHook(enabled, recipes, spec),
+          save: (recipes, spec) => void setHook(true, recipes, spec),
           pick: (recipes) => {
             state.hook.draft = recipes;
             render();
@@ -3323,4 +3324,4 @@ if (import.meta.env?.MODE !== 'test') {
   void boot();
 }
 
-export { fixAllBySeverity, handoffBar, state, render, refreshHandoff };
+export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings };

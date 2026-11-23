@@ -16,7 +16,7 @@ export const DOC_EXTS: readonly string[] = ['md', 'mdx', 'txt', 'rst'];
 export const DOC_IDS: readonly string[] = ['doc-claims', 'doc-reality', 'doc-steps'];
 
 /** コードの観点（組み込み）。Terraform だけの差分では出さない（インフラの担当に、コードの観点は要らない。見たいときは「すべての観点」）。 */
-const CODE_IDS: readonly string[] = ['bugs', 'errors', 'security', 'performance', 'tests', 'consistency'];
+export const CODE_IDS: readonly string[] = ['bugs', 'errors', 'security', 'performance', 'tests', 'consistency'];
 
 const extOf = (path: string): string => {
   const base = path.split('/').pop() ?? path;

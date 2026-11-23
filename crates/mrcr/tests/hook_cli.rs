@@ -201,3 +201,54 @@ fn a_real_commit_triggers_the_hook_and_a_failure_is_logged_not_swallowed() {
     let s = status_json(&repo, &data);
     assert_eq!(s["last_run"]["code"], 2, "{s}");
 }
+
+fn add_spec(repo: &Tmp) {
+    std::fs::create_dir_all(repo.0.join("docs")).unwrap();
+    std::fs::write(repo.0.join("docs/spec.md"), "# 仕様\n- 平均を返す\n").unwrap();
+}
+
+#[test]
+fn a_recipe_that_needs_a_spec_is_refused_without_one_and_accepted_with_one() {
+    let (repo, data) = setup_repo();
+    add_spec(&repo);
+    let o = mrcr(&repo, &data, &["hook", "enable", "-r", "spec"]);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("設計書が要ります"), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(!repo.0.join(".git/hooks/post-commit").exists(), "断ったとき、フックは入れない");
+
+    let o = mrcr(&repo, &data, &["hook", "enable", "-r", "spec", "--spec", "docs/spec.md"]);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    let s = status_json(&repo, &data);
+    assert_eq!(s["spec"], "docs/spec.md");
+}
+
+#[test]
+fn a_spec_outside_the_repo_is_refused() {
+    let (repo, data) = setup_repo();
+    let o = mrcr(&repo, &data, &["hook", "enable", "-r", "bugs", "--spec", "../outside.md"]);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&o.stderr).contains(".."), "{}", String::from_utf8_lossy(&o.stderr));
+}
+
+#[test]
+fn run_passes_the_spec_to_the_review_and_the_history_keeps_it() {
+    let (repo, data) = setup_repo();
+    add_spec(&repo);
+    assert_eq!(mrcr(&repo, &data, &["hook", "enable", "-r", "spec", "--spec", "docs/spec.md"]).status.code(), Some(0));
+    let o = mrcr(&repo, &data, &["hook", "run", "post-commit", "--mock"]);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    let records = mrcr_core::store::load_all(&data.0);
+    assert_eq!(records.len(), 1);
+    assert!(records[0].spec.is_some(), "設計書が、レビューに渡されている");
+    assert_eq!(status_json(&repo, &data)["last_run"]["code"], 1);
+}
+
+#[test]
+fn disable_keeps_the_spec_setting() {
+    let (repo, data) = setup_repo();
+    add_spec(&repo);
+    assert_eq!(mrcr(&repo, &data, &["hook", "enable", "-r", "spec", "--spec", "docs/spec.md"]).status.code(), Some(0));
+    assert_eq!(mrcr(&repo, &data, &["hook", "disable"]).status.code(), Some(0));
+    let s = status_json(&repo, &data);
+    assert_eq!((s["enabled"].as_bool(), s["spec"].as_str()), (Some(false), Some("docs/spec.md")));
+}

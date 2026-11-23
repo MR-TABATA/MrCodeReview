@@ -66,6 +66,10 @@ pub enum HookAction {
         /// レビュー観点（カンマ区切りで複数指定可）
         #[arg(short = 'r', long, default_value = "bugs")]
         recipe: String,
+
+        /// 設計書が要る観点（`spec` など）に渡す設計書。リポジトリ内の相対パス（.md / .txt）
+        #[arg(long, value_name = "PATH")]
+        spec: Option<String>,
     },
     /// フックを外して、OFF にする（観点の設定は残す）
     Disable {

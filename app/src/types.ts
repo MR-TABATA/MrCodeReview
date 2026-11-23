@@ -499,6 +499,8 @@ export interface HookStatus {
   repo: string;
   enabled: boolean;
   recipes: string[];
+  /** 設計書が要る観点に渡す設計書（リポジトリ内の相対パス）。無ければ null */
+  spec: string | null;
   installed: boolean;
   /** いま見つかる mrcr（CLI）。無ければ null */
   cli: string | null;

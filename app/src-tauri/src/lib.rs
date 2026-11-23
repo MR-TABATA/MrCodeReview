@@ -237,9 +237,9 @@ async fn hook_status(state: tauri::State<'_, AppState>, repo: String) -> Result<
 
 /// フックの ON/OFF と観点を設定する（ON なら、フックを入れる）。登録したリポジトリだけ。
 #[tauri::command]
-async fn hook_set(state: tauri::State<'_, AppState>, repo: String, enabled: bool, recipes: Vec<String>) -> Result<hooks::Status, String> {
+async fn hook_set(state: tauri::State<'_, AppState>, repo: String, enabled: bool, recipes: Vec<String>, spec: Option<String>) -> Result<hooks::Status, String> {
     let data_dir = state.data_dir.clone();
-    tauri::async_runtime::spawn_blocking(move || hook_set_checked(&data_dir, &repo, enabled, &recipes)).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || hook_set_checked(&data_dir, &repo, enabled, &recipes, spec.as_deref())).await.map_err(|e| e.to_string())?
 }
 
 /// 入口の確認（登録済みか）つき。コマンドは、この 2 つだけを呼ぶ。
@@ -248,9 +248,9 @@ fn hook_status_checked(data_dir: &Path, repo: &str) -> Result<hooks::Status, Str
     hooks::status(data_dir, repo)
 }
 
-fn hook_set_checked(data_dir: &Path, repo: &str, enabled: bool, recipes: &[String]) -> Result<hooks::Status, String> {
+fn hook_set_checked(data_dir: &Path, repo: &str, enabled: bool, recipes: &[String], spec: Option<&str>) -> Result<hooks::Status, String> {
     repos::require_registered(data_dir, repo)?;
-    hooks::set(data_dir, repo, enabled, recipes)
+    hooks::set(data_dir, repo, enabled, recipes, spec)
 }
 
 #[tauri::command]
@@ -1965,12 +1965,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&data);
         let refused = |e: String| assert!(e.contains("登録されていません"), "{e}");
         refused(hook_status_checked(&data, repo_s).unwrap_err());
-        refused(hook_set_checked(&data, repo_s, false, &["bugs".to_string()]).unwrap_err());
+        refused(hook_set_checked(&data, repo_s, false, &["bugs".to_string()], None).unwrap_err());
         assert!(!data.join("hooks.json").exists(), "断ったとき、設定は作らない");
         repos::add(&data, repo_s, None).unwrap();
         let s = hook_status_checked(&data, repo_s).unwrap();
         assert!(!s.enabled && !s.installed);
-        let off = hook_set_checked(&data, repo_s, false, &["bugs".to_string(), "errors".to_string()]).unwrap();
+        let off = hook_set_checked(&data, repo_s, false, &["bugs".to_string(), "errors".to_string()], None).unwrap();
         assert_eq!(off.recipes, vec!["bugs", "errors"]);
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);

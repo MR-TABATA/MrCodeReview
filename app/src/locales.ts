@@ -140,11 +140,27 @@ export interface Messages {
     stateOff: string;
     enable: string;
     disable: string;
+    switchLabel: string;
     busy: string;
     recipesLabel: string;
     recipesNote: string;
     saveRecipes: string;
     noRecipes: string;
+    needsSpecBadge: string;
+    specLabel: string;
+    specHint: string;
+    specPlaceholder: string;
+    groupCode: string;
+    groupTf: string;
+    groupDoc: string;
+    groupOther: string;
+    groupCodeDesc: string;
+    groupTfDesc: string;
+    groupDocDesc: string;
+    groupOtherDesc: string;
+    selectAll: string;
+    clearAll: string;
+    groupCount: (picked: number, total: number) => string;
     installedYes: string;
     installedNo: string;
     cliMissing: (brewCmd: string, npmCmd: string) => string;
@@ -666,11 +682,27 @@ export const MESSAGES: Record<Lang, Messages> = {
       stateOff: 'OFF',
       enable: 'ON にする',
       disable: 'OFF にする',
+      switchLabel: 'コミットのあとの自動レビュー',
       busy: '処理しています…',
       recipesLabel: 'レビュー観点',
-      recipesNote: '設計書が要る観点は、ここでは選べません。',
-      saveRecipes: '観点を保存',
+      recipesNote: '「設計書が要る」観点を選ぶときは、下で設計書を指定してください。',
+      saveRecipes: '保存する',
       noRecipes: '選べる観点がありません。',
+      needsSpecBadge: '設計書が要る',
+      specLabel: '設計書（設計書が要る観点に渡します）',
+      specHint: 'このリポジトリの中のファイルを、リポジトリからの相対パスで指定します（.md / .txt。章の指定はできません）。リポジトリの外のファイルは、指定できません。',
+      specPlaceholder: '例: docs/spec.md',
+      groupCode: 'コード',
+      groupTf: 'Terraform（tfstate）',
+      groupDoc: '文書',
+      groupOther: 'このリポジトリ・自分で足した観点',
+      groupCodeDesc: 'コードの変更を見る観点。設計書との照合（spec）も、ここです。',
+      groupTfDesc: 'Terraform の変更（.tf など）を見る観点。コードの差分には、要りません。',
+      groupDocDesc: '文書（README・設計書・構想書など）の変更を見る観点。',
+      groupOtherDesc: 'このリポジトリの .mrcodereview/recipes に置いた観点や、自分で足した観点。',
+      selectAll: 'すべて選ぶ',
+      clearAll: 'すべて外す',
+      groupCount: (picked, total) => `${picked} / ${total} 選択中`,
       installedYes: 'フックは、このリポジトリに入っています。',
       installedNo: 'フックは、このリポジトリに入っていません。',
       cliMissing: (brewCmd, npmCmd) =>
@@ -1330,11 +1362,27 @@ export const MESSAGES: Record<Lang, Messages> = {
       stateOff: 'OFF',
       enable: 'Turn ON',
       disable: 'Turn OFF',
+      switchLabel: 'Automatic review after each commit',
       busy: 'Working…',
       recipesLabel: 'Review recipes',
-      recipesNote: 'Recipes that require a spec document cannot be chosen here.',
-      saveRecipes: 'Save recipes',
+      recipesNote: 'When you choose a recipe marked "needs a spec", specify the spec document below.',
+      saveRecipes: 'Save changes',
       noRecipes: 'No recipes available.',
+      needsSpecBadge: 'needs a spec',
+      specLabel: 'Spec document (passed to recipes that need one)',
+      specHint: 'A file inside this repository, as a path relative to the repository (.md / .txt; sections cannot be specified). Files outside the repository cannot be used.',
+      specPlaceholder: 'e.g. docs/spec.md',
+      groupCode: 'Code',
+      groupTf: 'Terraform (tfstate)',
+      groupDoc: 'Documents',
+      groupOther: 'This repository / your own recipes',
+      groupCodeDesc: 'Recipes for code changes. Checking against a spec (spec) is here too.',
+      groupTfDesc: 'Recipes for Terraform changes (.tf etc.). Not needed for code-only diffs.',
+      groupDocDesc: 'Recipes for changes to documents (README, specs, design notes).',
+      groupOtherDesc: 'Recipes placed in .mrcodereview/recipes of this repository, or added by you.',
+      selectAll: 'Select all',
+      clearAll: 'Clear all',
+      groupCount: (picked, total) => `${picked} / ${total} selected`,
       installedYes: 'The hook is installed in this repository.',
       installedNo: 'The hook is not installed in this repository.',
       cliMissing: (brewCmd, npmCmd) =>

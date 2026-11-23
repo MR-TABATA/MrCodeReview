@@ -29,6 +29,9 @@ const LOG_KEEP_LINES: usize = 200;
 pub struct RepoHook {
     pub enabled: bool,
     pub recipes: Vec<String>,
+    /// 設計書が要る観点（`spec` など）に渡す設計書。リポジトリ内の相対パス（.md / .txt）。章の指定はできない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -74,6 +77,41 @@ pub fn validate_recipes(recipes: &[String]) -> Result<(), String> {
         let ok = !r.is_empty() && r.len() <= 40 && r.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
         if !ok {
             return Err(format!("観点の名前 `{}` は使えません（英数字・ハイフン・下線だけ。40 文字まで）", r.chars().take(40).collect::<String>()));
+        }
+    }
+    Ok(())
+}
+
+/// 設計書のパスの形を確かめる（ファイルの有無は見ない）。OFF にするときも使う。
+pub fn validate_spec_shape(spec: &str) -> Result<(), String> {
+    if spec.is_empty() || spec.len() > 300 || spec.contains(['\n', '\r', '\0']) {
+        return Err("設計書のパスが正しくありません（空・長すぎる・改行を含む）".into());
+    }
+    if spec.contains(':') {
+        return Err("設計書のパスに `:` は使えません（章の指定は、まだできません）".into());
+    }
+    Ok(())
+}
+
+/// ON にするときの確認: 設計書のパスは、リポジトリ内の、あるファイル（.md / .txt）。
+/// 選んだ観点は、あるものだけ。設計書が要る観点を選んだら、設計書の指定が要る。
+pub fn validate_for_enable(root: &Path, recipes: &[String], spec: Option<&str>) -> Result<(), String> {
+    if let Some(s) = spec {
+        validate_spec_shape(s)?;
+        if !crate::spec::is_supported_spec_extension(Path::new(s)) {
+            return Err("設計書は .md または .txt のファイルだけ指定できます".into());
+        }
+        let resolved = crate::spec::safe_repo_relative_path(root, Path::new(s))?;
+        if !resolved.is_file() {
+            return Err(format!("設計書がファイルではありません: {s}"));
+        }
+    }
+    for id in recipes {
+        let Some(r) = crate::recipe::find_with_lang(Some(root), id, "ja") else {
+            return Err(format!("観点 `{id}` が見つかりません"));
+        };
+        if r.needs_spec && spec.is_none() {
+            return Err(format!("観点 `{id}` は設計書が要ります。リポジトリ内の設計書のパス（例: docs/spec.md）を指定してください"));
         }
     }
     Ok(())
@@ -282,6 +320,8 @@ pub struct Status {
     /// 設定の ON/OFF
     pub enabled: bool,
     pub recipes: Vec<String>,
+    /// 設計書が要る観点に渡す設計書（リポジトリ内の相対パス）
+    pub spec: Option<String>,
     /// フックのスクリプトに、管理のブロックが入っているか
     pub installed: bool,
     /// いま見つかる `mrcr`（無ければ、画面で案内する）
@@ -310,6 +350,7 @@ pub fn status(dir: &Path, repo: &str) -> Result<Status, String> {
         repo: key.clone(),
         enabled: entry.map(|e| e.enabled).unwrap_or(false),
         recipes: entry.map(|e| e.recipes.clone()).unwrap_or_else(|| DEFAULT_RECIPES.iter().map(|s| s.to_string()).collect()),
+        spec: entry.and_then(|e| e.spec.clone()),
         installed,
         cli: cli.map(|p| p.to_string_lossy().into_owned()),
         blocked,
@@ -319,9 +360,15 @@ pub fn status(dir: &Path, repo: &str) -> Result<Status, String> {
 }
 
 /// ON/OFF と観点を設定する。ON なら、フックを入れる（`mrcr` が見つからなければエラー）。OFF なら、外す（観点は残す）。
-pub fn set(dir: &Path, repo: &str, enabled: bool, recipes: &[String]) -> Result<Status, String> {
+pub fn set(dir: &Path, repo: &str, enabled: bool, recipes: &[String], spec: Option<&str>) -> Result<Status, String> {
     validate_recipes(recipes)?;
     let key = repo_key(repo)?;
+    // 外すときは、設計書のファイルが無くても外せるように、形だけを確かめる
+    match (enabled, spec) {
+        (true, _) => validate_for_enable(Path::new(&key), recipes, spec)?,
+        (false, Some(s)) => validate_spec_shape(s)?,
+        (false, None) => {}
+    }
     let mut cfg = load(dir)?;
     let hooks = hooks_dir(Path::new(&key));
     if enabled {
@@ -330,7 +377,7 @@ pub fn set(dir: &Path, repo: &str, enabled: bool, recipes: &[String]) -> Result<
     } else if let Ok(h) = &hooks {
         uninstall_block(h)?;
     }
-    cfg.post_commit.insert(key.clone(), RepoHook { enabled, recipes: recipes.to_vec() });
+    cfg.post_commit.insert(key.clone(), RepoHook { enabled, recipes: recipes.to_vec(), spec: spec.map(|s| s.to_string()) });
     if let Err(e) = save(dir, &cfg) {
         if enabled {
             if let Ok(h) = hook_dir_quiet(&key) {
@@ -439,7 +486,7 @@ mod tests {
         let d = tmp("cfg");
         assert_eq!(load(&d).unwrap(), HooksConfig::default());
         let mut c = HooksConfig::default();
-        c.post_commit.insert("/r".into(), RepoHook { enabled: true, recipes: vec!["bugs".into()] });
+        c.post_commit.insert("/r".into(), RepoHook { enabled: true, recipes: vec!["bugs".into()], spec: None });
         save(&d, &c).unwrap();
         assert_eq!(load(&d).unwrap(), c);
         assert!(!d.join("hooks.json.tmp").exists());
@@ -512,17 +559,17 @@ mod tests {
         std::fs::write(&fake_cli, "#!/bin/sh\n").unwrap();
         std::env::set_var("MRCR_CLI", &fake_cli);
 
-        let on = set(&data, r.to_str().unwrap(), true, &["bugs".into(), "errors".into()]).unwrap();
+        let on = set(&data, r.to_str().unwrap(), true, &["bugs".into(), "errors".into()], None).unwrap();
         assert!(on.enabled && on.installed && on.blocked.is_none(), "{on:?}");
         assert_eq!(on.recipes, vec!["bugs", "errors"]);
         assert!(r.join(".git/hooks/post-commit").exists());
 
-        let off = set(&data, r.to_str().unwrap(), false, &["bugs".into(), "errors".into()]).unwrap();
+        let off = set(&data, r.to_str().unwrap(), false, &["bugs".into(), "errors".into()], None).unwrap();
         assert!(!off.enabled && !off.installed);
         assert!(!r.join(".git/hooks/post-commit").exists());
         assert_eq!(off.recipes, vec!["bugs", "errors"], "OFF にしても観点は残る");
 
-        assert!(set(&data, r.to_str().unwrap(), true, &["a b".into()]).is_err(), "不正な観点は、何も変えずにエラー");
+        assert!(set(&data, r.to_str().unwrap(), true, &["a b".into()], None).is_err(), "不正な観点は、何も変えずにエラー");
         std::env::remove_var("MRCR_CLI");
     }
 
@@ -632,11 +679,90 @@ mod tests {
         let cli = data.join("mrcr");
         std::fs::write(&cli, "#!/bin/sh\n").unwrap();
         std::env::set_var("MRCR_CLI", &cli);
-        let on = set(&data, r.to_str().unwrap(), true, &["bugs".into()]).unwrap();
+        let on = set(&data, r.to_str().unwrap(), true, &["bugs".into()], None).unwrap();
         assert!(on.installed && !on.target_missing);
         std::fs::remove_file(&cli).unwrap();
         let s = status(&data, r.to_str().unwrap()).unwrap();
         assert!(s.installed && s.cli.is_none() && s.target_missing, "{s:?}");
         std::env::remove_var("MRCR_CLI");
+    }
+
+    fn repo_with_spec(tag: &str) -> (Tmp, PathBuf) {
+        let (g, r) = git_repo(tag);
+        std::fs::create_dir_all(r.join("docs")).unwrap();
+        std::fs::write(r.join("docs/spec.md"), "# 仕様\n").unwrap();
+        std::fs::write(r.join("docs/code.rs"), "fn main() {}\n").unwrap();
+        (g, r)
+    }
+
+    #[test]
+    fn spec_path_shape_is_checked() {
+        assert!(validate_spec_shape("docs/spec.md").is_ok());
+        for bad in ["", "a\nb.md", "a:b.md", "docs/spec.md:##章", &"x".repeat(301)] {
+            assert!(validate_spec_shape(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn enabling_checks_the_spec_file_stays_inside_the_repo_and_is_md_or_txt() {
+        let (_g, r) = repo_with_spec("specv");
+        let bugs = vec!["bugs".to_string()];
+        assert!(validate_for_enable(&r, &bugs, Some("docs/spec.md")).is_ok());
+        assert!(validate_for_enable(&r, &bugs, Some("../outside.md")).unwrap_err().contains(".."));
+        assert!(validate_for_enable(&r, &bugs, Some("/etc/passwd.md")).unwrap_err().contains("相対パス"));
+        assert!(validate_for_enable(&r, &bugs, Some("docs/none.md")).unwrap_err().contains("見つかりません"));
+        assert!(validate_for_enable(&r, &bugs, Some("docs/code.rs")).unwrap_err().contains(".md または .txt"));
+        assert!(validate_for_enable(&r, &bugs, Some("docs")).is_err(), "フォルダは、設計書にならない");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_that_leaves_the_repo_is_refused() {
+        let (_g, r) = repo_with_spec("speclink");
+        let outside = tmp("specout");
+        std::fs::write(outside.join("o.md"), "x").unwrap();
+        std::os::unix::fs::symlink(outside.join("o.md"), r.join("docs/link.md")).unwrap();
+        assert!(validate_for_enable(&r, &["bugs".to_string()], Some("docs/link.md")).is_err());
+    }
+
+    #[test]
+    fn a_recipe_that_needs_a_spec_needs_one_and_unknown_recipes_are_refused() {
+        let (_g, r) = repo_with_spec("specneed");
+        let spec_recipe = vec!["spec".to_string()];
+        assert!(validate_for_enable(&r, &spec_recipe, None).unwrap_err().contains("設計書が要ります"));
+        assert!(validate_for_enable(&r, &spec_recipe, Some("docs/spec.md")).is_ok());
+        assert!(validate_for_enable(&r, &["nope".to_string()], None).unwrap_err().contains("見つかりません"));
+    }
+
+    #[test]
+    fn set_saves_the_spec_and_off_works_even_when_the_spec_file_is_gone() {
+        let _lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let (_g, r) = repo_with_spec("specset");
+        let data = tmp("specsetdata");
+        let cli = data.join("mrcr");
+        std::fs::write(&cli, "#!/bin/sh\n").unwrap();
+        std::env::set_var("MRCR_CLI", &cli);
+        let recipes = vec!["bugs".to_string(), "spec".to_string()];
+
+        let on = set(&data, r.to_str().unwrap(), true, &recipes, Some("docs/spec.md")).unwrap();
+        assert_eq!(on.spec.as_deref(), Some("docs/spec.md"));
+        assert!(set(&data, r.to_str().unwrap(), true, &recipes, None).is_err(), "設計書なしでは、設計書の要る観点を ON にできない");
+        assert_eq!(status(&data, r.to_str().unwrap()).unwrap().spec.as_deref(), Some("docs/spec.md"), "断られたとき、設定は変わらない");
+
+        std::fs::remove_file(r.join("docs/spec.md")).unwrap();
+        let off = set(&data, r.to_str().unwrap(), false, &recipes, Some("docs/spec.md")).unwrap();
+        assert!(!off.enabled && !off.installed, "ファイルが無くても、外せる");
+        assert_eq!(off.spec.as_deref(), Some("docs/spec.md"), "OFF でも設計書の設定は残る");
+        std::env::remove_var("MRCR_CLI");
+    }
+
+    #[test]
+    fn an_old_config_without_spec_still_loads() {
+        let d = tmp("oldcfg");
+        std::fs::write(path(&d), r#"{"post_commit":{"/r":{"enabled":true,"recipes":["bugs"]}}}"#).unwrap();
+        let c = load(&d).unwrap();
+        assert_eq!(c.post_commit["/r"].spec, None);
+        save(&d, &c).unwrap();
+        assert!(!std::fs::read_to_string(path(&d)).unwrap().contains("spec"), "無いときは、書き出さない");
     }
 }
