@@ -129,6 +129,36 @@ export interface Messages {
     notConsentedBody: string;
   };
 
+  // hookview.ts
+  hookUi: {
+    tabLabel: string;
+    title: string;
+    desc: string;
+    noRepo: string;
+    loading: string;
+    stateOn: string;
+    stateOff: string;
+    enable: string;
+    disable: string;
+    busy: string;
+    recipesLabel: string;
+    recipesNote: string;
+    saveRecipes: string;
+    noRecipes: string;
+    installedYes: string;
+    installedNo: string;
+    cliMissing: (brewCmd: string, npmCmd: string) => string;
+    targetMissing: string;
+    cliPath: (path: string) => string;
+    blocked: (why: string) => string;
+    costNote: string;
+    keyNote: string;
+    lastRunTitle: string;
+    lastRunNone: string;
+    lastRun: (code: number, when: string, message: string) => string;
+    failed: (err: string) => string;
+  };
+
   // repoview.ts
   repoView: {
     emptyTitle: string;
@@ -571,6 +601,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       { id: 'triage', label: '仕分け', desc: '前回の仕分けの引き継ぎ。', groups: ['仕分けの引き継ぎ'] },
       { id: 'display', label: '画面', desc: '履歴の表示件数と、表示言語。', groups: ['画面'] },
       { id: 'link', label: '連携', desc: 'エージェントの登録と、会話の記録を読む許可。', groups: ['連携'] },
+      { id: 'hook', label: 'Git フック', desc: 'コミットのあとに、自動でレビューを走らせる。', groups: [] },
     ],
     otherTab: { id: 'other', label: 'その他', desc: 'ほかのタブに入らない項目', groups: [] },
     settingsUi: {
@@ -623,6 +654,37 @@ export const MESSAGES: Record<Lang, Messages> = {
       revokedNote: '取り消しても、取り込み済みの報告は、残ります。次に「対応内容を取り込む」を押したとき、もう一度、読んでよいかを聞きます。',
       notConsentedStrong: '未許可',
       notConsentedBody: '（まだ許可していないか、取り消しました）。「対応内容を取り込む」を初めて押したときに、読んでよいかを聞きます。',
+    },
+
+    hookUi: {
+      tabLabel: 'Git フック',
+      title: 'コミットのあとの自動レビュー',
+      desc: 'このリポジトリでコミットするたびに、直前のコミットだけを自動でレビューします。結果は、通常のレビュー履歴に入ります。コミットは止めません（止める機能は、まだありません）。',
+      noRepo: '左のリポジトリを選ぶと、設定できます。',
+      loading: '状態を読み取っています…',
+      stateOn: 'ON（コミットのたびにレビューします）',
+      stateOff: 'OFF',
+      enable: 'ON にする',
+      disable: 'OFF にする',
+      busy: '処理しています…',
+      recipesLabel: 'レビュー観点',
+      recipesNote: '設計書が要る観点は、ここでは選べません。',
+      saveRecipes: '観点を保存',
+      noRecipes: '選べる観点がありません。',
+      installedYes: 'フックは、このリポジトリに入っています。',
+      installedNo: 'フックは、このリポジトリに入っていません。',
+      cliMissing: (brewCmd, npmCmd) =>
+        `mrcr（CLI）が見つかりません。フックは CLI を呼び出すので、先に入れてください（例: ${brewCmd}、または ${npmCmd}）。npx で起動したものは、実行ファイルが一時のキャッシュにあり、あとで消えるので使えません。`,
+      targetMissing: 'フックが呼ぶ mrcr が見つかりません（更新や削除で消えた可能性があります）。mrcr を入れ直してから、「OFF にする」→「ON にする」で、入れ直してください。',
+      cliPath: (path) => `フックが呼び出す mrcr: ${path}`,
+      blocked: (why) => `このリポジトリには、自動では入れられません: ${why}`,
+      costNote: 'コミットのたびに、LLM の API を使います（従量課金）。',
+      keyNote:
+        'フックから呼ばれる mrcr は、環境変数 ANTHROPIC_API_KEY を使います。ターミナルから git を使うなら、そのまま引き継がれます。見えないときは、失敗として下に出ます（コミットは止まりません）。',
+      lastRunTitle: '直近の実行',
+      lastRunNone: 'まだ実行されていません。',
+      lastRun: (code, when, message) => `${when}: ${code === 2 ? '失敗' : code === 1 ? '指摘あり' : '指摘なし'}（${message}）`,
+      failed: (err) => `操作に失敗しました: ${err}`,
     },
 
     repoView: {
@@ -1203,6 +1265,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       { id: 'triage', label: 'Triage', desc: 'Carry-over of triage decisions from the previous review.', groups: ['仕分けの引き継ぎ'] },
       { id: 'display', label: 'Display', desc: 'History display count and display language.', groups: ['画面'] },
       { id: 'link', label: 'Integration', desc: 'Agent registration and consent to read conversation logs.', groups: ['連携'] },
+      { id: 'hook', label: 'Git Hook', desc: 'Run a review automatically after each commit.', groups: [] },
     ],
     otherTab: { id: 'other', label: 'Other', desc: 'Settings not in other tabs', groups: [] },
     settingsUi: {
@@ -1255,6 +1318,38 @@ export const MESSAGES: Record<Lang, Messages> = {
         'Imported responses remain even after revoking. You will be asked for permission again next time you click "Import Agent Response".',
       notConsentedStrong: 'Not Consented',
       notConsentedBody: ' (not yet granted or revoked). You will be asked for permission the first time you click "Import Agent Response".',
+    },
+
+    hookUi: {
+      tabLabel: 'Git Hook',
+      title: 'Automatic review after each commit',
+      desc: 'Each time you commit in this repository, the commit you just made is reviewed automatically. Results go into the normal review history. Commits are never blocked (blocking is not available yet).',
+      noRepo: 'Select a repository on the left to configure it.',
+      loading: 'Reading the current state…',
+      stateOn: 'ON (reviews after every commit)',
+      stateOff: 'OFF',
+      enable: 'Turn ON',
+      disable: 'Turn OFF',
+      busy: 'Working…',
+      recipesLabel: 'Review recipes',
+      recipesNote: 'Recipes that require a spec document cannot be chosen here.',
+      saveRecipes: 'Save recipes',
+      noRecipes: 'No recipes available.',
+      installedYes: 'The hook is installed in this repository.',
+      installedNo: 'The hook is not installed in this repository.',
+      cliMissing: (brewCmd, npmCmd) =>
+        `The mrcr CLI was not found. The hook calls the CLI, so install it first (e.g. ${brewCmd} or ${npmCmd}). A copy started with npx lives in a temporary cache and disappears later, so it cannot be used.`,
+      targetMissing:
+        'The mrcr that the hook calls was not found (it may have been updated or removed). Reinstall mrcr, then turn the hook OFF and ON again.',
+      cliPath: (path) => `mrcr called by the hook: ${path}`,
+      blocked: (why) => `The hook cannot be installed automatically in this repository: ${why}`,
+      costNote: 'Every commit uses the LLM API (pay-as-you-go).',
+      keyNote:
+        'The mrcr called from the hook uses the ANTHROPIC_API_KEY environment variable. If you use git from a terminal it is inherited. If it is not visible, the run is shown below as a failure (the commit is never blocked).',
+      lastRunTitle: 'Last run',
+      lastRunNone: 'Not run yet.',
+      lastRun: (code, when, message) => `${when}: ${code === 2 ? 'failed' : code === 1 ? 'findings' : 'no findings'} (${message})`,
+      failed: (err) => `The operation failed: ${err}`,
     },
 
     repoView: {

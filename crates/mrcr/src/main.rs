@@ -1,5 +1,6 @@
 mod args;
 mod handoff_cmd;
+mod hook_cmd;
 mod mcp_cmd;
 
 use args::{Cli, Commands, ReviewArgs};
@@ -107,6 +108,7 @@ fn main() {
         Some(Commands::Recipes { repo, lang }) => run_recipes(&repo, &lang),
         Some(Commands::Handoff { action }) => handoff_cmd::run(action),
         Some(Commands::Mcp { action }) => mcp_cmd::run(action),
+        Some(Commands::Hook { action }) => hook_cmd::run(action),
         Some(Commands::Review(args)) => run_review(args),
         None => run_review(cli.review),
     };
@@ -167,7 +169,13 @@ fn run_review(args: ReviewArgs) -> i32 {
         }
     };
 
-    let snap = match snapshot::take_with_base(&repo_str, &snapshot::Limits::default(), Some(&args.base)) {
+    let base_label = if args.commit { "直近のコミット".to_string() } else { args.base.clone() };
+    let taken = if args.commit {
+        snapshot::take_last_commit(&repo_str, &snapshot::Limits::default())
+    } else {
+        snapshot::take_with_base(&repo_str, &snapshot::Limits::default(), Some(&args.base))
+    };
+    let snap = match taken {
         Ok(s) => s,
         Err(e) => {
             eprintln!("エラー: 差分の取得に失敗しました: {e}");
@@ -177,7 +185,7 @@ fn run_review(args: ReviewArgs) -> i32 {
 
     if snap.files.is_empty() {
         if args.stdout {
-            println!("差分がありませんでした (対象範囲: {})", args.base);
+            println!("差分がありませんでした (対象範囲: {})", base_label);
         } else {
             eprintln!("変更されているファイルがありません（差分 0 件）。レビューをスキップしました。");
         }
@@ -323,7 +331,7 @@ fn run_review(args: ReviewArgs) -> i32 {
     let cli_texts = &Lang::from_code(&args.lang).unwrap_or_default().texts().cli;
     eprintln!(
         "{}",
-        fill(cli_texts.review_start, &[("n", &snap.files.len().to_string()), ("base", &args.base)])
+        fill(cli_texts.review_start, &[("n", &snap.files.len().to_string()), ("base", &base_label)])
     );
 
     for (i, r) in target_recipes.iter().enumerate() {

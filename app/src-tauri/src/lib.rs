@@ -1,4 +1,4 @@
-pub use mrcr_core::{agent_report, carry, db, findings, format, i18n, notes, proc, related, snapshot, spec, store, triage, usage};
+pub use mrcr_core::{agent_report, carry, db, findings, format, hooks, i18n, notes, proc, related, snapshot, spec, store, triage, usage};
 
 mod applock;
 mod byok;
@@ -226,6 +226,31 @@ struct RecipeList {
     warnings: Vec<String>,
     /// このリポジトリで出番のある linter と、その状態（実行できる・許可が要る・入っていない）。
     lint: Option<lint::Plan>,
+}
+
+/// Git フック（post-commit）の状態。登録したリポジトリだけ。
+#[tauri::command]
+async fn hook_status(state: tauri::State<'_, AppState>, repo: String) -> Result<hooks::Status, String> {
+    let data_dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || hook_status_checked(&data_dir, &repo)).await.map_err(|e| e.to_string())?
+}
+
+/// フックの ON/OFF と観点を設定する（ON なら、フックを入れる）。登録したリポジトリだけ。
+#[tauri::command]
+async fn hook_set(state: tauri::State<'_, AppState>, repo: String, enabled: bool, recipes: Vec<String>) -> Result<hooks::Status, String> {
+    let data_dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || hook_set_checked(&data_dir, &repo, enabled, &recipes)).await.map_err(|e| e.to_string())?
+}
+
+/// 入口の確認（登録済みか）つき。コマンドは、この 2 つだけを呼ぶ。
+fn hook_status_checked(data_dir: &Path, repo: &str) -> Result<hooks::Status, String> {
+    repos::require_registered(data_dir, repo)?;
+    hooks::status(data_dir, repo)
+}
+
+fn hook_set_checked(data_dir: &Path, repo: &str, enabled: bool, recipes: &[String]) -> Result<hooks::Status, String> {
+    repos::require_registered(data_dir, repo)?;
+    hooks::set(data_dir, repo, enabled, recipes)
 }
 
 #[tauri::command]
@@ -1833,6 +1858,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             find_repo_icon,
+            hook_status,
+            hook_set,
             list_recipes,
             trust_repo,
             untrust_repo,
@@ -1926,6 +1953,25 @@ mod tests {
         let id = repos::list(&data).unwrap().repos[0].id.clone();
         repos::unlink(&data, &id).unwrap();
         assert!(run_review_checked(&data, repo_s, "security", "mock", None).unwrap_err().contains("解除されています"));
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn the_hook_entry_points_refuse_an_unregistered_repo_and_pass_a_registered_one() {
+        let repo = demo_repo("hook-gate");
+        let repo_s = repo.to_str().unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-hook-gate-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let refused = |e: String| assert!(e.contains("登録されていません"), "{e}");
+        refused(hook_status_checked(&data, repo_s).unwrap_err());
+        refused(hook_set_checked(&data, repo_s, false, &["bugs".to_string()]).unwrap_err());
+        assert!(!data.join("hooks.json").exists(), "断ったとき、設定は作らない");
+        repos::add(&data, repo_s, None).unwrap();
+        let s = hook_status_checked(&data, repo_s).unwrap();
+        assert!(!s.enabled && !s.installed);
+        let off = hook_set_checked(&data, repo_s, false, &["bugs".to_string(), "errors".to_string()]).unwrap();
+        assert_eq!(off.recipes, vec!["bugs", "errors"]);
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
     }

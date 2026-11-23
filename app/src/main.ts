@@ -15,6 +15,7 @@ import { combo, closeCombo } from './combo';
 import type { DurationStats } from './duration';
 import { h } from './dom';
 import { agentConsentSection, newAgentConsent } from './agentconsent';
+import { hookSection, newHookUi } from './hookview';
 import { recipesForDiff } from './recipescope';
 import { batchEstimate, newBatchUi, pickedRecipes, STOPPED, type BatchResult } from './batch';
 import { detailPanel } from './detailview';
@@ -65,6 +66,7 @@ import { newReportState, reportFileName, reportOptions, reportPanel, reportRange
 import { periodSince, usagePanel, type Period, type UsageState } from './usageview';
 import { canTrustRerun } from './lintrerun';
 import type {
+  HookStatus,
   AgentFetch,
   AgentReport,
   BaseOption,
@@ -234,6 +236,8 @@ const state = {
   agentUi: newAgentUi(),
   /** 会話の記録を読む許可の状態（設定画面を開いたときに、読む） */
   agentConsent: newAgentConsent(),
+  /** 「Git フック」タブ（コミットのあとの自動レビュー）の状態 */
+  hook: newHookUi(),
   /** 畳まれた指摘のうち、使う人が開いたもの（指摘の番号）。レビューを変えると、畳み直す */
   openCards: new Set<number>(),
   /** 指摘のカードで、開いているもの（番号）。既定は、全部閉じる（2 行だけ）。レビューを変えると、閉じ直す */
@@ -506,6 +510,7 @@ async function openSettings(): Promise<void> {
   const view = await invoke<SettingsView>('get_settings', { repo: state.repo || null });
   state.settings = { view, draft: JSON.parse(JSON.stringify(view.values)), saving: false, message: '', messageKind: '' };
   state.agentConsent = newAgentConsent();
+  state.hook = newHookUi();
   state.byokMsg = { text: '', kind: '' };
   state.byokConfirmDelete = false;
   state.repoConfirmDelete = '';
@@ -513,11 +518,42 @@ async function openSettings(): Promise<void> {
   render();
   void loadByok();
   void loadRepoStatus();
+  void loadHook();
   try {
     state.agentConsent.consented = await invoke<boolean>('agent_log_consent');
   } catch (e) {
     state.agentConsent.error = String(e);
   }
+  if (state.settings) render();
+}
+
+/** Git フック（post-commit）の状態を読む。リポジトリが選ばれていないときは、何もしない。 */
+async function loadHook(): Promise<void> {
+  const repo = state.repo;
+  if (!repo) return;
+  try {
+    state.hook.status = await invoke<HookStatus>('hook_status', { repo });
+    state.hook.error = '';
+  } catch (e) {
+    state.hook.error = String(e);
+  }
+  if (state.settings) render();
+}
+
+/** Git フックの ON/OFF と観点を変える（ON なら、フックを入れる。失敗したら、理由を見せて、状態はそのまま）。 */
+async function setHook(enabled: boolean, recipes: string[]): Promise<void> {
+  const repo = state.repo;
+  if (!repo || state.hook.busy) return;
+  state.hook.busy = true;
+  state.hook.error = '';
+  render();
+  try {
+    state.hook.status = await invoke<HookStatus>('hook_set', { repo, enabled, recipes });
+    state.hook.draft = null;
+  } catch (e) {
+    state.hook.error = String(e);
+  }
+  state.hook.busy = false;
   if (state.settings) render();
 }
 
@@ -3036,6 +3072,20 @@ function detailView(): HTMLElement {
       llm: llmConfigSection(settingsLang),
       repos: reposSection(settingsLang),
       link: agentConsentSection(state.agentConsent, () => void revokeAgentConsent(), settingsLang),
+      hook: hookSection(
+        state.hook,
+        !!state.repo,
+        state.recipes,
+        {
+          toggle: (enabled, recipes) => void setHook(enabled, recipes),
+          saveRecipes: (recipes) => void setHook(true, recipes),
+          pick: (recipes) => {
+            state.hook.draft = recipes;
+            render();
+          },
+        },
+        settingsLang,
+      ),
     };
     return h(
       'main',

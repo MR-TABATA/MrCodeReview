@@ -7,6 +7,7 @@ pub mod db;
 pub mod findings;
 pub mod format;
 pub mod handoff_api;
+pub mod hooks;
 pub mod i18n;
 pub mod notes;
 pub mod proc;

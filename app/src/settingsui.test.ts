@@ -256,7 +256,7 @@ describe('設定画面: タブ', () => {
 
   it('先頭の「LLM・API キー」だけが見え、押したタブに切り替わる（項目は、見えなくなるだけで、DOM に残る）', () => {
     const { el, st, card } = setup();
-    expect([...el.querySelectorAll('.stabs button')].map((b) => b.textContent)).toEqual(['LLM・API キー', 'リポジトリ', '送る内容', '実行', '仕分け', '画面', '連携', 'その他']);
+    expect([...el.querySelectorAll('.stabs button')].map((b) => b.textContent)).toEqual(['LLM・API キー', 'リポジトリ', '送る内容', '実行', '仕分け', '画面', '連携', 'Git フック', 'その他']);
     expect(visiblePanes(el)).toHaveLength(1);
     expect(visiblePanes(el)[0].contains(card('max_file_bytes'))).toBe(false);
     tabBtn(el, '送る内容').click();

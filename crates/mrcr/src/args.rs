@@ -48,6 +48,51 @@ pub enum Commands {
         #[command(subcommand)]
         action: Option<McpAction>,
     },
+    /// コミットのあとに、自動でレビューを走らせる Git フック（post-commit）を、入れる・外す・見る。結果は、通常の履歴に入る（コミットは止めない）
+    Hook {
+        #[command(subcommand)]
+        action: HookAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum HookAction {
+    /// フックを入れて、ON にする（既存のフックは壊さない。観点は、保存される）
+    Enable {
+        /// 対象リポジトリのパス
+        #[arg(short = 'C', long, default_value = ".")]
+        repo: PathBuf,
+
+        /// レビュー観点（カンマ区切りで複数指定可）
+        #[arg(short = 'r', long, default_value = "bugs")]
+        recipe: String,
+    },
+    /// フックを外して、OFF にする（観点の設定は残す）
+    Disable {
+        /// 対象リポジトリのパス
+        #[arg(short = 'C', long, default_value = ".")]
+        repo: PathBuf,
+    },
+    /// 状態を見る（ON/OFF・観点・フックが入っているか・直近の実行の結果）
+    Status {
+        /// 対象リポジトリのパス
+        #[arg(short = 'C', long, default_value = ".")]
+        repo: PathBuf,
+
+        /// 構造化した JSON で出す
+        #[arg(long)]
+        json: bool,
+    },
+    /// Git のフックから呼ばれる（人が呼ぶものではない）。直近のコミットをレビューして、結果を履歴とログに残す。常に終了コード 0
+    #[command(hide = true)]
+    Run {
+        /// フックの名前（いまは post-commit だけ）
+        name: String,
+
+        /// 試験用: 外部 API を呼ばずにモック応答を使用する
+        #[arg(long, hide = true)]
+        mock: bool,
+    },
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -125,6 +170,10 @@ pub struct ReviewArgs {
     /// 差分の比較元（HEAD, HEAD~1, ブランチ名など）
     #[arg(short = 'b', long, default_value = "HEAD")]
     pub base: String,
+
+    /// 直近のコミット（HEAD~1..HEAD）だけをレビューする。未コミットの変更は含めない（post-commit のフック用）
+    #[arg(long, conflicts_with = "base")]
+    pub commit: bool,
 
     /// 出力形式 (md | json)
     #[arg(short = 'f', long, default_value = "md", value_parser = ["md", "json"])]

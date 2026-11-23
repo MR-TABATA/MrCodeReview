@@ -486,3 +486,25 @@ export interface CurrentDiff {
   /** レビューした時点の差分と、同じか */
   same_as_review: boolean;
 }
+
+/** Git フック（post-commit）の状態（`hooks::Status`）。 */
+export interface HookLastRun {
+  at_ms: number;
+  /** 0=指摘なし・1=指摘あり・2=実行の失敗 */
+  code: number;
+  message: string;
+}
+
+export interface HookStatus {
+  repo: string;
+  enabled: boolean;
+  recipes: string[];
+  installed: boolean;
+  /** いま見つかる mrcr（CLI）。無ければ null */
+  cli: string | null;
+  /** フックを置けない理由（husky など）。あれば、入れられない */
+  blocked: string | null;
+  /** フックは入っているが、呼ぶ mrcr が無く、代わりも見つからない（更新・削除で）。入れ直す必要がある */
+  target_missing: boolean;
+  last_run: HookLastRun | null;
+}

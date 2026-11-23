@@ -386,16 +386,37 @@ pub fn take_with(repo: &str, limits: &Limits) -> Result<Snapshot, String> {
 
 /// `base` から、いまの作業ツリー（ステージ済み・未ステージ・未追跡）までの差分を固定する。`None` なら `HEAD`（未コミットの変更だけ）。
 pub fn take_with_base(repo: &str, limits: &Limits, base: Option<&str>) -> Result<Snapshot, String> {
+    take_inner(repo, limits, base.unwrap_or("HEAD"), false)
+}
+
+/// 直近のコミット（`HEAD~1..HEAD`）だけの差分を固定する。最初のコミットは、何も無い状態との差分。
+/// 作業ツリーの未コミットの変更と、未追跡のファイルは、**含めない**（post-commit のフックが、いまのコミットだけを見るため）。
+pub fn take_last_commit(repo: &str, limits: &Limits) -> Result<Snapshot, String> {
+    let top = toplevel(repo)?;
+    let root = Path::new(&top);
+    let spec = if git(root, &["rev-parse", "--verify", "--quiet", "HEAD~1^{commit}"]).is_ok() { "HEAD~1" } else { ROOT_SPEC };
+    take_inner(repo, limits, spec, true)
+}
+
+fn take_inner(repo: &str, limits: &Limits, base_spec: &str, committed_only: bool) -> Result<Snapshot, String> {
     let top = toplevel(repo)?;
     let root = Path::new(&top);
     let head = git(root, &["rev-parse", "HEAD"])
         .map_err(|_| "コミットがまだありません（HEAD が無い）".to_string())?
         .trim()
         .to_string();
-    let base = resolve_base(root, base.unwrap_or("HEAD"))?;
-    let diff = git(root, &["diff", &base.hash, "--no-color", "--no-ext-diff", "--"])?;
+    let base = resolve_base(root, base_spec)?;
+    let diff = if committed_only {
+        git(root, &["diff", &base.hash, "HEAD", "--no-color", "--no-ext-diff", "--"])?
+    } else {
+        git(root, &["diff", &base.hash, "--no-color", "--no-ext-diff", "--"])?
+    };
     // -z: 名前に改行を含むファイルがあっても、行で分けて壊さない
-    let untracked_raw = git(root, &["ls-files", "-z", "--others", "--exclude-standard"])?;
+    let untracked_raw = if committed_only {
+        String::new()
+    } else {
+        git(root, &["ls-files", "-z", "--others", "--exclude-standard"])?
+    };
     let untracked: Vec<String> = untracked_raw
         .split('\0')
         .filter(|l| !l.is_empty())

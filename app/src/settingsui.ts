@@ -44,6 +44,8 @@ export interface SettingsExtras {
   /** 「ライセンス」タブ（Free / Pro の状態と、キーの登録） */
   /** 「連携」タブ（会話の記録を読む許可など） */
   link?: HTMLElement | null;
+  /** 「Git フック」タブ（コミットのあとの自動レビュー） */
+  hook?: HTMLElement | null;
 }
 
 export interface SettingsActions {
@@ -279,6 +281,7 @@ export function settingsPanel(st: SettingsPanelState, act: SettingsActions, extr
         t.id === 'llm' ? (extra?.llm ?? null) : null,
         t.id === 'repos' ? (extra?.repos ?? null) : null,
         t.id === 'link' ? (extra?.link ?? null) : null,
+        t.id === 'hook' ? (extra?.hook ?? null) : null,
         ...groups.filter((g) => tabIdOf(g) === t.id).map((g) => {
           const groupTitle = dict.groupNames[g] ?? g;
           return h('section', { class: 'sgroup' }, h('h3', {}, groupTitle), ...meta.filter((m) => m.group === g).map(card));
