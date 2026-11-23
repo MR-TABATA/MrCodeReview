@@ -22,6 +22,7 @@ Provides both a visual **Mac desktop app (GUI)** and a command-line **CLI tool (
 - **Isolated Aspect Reviews**: Instead of generic code reviews, each aspect is executed independently for maximum focus and depth, then bundled into a single report.
 - **Hallucination Detection**: Strictly verifies quoted lines against actual git diffs, automatically labeling them `Evidence found` or `⚠️ Evidence mismatch`.
 - **Coding Agent Handoff**: Automatically outputs findings to `.mrcodereview/out/review.md` (or structured JSON). Hand off directly to coding agents like `Claude Code` or `agy` for automated fix loops.
+- **Automatic review after each commit (Git hook)**: Turn it on from the desktop app (Settings → Git Hook) or with `mrcr hook enable`. Only the commit you just made is reviewed, in the background, and the commit is never blocked. A run log shows which commit, which recipes, how many findings and how long it took.
 - **Pure Rust & Tauri v2**: Ultra-lightweight and fast. Native Apple Silicon support (Developer ID signed & Apple notarized).
 
 ---
@@ -109,9 +110,38 @@ mrcr review -r bugs -f json --stdout
 # Specify comparison base (e.g. changes since HEAD~1)
 mrcr review -b HEAD~1
 
+# Review only the last commit (HEAD~1..HEAD), or one given commit (uncommitted changes are not included)
+mrcr review --commit
+mrcr review --commit <hash>
+
 # List available review angles
 mrcr recipes
 ```
+
+---
+
+### 4. Automatic Review After Each Commit (Git Hook)
+
+Turn it on in the desktop app (**Settings → Git Hook**, with the repository selected) or from the CLI:
+
+```bash
+mrcr hook enable -r bugs,errors   # install the hook and turn it ON (recipes are saved)
+mrcr hook status                  # ON/OFF, recipes, which mrcr the hook calls, last run
+mrcr hook log                     # recent runs: commit, per-recipe findings and time (-n N, --json)
+mrcr hook disable                 # remove the hook (recipe settings are kept)
+```
+
+- **What it does**: after each `git commit` in that repository, a `post-commit` hook reviews **only that commit** (`mrcr review --commit <hash>`) in the background, one recipe at a time. If one recipe fails, the others still run. Results go into the normal review history, so you can triage them in the desktop app. The commit is **never blocked** (there is no blocking mode yet).
+- **Existing hooks are kept**: only a clearly marked block is added to (or removed from) `.git/hooks/post-commit`. Repositories whose `core.hooksPath` points outside `.git` (e.g. husky) are refused instead of being modified.
+- **Recipes that need a spec document** (such as `spec`) require a spec file inside the repository (`.md` / `.txt`, relative path): set it in the Git Hook tab or with `mrcr hook enable -r spec --spec docs/spec.md`.
+- **Settings are stored in the app data directory** (`hooks.json`, and the run log `hooks.log`), not in the repository, so a cloned repository can never change what runs on your commits.
+
+**Requirements and limits**
+
+- The `mrcr` CLI must be installed (Homebrew, or `npm i -g @mr-tabata/mrcr`). A copy started with `npx` lives in a temporary cache and cannot be used by the hook.
+- The hook runs the CLI, which reads the **`ANTHROPIC_API_KEY` environment variable**. A key saved in the desktop app (Keychain) is not visible to it. If the key is missing, the run is recorded as a failure in the run log (the commit is not affected).
+- **Every commit calls the LLM API once per selected recipe** (pay-as-you-go). Select only the recipes you need.
+- macOS only. Behavior with `git commit --amend` and rebase has not been verified.
 
 ---
 
