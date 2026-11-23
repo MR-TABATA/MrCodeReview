@@ -384,6 +384,8 @@ fn run_review(args: ReviewArgs) -> i32 {
             Ok(f) => (f, None),
             Err(e) => (Vec::new(), Some(e)),
         };
+        // 返事を読めなかったことを「指摘 0 件（終了コード 0）」にしない。フックが、レビューされないままコミットを通してしまう
+        let parse_failure = parse_err.clone();
 
         findings::verify(&mut findings, &snap.files);
         if r.needs_spec {
@@ -428,6 +430,11 @@ fn run_review(args: ReviewArgs) -> i32 {
             if let Err(e) = store::append(&data_dir, &rec) {
                 eprintln!("警告: SQLite への履歴保存に失敗しました: {e}");
             }
+        }
+
+        if let Some(e) = parse_failure {
+            eprintln!("エラー (観点: {}): LLM の返事から指摘を読めませんでした: {e}", r.id);
+            return 2;
         }
 
         results.push(RecipeReviewResult {

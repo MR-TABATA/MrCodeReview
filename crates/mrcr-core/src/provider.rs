@@ -136,6 +136,21 @@ impl Provider for Mock {
     }
 
     fn run(&self, _prompt: &str) -> Result<LlmResponse, String> {
+        // 試験用: 環境変数で返事を差し替えられる（壊れた返事の試験のため）。`--mock` のときだけ使われる
+        if let Ok(custom) = std::env::var("MRCR_MOCK_RESPONSE") {
+            return Ok(LlmResponse {
+                text: custom,
+                model: "mock-model".into(),
+                usage: Usage {
+                    input_tokens: Some(100),
+                    output_tokens: Some(50),
+                    cache_read_tokens: None,
+                    cache_write_tokens: None,
+                },
+                cost_usd: None,
+                raw: String::new(),
+            });
+        }
         let text = r#"{
             "findings": [
                 {
