@@ -255,7 +255,7 @@ describe('hookSection', () => {
 const ALL = [
   recipe('bugs'), recipe('errors'), recipe('security'), recipe('performance'), recipe('tests'), recipe('consistency'),
   recipe('tf-state'), recipe('tf-replace'), recipe('tf-repro'), recipe('tf-security'), recipe('tf-refs'),
-  recipe('doc-claims'), recipe('doc-reality'), recipe('doc-steps'),
+  recipe('doc-core'), recipe('doc-claims'), recipe('doc-reality'), recipe('doc-steps'),
   recipe('spec', { needs_spec: true }),
   recipe('mine', { source: 'repo' }),
 ];
@@ -264,7 +264,7 @@ describe('観点のグルーピング', () => {
   it('groupOf: コード・Terraform・文書・その他。spec はコード。自分で足した観点は、その他', () => {
     expect(['bugs', 'security', 'spec'].map((id) => groupOf(recipe(id)))).toEqual(['code', 'code', 'code']);
     expect(['tf-state', 'tf-refs'].map((id) => groupOf(recipe(id)))).toEqual(['tf', 'tf']);
-    expect(['doc-claims', 'doc-steps'].map((id) => groupOf(recipe(id)))).toEqual(['doc', 'doc']);
+    expect(['doc-core', 'doc-claims', 'doc-steps'].map((id) => groupOf(recipe(id)))).toEqual(['doc', 'doc', 'doc']);
     expect(groupOf(recipe('mine', { source: 'repo' }))).toBe('other');
     expect(groupOf(recipe('bugs', { source: 'repo' }))).toBe('code');
   });
@@ -274,7 +274,7 @@ describe('観点のグルーピング', () => {
     expect(g.map((x) => x.key)).toEqual(['code', 'tf', 'doc', 'other']);
     expect(g[0].items.map((r) => r.id)).toEqual(['bugs', 'errors', 'security', 'performance', 'tests', 'consistency', 'spec']);
     expect(g[1].items).toHaveLength(5);
-    expect(g[2].items).toHaveLength(3);
+    expect(g[2].items).toHaveLength(4);
     expect(groupedRecipes([recipe('bugs')]).map((x) => x.key)).toEqual(['code']);
   });
 
@@ -287,7 +287,7 @@ describe('観点のグルーピング', () => {
     expect(heads[1]).toContain('Terraform（tfstate）');
     expect(heads[1]).toContain('2 / 5 選択中');
     expect(heads[2]).toContain('文書');
-    expect(heads[2]).toContain('0 / 3 選択中');
+    expect(heads[2]).toContain('0 / 4 選択中');
     expect(heads[3]).toContain('自分で足した観点');
   });
 
@@ -300,7 +300,7 @@ describe('観点のグルーピング', () => {
     groupBtn(el, 'tf', 'すべて選ぶ').click();
     expect(picked[0]).toEqual(['bugs', 'tf-state', 'tf-replace', 'tf-repro', 'tf-security', 'tf-refs']);
     groupBtn(el, 'doc', 'すべて選ぶ').click();
-    expect(picked[1]).toEqual(['bugs', 'doc-claims', 'doc-reality', 'doc-steps']);
+    expect(picked[1]).toEqual(['bugs', 'doc-core', 'doc-claims', 'doc-reality', 'doc-steps']);
   });
 
   it('「すべて外す」は、その種類だけを外す', () => {
@@ -312,7 +312,7 @@ describe('観点のグルーピング', () => {
   });
 
   it('全部選んでいれば「すべて選ぶ」、何も選んでいなければ「すべて外す」は、押せない。処理中は、どちらも押せない', () => {
-    const allDoc = ['doc-claims', 'doc-reality', 'doc-steps'];
+    const allDoc = ['doc-core', 'doc-claims', 'doc-reality', 'doc-steps'];
     const el = hookSection(ui({ draft: allDoc }), true, ALL, noop, 'ja');
     expect(groupBtn(el, 'doc', 'すべて選ぶ').disabled).toBe(true);
     expect(groupBtn(el, 'doc', 'すべて外す').disabled).toBe(false);

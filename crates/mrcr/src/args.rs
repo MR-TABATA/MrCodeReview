@@ -177,9 +177,13 @@ pub enum HandoffAction {
 
 #[derive(Args, Debug, Clone)]
 pub struct ReviewArgs {
-    /// レビュー観点（カンマ区切りで複数指定可。例: bugs,security）
-    #[arg(short = 'r', long, default_value = "bugs")]
-    pub recipe: String,
+    /// レビュー対象の単一文書ファイル（.md / .txt）。指定した場合は Git 差分ではなくこのファイル全文をレビューする
+    #[arg(value_name = "FILE")]
+    pub file: Option<PathBuf>,
+
+    /// レビュー観点（カンマ区切りで複数指定可。例: bugs,security。ファイル指定時はデフォルトで文書レビュー観点）
+    #[arg(short = 'r', long)]
+    pub recipe: Option<String>,
 
     /// 全観点を一括実行する（組み込み＋リポジトリの .mrcodereview/recipes/ の独自レシピ）
     #[arg(long)]

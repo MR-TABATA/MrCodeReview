@@ -406,6 +406,26 @@ fn a_review_of_another_repository_cannot_be_fetched_by_id() {
 }
 
 #[test]
+fn handoff_get_file_review_matches_exact_file_path() {
+    let env = standard();
+    // 別のリポジトリ
+    let other = Tmp::new("other");
+    git(&other.0, &["init", "-q", "-b", "main"]);
+    std::fs::write(other.0.join("b.txt"), "x\n").unwrap();
+    git(&other.0, &["add", "."]);
+    git(&other.0, &["commit", "-q", "-m", "init"]);
+
+    // other のリポジトリ指定（-C other）で env.id を取ろうとするとエラー
+    let o = Command::new(env!("CARGO_BIN_EXE_mrcr"))
+        .args(["handoff", "get", &env.id, "-C", other.0.to_str().unwrap()])
+        .env("MRCR_DATA_DIR", &env.data)
+        .output()
+        .unwrap();
+    assert_eq!(code(&o), 2);
+    assert!(err(&o).contains("別のリポジトリ"), "{}", err(&o));
+}
+
+#[test]
 fn it_refuses_a_directory_that_is_not_a_git_repository_or_does_not_exist() {
     let env = standard();
     let plain = Tmp::new("plain");

@@ -613,6 +613,10 @@ async fn preview_snapshot(state: tauri::State<'_, AppState>, repo: String, base:
 /// 実行の入口の確認（登録済みか）つき。
 fn preview_checked(data_dir: &Path, repo: &str, base: Option<&str>) -> Result<snapshot::Snapshot, String> {
     repos::require_registered(data_dir, repo)?;
+    let p = Path::new(repo);
+    if p.is_file() {
+        return snapshot::take_file(p);
+    }
     // 個人の設定に、このリポジトリ側の設定を重ねたもので、取り込む
     let top = snapshot::toplevel(repo)?;
     let eff = settings::load_effective(data_dir, Some(Path::new(&top)))?;
@@ -885,9 +889,23 @@ fn run_review_with_base_and_lang(
     lang: Option<&str>,
     spec_param: Option<&SpecParam>,
 ) -> Result<ReviewRecord, String> {
-    // 設定が正しくなければ、黙って推奨値に戻さず、理由つきで止める。
-    // 個人の設定に、このリポジトリ側の設定（.mrcodereview/settings.json）を重ねたものを使う
-    let top = snapshot::toplevel(repo)?;
+    let is_file = Path::new(repo).is_file();
+    let snap = if is_file {
+        const DOC_RECIPES: &[&str] = &["doc-core", "doc-claims", "doc-reality", "doc-steps"];
+        if !DOC_RECIPES.contains(&recipe_id) {
+            return Err(format!("ファイル直接指定（.md / .txt）では文書レビュー観点（{}）のみ実行できます。'{}' は指定できません。", DOC_RECIPES.join(", "), recipe_id));
+        }
+        snapshot::take_file(Path::new(repo))?
+    } else {
+        let top = snapshot::toplevel(repo)?;
+        let effective = settings::load_effective(data_dir, Some(Path::new(&top)))?;
+        snapshot::take_with_base(repo, &effective.settings.snapshot_limits(), base)?
+    };
+    let top = if is_file {
+        Path::new(repo).parent().unwrap_or(Path::new(".")).to_string_lossy().to_string()
+    } else {
+        snapshot::toplevel(repo)?
+    };
     let effective = settings::load_effective(data_dir, Some(Path::new(&top)))?;
     let settings = effective.settings;
     let caller_lang = resolve_lang_arg(lang)?;
@@ -897,7 +915,6 @@ fn run_review_with_base_and_lang(
             .ok_or_else(|| format!("不正な言語設定: {code}（{} のいずれか）", i18n::Lang::valid_arg_list()))?
             .code(),
     };
-    let snap = snapshot::take_with_base(repo, &settings.snapshot_limits(), base)?;
     // 設定で足した linter。壊れていても、ほかのレビューは止めない（実行しようとしたのが、その linter のときだけ止める）
     let custom_loaded = linters::load(data_dir);
     let custom: &[linters::Custom] = custom_loaded.as_deref().unwrap_or(&[]);
@@ -3682,6 +3699,27 @@ mod tests {
 
         assert_eq!(logs[0], (0, "wait".into(), "carry".into()));
         assert_eq!(logs[1], (1, "fix".into(), "carry".into()));
+
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn run_review_file_mode_rejects_non_doc_recipes() {
+        let repo = demo_repo("doc-review-reject");
+        let data = std::env::temp_dir().join(format!("mrcr-doc-reject-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let md = repo.join("spec.md");
+        std::fs::write(&md, "# Title\nDoc content\n").unwrap();
+
+        // 1. bugs は Err でメッセージに bugs を含む
+        let err_bugs = run_review_blocking(&data, md.to_str().unwrap(), "bugs", "mock").unwrap_err();
+        assert!(err_bugs.contains("bugs"), "エラーに 'bugs' を含む: {err_bugs}");
+        assert!(err_bugs.contains("ファイル直接指定"), "エラーに文書レビュー観点の説明を含む: {err_bugs}");
+
+        // 2. doc-claims は差分取得まで進める（mock プロバイダで成功）
+        let res_claims = run_review_blocking(&data, md.to_str().unwrap(), "doc-claims", "mock");
+        assert!(res_claims.is_ok(), "doc-claims は成功する");
 
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);

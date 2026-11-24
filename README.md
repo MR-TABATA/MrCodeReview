@@ -190,6 +190,7 @@ Automatically evaluated when `.md`, `.mdx`, `.txt`, or `.rst` files are in the d
 
 | ID | Focus |
 |---|---|
+| `doc-core` | Core purpose, tangible impact, consideration of alternatives, and necessity check ("is this truly needed?") |
 | `doc-claims` | Unsubstantiated numbers, claims, or absolutes ("always", "none", "unrelated") |
 | `doc-reality` (Experimental) | Unverified factual assertions regarding external commands, package names, versions, pricing, or limits |
 | `doc-steps` | Gaps preventing reader action: missing preconditions, unmade decisions treated as final, missing rationale |

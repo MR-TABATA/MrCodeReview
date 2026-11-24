@@ -384,8 +384,51 @@ pub fn take_with(repo: &str, limits: &Limits) -> Result<Snapshot, String> {
     take_with_base(repo, limits, None)
 }
 
+/// 単一の文書ファイル（.md / .txt）からスナップショットを作成する。
+/// Git リポジトリや差分（diff）に依存せず、ファイル全体を新規ファイル diff として取り込む。
+pub fn take_file(path: &Path) -> Result<Snapshot, String> {
+    let canonical = path.canonicalize().map_err(|e| format!("ファイルが見つかりません ({}): {e}", path.display()))?;
+    if !canonical.is_file() {
+        return Err(format!("指定されたパスはファイルではありません: {}", path.display()));
+    }
+    let ext = canonical.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+    if ext != "md" && ext != "markdown" && ext != "txt" {
+        return Err(format!("文書ファイル（.md または .txt）を指定してください: {}", path.display()));
+    }
+    let bytes = std::fs::read(&canonical).map_err(|e| format!("ファイルの読み込みに失敗しました: {e}"))?;
+    if bytes.len() > MAX_FILE_BYTES {
+        return Err(format!("ファイルサイズ（{} バイト）が上限（{} バイト）を超えています", bytes.len(), MAX_FILE_BYTES));
+    }
+    let file_name = canonical.file_name().and_then(|s| s.to_str()).unwrap_or("document.md");
+    let diff_text = new_file_diff(file_name, &bytes, false);
+    let diff_hash = fnv1a64(diff_text.as_bytes());
+    let file_full_path = canonical.to_string_lossy().to_string();
+
+    Ok(Snapshot {
+        repo: file_full_path,
+        head: String::new(),
+        base: Base {
+            spec: "FILE".to_string(),
+            hash: String::new(),
+            subject: format!("ファイル直接指定: {file_name}"),
+        },
+        diff_hash,
+        files: vec![FileDiff {
+            path: file_name.to_string(),
+            bytes: bytes.len(),
+            text: diff_text.clone(),
+        }],
+        excluded: Vec::new(),
+        diff_bytes: diff_text.len(),
+        diff_text,
+    })
+}
+
 /// `base` から、いまの作業ツリー（ステージ済み・未ステージ・未追跡）までの差分を固定する。`None` なら `HEAD`（未コミットの変更だけ）。
 pub fn take_with_base(repo: &str, limits: &Limits, base: Option<&str>) -> Result<Snapshot, String> {
+    if Path::new(repo).is_file() {
+        return take_file(Path::new(repo));
+    }
     take_inner(repo, limits, base.unwrap_or("HEAD"), None)
 }
 
@@ -1149,5 +1192,69 @@ mod tests {
         // 値が版をまたいで変わらないことの固定（結果の紐づけに使うため）
         assert_eq!(fnv1a64(b""), "cbf29ce484222325");
         assert_eq!(fnv1a64(b"a"), "af63dc4c8601ec8c");
+    }
+
+    #[test]
+    fn take_file_reads_md_and_txt_and_rejects_others() {
+        let dir = scratch("take_file_test");
+        let md = dir.join("test.md");
+        let txt = dir.join("test.txt");
+        let rs = dir.join("test.rs");
+
+        std::fs::write(&md, "# Hello\nThis is markdown.\n").unwrap();
+        std::fs::write(&txt, "Plain text line 1\nLine 2\n").unwrap();
+        std::fs::write(&rs, "fn main() {}\n").unwrap();
+
+        // 正常系: .md
+        let snap_md = take_file(&md).expect("take_file(.md) should succeed");
+        assert_eq!(snap_md.files.len(), 1);
+        assert_eq!(snap_md.files[0].path, "test.md");
+        assert!(snap_md.diff_text.contains("+This is markdown."));
+        assert_eq!(snap_md.base.spec, "FILE");
+
+        // 正常系: .txt
+        let snap_txt = take_file(&txt).expect("take_file(.txt) should succeed");
+        assert_eq!(snap_txt.files.len(), 1);
+        assert_eq!(snap_txt.files[0].path, "test.txt");
+        assert!(snap_txt.diff_text.contains("+Plain text line 1"));
+
+        // 異常系: .rs（文書以外）
+        let err_rs = take_file(&rs).unwrap_err();
+        assert!(err_rs.contains(".md または .txt"));
+
+        // 異常系: ディレクトリ
+        let err_dir = take_file(&dir).unwrap_err();
+        assert!(err_dir.contains("ファイルではありません"));
+
+        // 異常系: 存在しないファイル
+        let err_notfound = take_file(&dir.join("nonexistent.md")).unwrap_err();
+        assert!(err_notfound.contains("見つかりません"));
+
+        // 正常系: 大文字拡張子 .MD と .markdown
+        let md_upper = dir.join("TEST.MD");
+        let markdown = dir.join("test.markdown");
+        std::fs::write(&md_upper, "# Upper\n").unwrap();
+        std::fs::write(&markdown, "# Markdown\n").unwrap();
+        assert!(take_file(&md_upper).is_ok());
+        assert!(take_file(&markdown).is_ok());
+
+        // 正常系: 空ファイル
+        let empty = dir.join("empty.md");
+        std::fs::write(&empty, "").unwrap();
+        let snap_empty = take_file(&empty).expect("空ファイルも成功する");
+        assert_eq!(snap_empty.files[0].bytes, 0);
+
+        // 異常系: 上限サイズ超過
+        let huge = dir.join("huge.md");
+        let huge_bytes = vec![b'a'; MAX_FILE_BYTES + 1];
+        std::fs::write(&huge, huge_bytes).unwrap();
+        let err_huge = take_file(&huge).unwrap_err();
+        assert!(err_huge.contains("上限"));
+
+        // take_with_base がファイルパスで take_file に回るか
+        let snap_via_base = take_with_base(md.to_str().unwrap(), &Limits::default(), None).expect("take_with_base should handle file");
+        assert_eq!(snap_via_base.base.spec, "FILE");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -16,7 +16,7 @@ import type { DurationStats } from './duration';
 import { h } from './dom';
 import { agentConsentSection, newAgentConsent } from './agentconsent';
 import { hookSection, newHookUi } from './hookview';
-import { recipesForDiff } from './recipescope';
+import { DOC_IDS, recipesForDiff } from './recipescope';
 import { batchEstimate, newBatchUi, pickedRecipes, STOPPED, type BatchResult } from './batch';
 import { detailPanel } from './detailview';
 import { findingOrder, isDoneFinding } from './findingorder';
@@ -41,7 +41,7 @@ import {
   REPOS_KEY,
   type RegisteredRepo,
 } from './reporegistry';
-import { renderAppIcon, repoListPanel } from './repoview';
+import { isDocPath, renderAppIcon, repoListPanel } from './repoview';
 import { bootRepos, moveConfirmText, planAfterAdd, planBatchAdd, previewErrorText, refreshBasesOnFocus, settleSelection, type BatchAddItem, type RepoAddResult, type RepoList } from './repoflow';
 
 interface RepoUnlinkResult extends RepoList {
@@ -924,8 +924,15 @@ const itemHitsDiff = (i: LintItem): boolean => !!state.preview?.files.some((f) =
 /** 今回の差分に対象があるのに、許可が無くて走らせられない linter（ESLint・Clippy）。 */
 const needsTrustNow = (): LintItem[] => (state.lintPlan?.items ?? []).filter((i) => i.state === 'needs_trust' && itemHitsDiff(i));
 
-/** 観点バーに出している観点。ふだんは、この差分に向くものだけ（構想書 §26）。 */
-const shownRecipes = (): Recipe[] => (state.showAllRecipes ? state.recipes : recipesForDiff(state.recipes, state.preview?.files ?? []));
+const isDocFile = (path: string): boolean => /\.(md|markdown|txt)$/i.test(path);
+
+/** 観点バーに出している観点。文書ファイルの場合は文書レビュー観点のみ、通常は差分に向くものだけ。 */
+const shownRecipes = (): Recipe[] => {
+  if (isDocFile(state.repo)) {
+    return state.recipes.filter((r) => DOC_IDS.includes(r.id));
+  }
+  return state.showAllRecipes ? state.recipes : recipesForDiff(state.recipes, state.preview?.files ?? []);
+};
 
 /** 実行の対象 ＝ 選んでいて、いま出ている観点。隠れた観点の選択は、捨てずに覚えておく（実行はしない）。 */
 function activeChecked(): Set<string> {
@@ -1171,6 +1178,37 @@ async function chooseAndAddRepo(askName = true): Promise<void> {
   void loadRepoStatus();
 }
 
+async function chooseAndAddFile(): Promise<void> {
+  const picked = await open({
+    multiple: true,
+    filters: [{ name: 'Markdown / Text', extensions: ['md', 'markdown', 'txt'] }],
+  });
+  const files = (Array.isArray(picked) ? picked : typeof picked === 'string' ? [picked] : []).map((d) => d.trim()).filter(Boolean);
+  if (files.length === 0) return;
+  if (files.length > 1) return addReposAtOnce(files);
+  const path = files[0];
+  const defaultName = path.replace(/\/+$/, '').split('/').filter(Boolean).pop() || '';
+  const callAdd = async (): Promise<RepoAddResult | null> => {
+    try {
+      const res = await invoke<RepoAddResult>('repo_add', { path, name: defaultName, confirmMove: false });
+      applyRepoList(res);
+      return res;
+    } catch (e) {
+      state.repoMsg = { text: ut().app.addFailed(String(e)), kind: 'err' };
+      window.alert(state.repoMsg.text);
+      render();
+      return null;
+    }
+  };
+  const out = await callAdd();
+  if (!out) return;
+  const plan = planAfterAdd(out);
+  if (plan.select) {
+    await changeRepo(plan.select);
+    void loadRepoStatus();
+  }
+}
+
 // ── 設定の「リポジトリ」タブ: 登録したリポジトリの編集（構想書 §8） ──────────────────────────
 // 枠は、登録の行数で数える。解除（非表示）した行も数える。履歴が 1 件もないものだけ、解除で行ごと消える。
 // 枠を空けるのは、「データを削除して枠を空ける」だけ。
@@ -1371,7 +1409,7 @@ function reposSection(lang: Lang = getAppLang()): HTMLElement {
       h(
         'article',
         { class: `redit-row ${st && st.state !== 'ok' ? 'bad' : ''}` },
-        h('span', { class: 'repo-item-icon' }, renderAppIcon(title, state.repoIcons[r.path])),
+        h('span', { class: 'repo-item-icon' }, renderAppIcon(title, state.repoIcons[r.path], isDocPath(r.path))),
         h(
           'div',
           { class: 'redit-main' },
@@ -1404,7 +1442,7 @@ function reposSection(lang: Lang = getAppLang()): HTMLElement {
       h(
         'article',
         { class: 'redit-row' },
-        h('span', { class: 'repo-item-icon' }, renderAppIcon(title, state.repoIcons[r.path])),
+        h('span', { class: 'repo-item-icon' }, renderAppIcon(title, state.repoIcons[r.path], isDocPath(r.path))),
         h(
           'div',
           { class: 'redit-main' },
@@ -1801,7 +1839,7 @@ function headerView(): HTMLElement {
       'span',
       { class: 'current-repo-label' },
       state.repo
-        ? h('span', { class: 'repo-name-badge' }, renderAppIcon(activeName, state.repoIcons[state.repo]), activeName)
+        ? h('span', { class: 'repo-name-badge' }, renderAppIcon(activeName, state.repoIcons[state.repo], isDocPath(state.repo)), activeName)
         : h('span', { class: 'muted' }, ut().app.selectRepoLeft),
     ),
   );
@@ -1978,7 +2016,7 @@ function recipeBarSection(): HTMLElement {
       baseNote,
       collapsed,
       doneIds,
-      hiddenCount: state.showAllRecipes ? 0 : state.recipes.length - shownRecipes().length,
+      hiddenCount: state.showAllRecipes || isDocFile(state.repo) ? 0 : state.recipes.length - shownRecipes().length,
       showAll: state.showAllRecipes,
       estimatedTokens: p && toRun.length ? p.estimated_input_tokens * toRun.filter((r) => r.kind !== 'tool').length : null,
       estimatedTimeText: est.timeText,
@@ -2154,6 +2192,9 @@ function leftPanel(): HTMLElement {
     },
     onAdd: () => {
       void chooseAndAddRepo();
+    },
+    onAddFile: () => {
+      void chooseAndAddFile();
     },
     onRemove: (repo: RegisteredRepo) => {
       void handleRemoveRepo(repo);

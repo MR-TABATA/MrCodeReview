@@ -1549,6 +1549,8 @@ export const MESSAGES: Record<Lang, Messages> = {
       '権限・公開・秘密': 'Access, Exposure & Secrets',
       'tf-refs': 'Reference Consistency',
       '参照の整合': 'Reference Consistency',
+      'doc-core': 'Core & Necessity',
+      '文書の核': 'Core & Necessity',
       'doc-claims': 'Unsupported Claims & Numbers',
       '根拠のない主張・数字': 'Unsupported Claims & Numbers',
       'doc-reality': 'Reality & Currency Check',

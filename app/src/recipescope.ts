@@ -13,7 +13,7 @@ export const TERRAFORM_IDS: readonly string[] = ['tf-state', 'tf-replace', 'tf-r
 export const DOC_EXTS: readonly string[] = ['md', 'mdx', 'txt', 'rst'];
 
 /** 文書の観点（組み込み）。差分に文書のファイルがあるときだけ、追加で出す（コードの観点は、これまでどおり隠さない）。 */
-export const DOC_IDS: readonly string[] = ['doc-claims', 'doc-reality', 'doc-steps'];
+export const DOC_IDS: readonly string[] = ['doc-core', 'doc-claims', 'doc-reality', 'doc-steps'];
 
 /** コードの観点（組み込み）。Terraform だけの差分では出さない（インフラの担当に、コードの観点は要らない。見たいときは「すべての観点」）。 */
 export const CODE_IDS: readonly string[] = ['bugs', 'errors', 'security', 'performance', 'tests', 'consistency'];

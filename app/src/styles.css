@@ -647,6 +647,129 @@ button.small.run { width: auto; padding: 3px 10px; font-size: 12px; }
 .repo-item.active {
   background: var(--accent-bg); border-color: var(--accent); font-weight: 600;
 }
+
+/* ── 文書ディレクトリのグルーピングと囲み ── */
+.repo-doc-group {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 2px;
+  transition: border-color .15s, background .15s;
+}
+.repo-doc-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 5px;
+  user-select: none;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.repo-doc-group-header:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.repo-doc-group-chevron {
+  font-size: 8px;
+  opacity: 0.6;
+  width: 9px;
+  display: inline-block;
+  text-align: center;
+}
+.repo-doc-group.collapsed .repo-doc-group-items {
+  display: none;
+}
+.repo-doc-group.collapsed {
+  gap: 0;
+  padding-bottom: 5px;
+}
+.repo-doc-group-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+.repo-doc-group-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.repo-doc-group-sub {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.repo-doc-group-count {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  line-height: 1.2;
+}
+.repo-doc-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* ── 「＋ 追加」メニュー ── */
+.add-repo-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+}
+.add-repo-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background .12s, color .12s;
+}
+.add-repo-dropdown-item:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.add-dropdown-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+.add-dropdown-text {
+  flex: 1;
+  white-space: nowrap;
+}
+.repo-doc-group .repo-item {
+  background: var(--panel);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.repo-doc-group .repo-item.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
 .repo-item-main {
   display: flex;
   align-items: center;
@@ -681,6 +804,22 @@ button.small.run { width: auto; padding: 3px 10px; font-size: 12px; }
   justify-content: center;
   user-select: none;
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+.repo-app-icon-doc {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  flex: 0 0 auto;
+  transition: color .15s;
+}
+.repo-item:hover .repo-app-icon-doc {
+  color: var(--text);
+}
+.repo-item.active .repo-app-icon-doc {
+  color: var(--accent);
 }
 .repo-item-text {
   flex: 1 1 auto;

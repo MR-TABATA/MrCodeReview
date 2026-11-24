@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { recipesForDiff } from './recipescope';
+import { DOC_IDS, recipesForDiff } from './recipescope';
 import type { Recipe } from './types';
 
 const r = (id: string, kind: 'llm' | 'tool' = 'llm'): Recipe => ({ id, title: id, source: 'builtin', prompt: '', kind });
 const CODE = ['bugs', 'errors', 'security', 'performance', 'tests', 'consistency'];
 const TF = ['tf-state', 'tf-replace', 'tf-repro', 'tf-security', 'tf-refs'];
-const DOC = ['doc-claims', 'doc-reality', 'doc-steps'];
+const DOC = ['doc-core', 'doc-claims', 'doc-reality', 'doc-steps'];
 const all = [...CODE, ...TF, ...DOC].map((id) => r(id)).concat(r('lint', 'tool'), r('mine'));
 const ids = (files: string[]): string[] => recipesForDiff(all, files.map((path) => ({ path }))).map((x) => x.id);
 
@@ -51,5 +51,9 @@ describe('recipesForDiff', () => {
     }
     for (const d of DOC) expect(ids(['src/a.ts'])).not.toContain(d);
     for (const d of DOC) expect(ids(['config.yml', 'package.json'])).not.toContain(d);
+  });
+
+  it('DOC_IDS には文書観点 4 つが含まれる', () => {
+    expect(DOC_IDS).toEqual(['doc-core', 'doc-claims', 'doc-reality', 'doc-steps']);
   });
 });

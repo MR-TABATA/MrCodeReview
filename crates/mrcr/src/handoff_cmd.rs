@@ -119,6 +119,9 @@ fn title_of(t: &str) -> String {
 fn repo_keys(repo: &Path) -> Result<Vec<String>, String> {
     let canonical = repo.canonicalize().map_err(|e| format!("リポジトリのパスが見つかりません（{}）: {e}", repo.display()))?;
     let canonical = canonical.to_str().ok_or("リポジトリのパスが、有効な UTF-8 ではありません")?.to_string();
+    if Path::new(&canonical).is_file() {
+        return Ok(vec![canonical]);
+    }
     let top = snapshot::toplevel(&canonical).map_err(|_| format!("git のリポジトリではありません: {canonical}"))?;
     let mut keys = vec![top.clone()];
     if canonical != top {

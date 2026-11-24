@@ -152,40 +152,59 @@ fn run_recipes(repo: &Path, lang: &str) -> i32 {
     0
 }
 
+const DOC_RECIPES: &[&str] = &["doc-core", "doc-claims", "doc-reality", "doc-steps"];
+
 fn run_review(args: ReviewArgs) -> i32 {
-    let repo_path = match args.repo.canonicalize() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("エラー: リポジトリパスが見つかりません ({}): {e}", args.repo.display());
-            return 2;
-        }
-    };
+    let is_file_mode = args.file.is_some();
 
-    let repo_str = match repo_path.to_str() {
-        Some(s) => s.to_string(),
-        None => {
-            eprintln!("エラー: リポジトリパスが有効な UTF-8 ではありません");
-            return 2;
-        }
-    };
-
-    let base_label = match args.commit.as_deref() {
-        Some("HEAD") => "直近のコミット".to_string(),
-        Some(rev) => format!("コミット {}", rev.chars().take(12).collect::<String>()),
-        None => args.base.clone(),
-    };
-    let taken = if let Some(rev) = args.commit.as_deref() {
-        snapshot::take_commit(&repo_str, &snapshot::Limits::default(), rev)
+    let (repo_path, snap, base_label) = if let Some(file_path) = &args.file {
+        let snap = match snapshot::take_file(file_path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("エラー: {e}");
+                return 2;
+            }
+        };
+        let repo_dir = PathBuf::from(&snap.repo);
+        (repo_dir, snap, "ファイル直接指定".to_string())
     } else {
-        snapshot::take_with_base(&repo_str, &snapshot::Limits::default(), Some(&args.base))
+        let repo_path = match args.repo.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("エラー: リポジトリパスが見つかりません ({}): {e}", args.repo.display());
+                return 2;
+            }
+        };
+
+        let repo_str = match repo_path.to_str() {
+            Some(s) => s.to_string(),
+            None => {
+                eprintln!("エラー: リポジトリパスが有効な UTF-8 ではありません");
+                return 2;
+            }
+        };
+
+        let base_label = match args.commit.as_deref() {
+            Some("HEAD") => "直近のコミット".to_string(),
+            Some(rev) => format!("コミット {}", rev.chars().take(12).collect::<String>()),
+            None => args.base.clone(),
+        };
+        let taken = if let Some(rev) = args.commit.as_deref() {
+            snapshot::take_commit(&repo_str, &snapshot::Limits::default(), rev)
+        } else {
+            snapshot::take_with_base(&repo_str, &snapshot::Limits::default(), Some(&args.base))
+        };
+        let snap = match taken {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("エラー: 差分の取得に失敗しました: {e}");
+                return 2;
+            }
+        };
+        (repo_path, snap, base_label)
     };
-    let snap = match taken {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("エラー: 差分の取得に失敗しました: {e}");
-            return 2;
-        }
-    };
+
+    let repo_str = repo_path.to_string_lossy().to_string();
 
     if snap.files.is_empty() {
         if args.stdout {
@@ -196,13 +215,27 @@ fn run_review(args: ReviewArgs) -> i32 {
         return 0;
     }
 
+    let recipe_str = if is_file_mode {
+        args.recipe.unwrap_or_else(|| DOC_RECIPES.join(","))
+    } else {
+        args.recipe.unwrap_or_else(|| "bugs".to_string())
+    };
+
     let all_recipes = recipe::list_with_lang(Some(&repo_path), &args.lang);
     let target_recipes: Vec<Recipe> = if args.all {
+        if is_file_mode {
+            eprintln!("エラー: ファイル直接指定（.md / .txt）では全観点（--all）は指定できません。文書レビュー観点（{}）のみ使用できます。", DOC_RECIPES.join(", "));
+            return 2;
+        }
         all_recipes
     } else {
         let mut list = Vec::new();
-        for raw_id in args.recipe.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        for raw_id in recipe_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
             let id = normalize_recipe_id(raw_id);
+            if is_file_mode && !DOC_RECIPES.contains(&id.as_ref()) {
+                eprintln!("エラー: ファイル直接指定（.md / .txt）では文書レビュー観点（{}）のみ指定できます。'{}' は指定できません。", DOC_RECIPES.join(", "), raw_id);
+                return 2;
+            }
             match all_recipes.iter().find(|r| r.id == id).cloned() {
                 Some(r) => list.push(r),
                 None => {

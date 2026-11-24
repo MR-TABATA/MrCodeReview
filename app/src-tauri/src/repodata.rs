@@ -47,7 +47,11 @@ pub struct RepoDataRow {
 /// フォルダが無くなっていて直せないときは、存在する一番近い上のフォルダを実体のパス（シンボリックリンクを解いたもの）に直して、
 /// 残りをつなぐ。上も解けなければ、渡されたパスのまま（末尾の `/` だけ除く）。
 pub fn repo_key(path: &str) -> String {
-    snapshot::toplevel(path).unwrap_or_else(|_| canonicalize_lenient(path).unwrap_or_else(|| path.trim_end_matches('/').to_string()))
+    let trimmed = path.trim_end_matches('/');
+    if Path::new(trimmed).is_file() {
+        return canonicalize_lenient(path).unwrap_or_else(|| trimmed.to_string());
+    }
+    snapshot::toplevel(path).unwrap_or_else(|_| canonicalize_lenient(path).unwrap_or_else(|| trimmed.to_string()))
 }
 
 /// 存在する一番近い上のフォルダを `canonicalize` して、無い部分をつなぐ（フォルダが消えていても、リンク経由のパスを実体に寄せる）。

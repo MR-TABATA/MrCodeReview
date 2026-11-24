@@ -92,3 +92,48 @@ fn spec_with_unsupported_extension_is_rejected_with_code_2() {
     let stderr = String::from_utf8_lossy(&o.stderr);
     assert!(stderr.contains(".md または .txt のみ対応"), "{stderr}");
 }
+
+#[test]
+fn file_mode_rejects_code_recipes_and_all_flag() {
+    let repo = Tmp::new("file-recipe-repo");
+    let data = Tmp::new("file-recipe-data");
+    let md = repo.0.join("doc.md");
+    let txt = repo.0.join("note.txt");
+    std::fs::write(&md, "# Title\nDoc content\n").unwrap();
+    std::fs::write(&txt, "Plain text content\n").unwrap();
+
+    // 1. bugs は拒否（終了コード 2）
+    let o1 = Command::new(env!("CARGO_BIN_EXE_mrcr"))
+        .args(["review", md.to_str().unwrap(), "-r", "bugs"])
+        .env("MRCR_DATA_DIR", &data.0)
+        .output()
+        .unwrap();
+    assert_eq!(o1.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&o1.stderr).contains("文書レビュー観点"));
+
+    // 2. --all は拒否（終了コード 2）
+    let o2 = Command::new(env!("CARGO_BIN_EXE_mrcr"))
+        .args(["review", md.to_str().unwrap(), "--all"])
+        .env("MRCR_DATA_DIR", &data.0)
+        .output()
+        .unwrap();
+    assert_eq!(o2.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&o2.stderr).contains("--all"));
+
+    // 3. 一部だけ文書以外（doc-core,bugs）も拒否（終了コード 2）
+    let o3 = Command::new(env!("CARGO_BIN_EXE_mrcr"))
+        .args(["review", md.to_str().unwrap(), "-r", "doc-core,bugs"])
+        .env("MRCR_DATA_DIR", &data.0)
+        .output()
+        .unwrap();
+    assert_eq!(o3.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&o3.stderr).contains("文書レビュー観点"));
+
+    // 4. .txt でも同様に拒否
+    let o4 = Command::new(env!("CARGO_BIN_EXE_mrcr"))
+        .args(["review", txt.to_str().unwrap(), "-r", "bugs"])
+        .env("MRCR_DATA_DIR", &data.0)
+        .output()
+        .unwrap();
+    assert_eq!(o4.status.code(), Some(2));
+}

@@ -113,6 +113,16 @@ fn root_of(path: &str) -> String {
 /// 根のパスと最初のコミットは、独立に調べられる（`git -C` は、サブディレクトリからでも同じ答え）ので、並行して聞く。
 fn identify(path: &str) -> Result<Ident, String> {
     let path = path.trim();
+    let p = Path::new(path);
+    if p.is_file() {
+        let canonical = p.canonicalize().map_err(|e| format!("ファイルが見つかりません ({path}): {e}"))?;
+        let ext = canonical.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+        if ext != "md" && ext != "markdown" && ext != "txt" {
+            return Err("文書ファイル（.md または .txt）を指定してください".into());
+        }
+        let root = canonical.to_string_lossy().to_string();
+        return Ok(Ident { root, first_commit: None });
+    }
     let (root, first_commit) = std::thread::scope(|s| {
         let fc = s.spawn(|| snapshot::first_commit(path));
         let root = root_of(path);
@@ -456,17 +466,28 @@ fn add_at(dir: &Path, path: &str, name: Option<&str>, confirm_move: bool, limit:
     let name = clean_name(name);
     let conn = db::open(dir)?;
     let not_changed = |e: String| format!("{e}（何も変えていません。もう一度試してください）");
-    // `.git` の確認は、書き込みのロックを取る前に済ませる
+    let is_file = Path::new(&ident.root).is_file();
+    // `.git` の確認は、書き込みのロックを取る前に済ませる（ファイル登録時はスキップ）
     let mut dirs = GitDirs::default();
-    warm_find(&conn, &ident.root, ident.first_commit.as_deref(), &mut dirs).map_err(not_changed)?;
+    if !is_file {
+        warm_find(&conn, &ident.root, ident.first_commit.as_deref(), &mut dirs).map_err(not_changed)?;
+    }
     let t = tx(&conn)?;
     let all = rows(&t)?;
     let front = min_position(&t)? - 1;
     let (result_path, already_at);
-    if let Some(row) = find(&all, &ident.root, ident.first_commit.as_deref(), &mut dirs).map_err(not_changed)? {
-        // 旧パスのフォルダが無い（移動した）なら、登録を新しい根へ移す。履歴も、新しいパスへ付け替える（結びつきを切らない）。
-        // 旧パスのフォルダが残っている（クローン・ワークツリー）なら、行はそのまま。
-        let moved = !Path::new(&row.path).is_dir() && !same_dir(&row.path, &ident.root);
+    let matched_row = if is_file {
+        all.iter().find(|r| same_dir(&r.path, &ident.root))
+    } else {
+        find(&all, &ident.root, ident.first_commit.as_deref(), &mut dirs).map_err(not_changed)?
+    };
+    if let Some(row) = matched_row {
+        // 旧パスのフォルダ/ファイルが無い（移動した）なら、登録を新しい根へ移す。履歴も、新しいパスへ付け替える（結びつきを切らない）。
+        let moved = if is_file {
+            !Path::new(&row.path).is_file() && !same_dir(&row.path, &ident.root)
+        } else {
+            !Path::new(&row.path).is_dir() && !same_dir(&row.path, &ident.root)
+        };
         if moved && !confirm_move {
             // 外付けドライブの未接続などで、見えないだけかもしれない。確認が取れるまで、何も変えない（tx は、確定せずに捨てる）
             return Ok(AddOutcome { list: RepoList { repos: all.clone(), limit, warnings: Vec::new() }, path: None, limit_reached: false, already_at: None, move_from: Some(row.path.clone()) });
@@ -1864,6 +1885,37 @@ mod tests {
         // 実際の操作も、同じ結果
         let (removed, _, _) = delete_data(&d, &id).unwrap();
         assert_eq!(removed.reviews, 3);
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn file_registration_extension_check_and_dedup() {
+        let d = scratch("file_reg");
+        let base = scratch("file_base");
+        let md = base.join("spec.md");
+        let md_upper = base.join("README.MD");
+        let rs = base.join("code.rs");
+
+        std::fs::write(&md, "# Spec\n").unwrap();
+        std::fs::write(&md_upper, "# Upper\n").unwrap();
+        std::fs::write(&rs, "fn main() {}\n").unwrap();
+
+        // 1. .rs はエラー
+        let err_rs = add(&d, rs.to_str().unwrap(), None).unwrap_err();
+        assert!(err_rs.contains("文書ファイル"));
+
+        // 2. .MD (大文字) は通る（canonicalize されたパスで登録される）
+        let res_upper = add(&d, md_upper.to_str().unwrap(), None).unwrap();
+        let canon_upper = md_upper.canonicalize().unwrap().to_string_lossy().to_string();
+        assert!(res_upper.list.repos.iter().any(|r| r.path == canon_upper));
+
+        // 3. 同じファイルを二度追加しても行は 1 つのまま
+        let res_md1 = add(&d, md.to_str().unwrap(), None).unwrap();
+        let count1 = res_md1.list.repos.len();
+        let res_md2 = add(&d, md.to_str().unwrap(), None).unwrap();
+        assert_eq!(res_md2.list.repos.len(), count1, "重複して行が増えない");
+
         let _ = std::fs::remove_dir_all(&d);
         let _ = std::fs::remove_dir_all(&base);
     }
