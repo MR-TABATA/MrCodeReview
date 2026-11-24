@@ -51,7 +51,7 @@ brew install mr-tabata/tap/mrcr
 Node.js 18 以降が要ります。版は固定してください。版を付けないと、`npx` は起動のたびに最新のコードを実行します。
 
 ```bash
-npx @mr-tabata/mrcr@1.12.0 --help
+npx @mr-tabata/mrcr@1.13.0 --help
 ```
 
 いまは macOS だけです。バイナリは universal（Apple Silicon と Intel）ですが、動作を確かめたのは Apple Silicon だけです。
@@ -113,6 +113,10 @@ mrcr review -b HEAD~1
 # 直近のコミット（HEAD~1..HEAD）だけ、または指定した 1 コミットだけをレビュー（未コミットの変更は含めない）
 mrcr review --commit
 mrcr review --commit <ハッシュ>
+
+# 仕様書・設計書などの文書ファイル（.md / .txt）を直接レビュー（未コミット差分ではなく文書全体を検査）
+mrcr review docs/spec.md
+mrcr review docs/spec.md -r doc-core,doc-claims
 
 # 利用可能な観点一覧を表示
 mrcr recipes
@@ -245,7 +249,7 @@ mrcr mcp setup
 `mrcr` をインストールせずに、`npx` でも使えます。ここでも版を固定してください。
 
 ```bash
-npx @mr-tabata/mrcr@1.12.0 mcp setup
+npx @mr-tabata/mrcr@1.13.0 mcp setup
 ```
 
 設定を自分で書く場合（たとえば `.vscode/mcp.json`）:
@@ -255,7 +259,7 @@ npx @mr-tabata/mrcr@1.12.0 mcp setup
   "mcpServers": {
     "mrcodereview": {
       "command": "npx",
-      "args": ["-y", "@mr-tabata/mrcr@1.12.0", "mcp"]
+      "args": ["-y", "@mr-tabata/mrcr@1.13.0", "mcp"]
     }
   }
 }
