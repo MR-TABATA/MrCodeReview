@@ -22,9 +22,9 @@ jobs:
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-      # GUI（app/src-tauri）の試験は ci.yml。CLI の配布では、CLI と core だけを試験する
-      - name: テスト
-        run: cargo test -p mrcr-core -p mrcr
+      # リリース前にワークスペース全体（CLI・core・GUI）のテストを必須化し、1つでも失敗したらリリースを止める
+      - name: テスト（ワークスペース全体）
+        run: cargo test --workspace
 
       - name: 配布物を作る
         id: build
