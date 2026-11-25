@@ -51,7 +51,7 @@ brew install mr-tabata/tap/mrcr
 Node.js 18 以降が要ります。版は固定してください。版を付けないと、`npx` は起動のたびに最新のコードを実行します。
 
 ```bash
-npx @mr-tabata/mrcr@1.13.0 --help
+npx @mr-tabata/mrcr@1.13.1 --help
 ```
 
 いまは macOS だけです。バイナリは universal（Apple Silicon と Intel）ですが、動作を確かめたのは Apple Silicon だけです。
@@ -249,7 +249,7 @@ mrcr mcp setup
 `mrcr` をインストールせずに、`npx` でも使えます。ここでも版を固定してください。
 
 ```bash
-npx @mr-tabata/mrcr@1.13.0 mcp setup
+npx @mr-tabata/mrcr@1.13.1 mcp setup
 ```
 
 設定を自分で書く場合（たとえば `.vscode/mcp.json`）:
@@ -259,7 +259,7 @@ npx @mr-tabata/mrcr@1.13.0 mcp setup
   "mcpServers": {
     "mrcodereview": {
       "command": "npx",
-      "args": ["-y", "@mr-tabata/mrcr@1.13.0", "mcp"]
+      "args": ["-y", "@mr-tabata/mrcr@1.13.1", "mcp"]
     }
   }
 }
