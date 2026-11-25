@@ -15,7 +15,7 @@ import { combo, closeCombo } from './combo';
 import type { DurationStats } from './duration';
 import { h } from './dom';
 import { agentConsentSection, newAgentConsent } from './agentconsent';
-import { hookSection, newHookUi } from './hookview';
+import { hookSection, newHookUi, runLogView } from './hookview';
 import { DOC_IDS, recipesForDiff } from './recipescope';
 import { batchEstimate, newBatchUi, pickedRecipes, STOPPED, type BatchResult } from './batch';
 import { detailPanel } from './detailview';
@@ -23,7 +23,7 @@ import { findingOrder, isDoneFinding } from './findingorder';
 import { agentBox, agentDone, agentNotice, agentStatus, agentStatusBar, foldedRow, newAgentUi, refreshAgentReportsOnFocus, type AgentActions } from './agentview';
 import { handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffActions, type HandoffTarget } from './handoffview';
 import type { AgentDef } from './types';
-import { displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
+import { countsLine, dayKey, dayLabel, displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
 import { providerLabel, providerNote } from './providertext';
 import { ut } from './uitext';
 import { continuityOf, filteredFates, flowOf, shownByContinuity, type ContinuityKind } from './continuity';
@@ -164,6 +164,14 @@ const state = {
   rightW: loadSideW(RIGHTW_KEY, 'right'),
   /** 各リポジトリのアプリアイコン（base64 data URL、無ければ null）のキャッシュ */
   repoIcons: {} as Record<string, string | null>,
+  /** 実行ログタイムラインでインライン展開されているレビューID */
+  expandedRunLogs: new Set<string>(),
+  /** 実行ログ内でインライン展開されている指摘の識別子（"reviewId:findingIndex"） */
+  expandedFindings: new Set<string>(),
+  /** 実行ログのインライン展開用のキャッシュ（レビュー詳細） */
+  runLogReviewCache: new Map<string, ReviewView>(),
+  /** 実行ログのインライン展開でローディング中のレビューID */
+  loadingRunLogs: new Set<string>(),
   /** 右サイドバー: 履歴パネルを折り畳んでいるか */
   historyCollapsed: false,
   /** 結果先頭の「前回 → 今回」の帯で選んだ絞り込み。レビューを切り替えたら外す */
@@ -707,14 +715,7 @@ async function refreshHandoff(): Promise<void> {
   state.handoff = state.selected ? await invoke<string>('build_handoff', { id: state.selected.id }) : '';
 }
 
-/** 履歴の「詳細」: そのレビューを開いて、「詳細」タブを出す。 */
-async function openDetail(id: string): Promise<void> {
-  await select(id);
-  if (state.selected?.id === id) {
-    state.tab = 'detail';
-    render();
-  }
-}
+
 
 async function select(id: string): Promise<void> {
   if (!canLeaveSettings()) return;
@@ -750,8 +751,20 @@ async function fixAllBySeverity(sev: string, status: TriageState = 'fix'): Promi
   }, status);
 }
 
-async function setTriage(index: number, status: TriageState): Promise<void> {
-  const r = state.selected;
+export function findReviewTarget(
+  reviewId?: string,
+  selected: ReviewView | null = state.selected,
+  cache: Map<string, ReviewView> = state.runLogReviewCache,
+): ReviewView | null {
+  if (reviewId) {
+    if (selected?.id === reviewId) return selected;
+    return cache.get(reviewId) ?? null;
+  }
+  return selected;
+}
+
+async function setTriage(index: number, status: TriageState, reviewId?: string): Promise<void> {
+  const r = findReviewTarget(reviewId);
   if (!r) return;
   try {
     applyHandling(r, await invoke<Handling>('set_triage', { id: r.id, index, status }));
@@ -763,14 +776,19 @@ async function setTriage(index: number, status: TriageState): Promise<void> {
   render();
 }
 
-function applyHandling(r: ReviewView, h: Handling): void {
+export function applyHandling(r: ReviewView, h: Handling, cache: Map<string, ReviewView> = state.runLogReviewCache): void {
   r.triage = h.triage;
   r.finding_notes = h.notes;
+  const cached = cache.get(r.id);
+  if (cached && cached !== r) {
+    cached.triage = h.triage;
+    cached.finding_notes = h.notes;
+  }
 }
 
 /** 対応メモを保存する（入力欄を離れたとき・Enter）。 */
-async function saveMemo(index: number, memo: string): Promise<void> {
-  const r = state.selected;
+async function saveMemo(index: number, memo: string, reviewId?: string): Promise<void> {
+  const r = findReviewTarget(reviewId);
   if (!r || (r.finding_notes[index]?.memo ?? '') === memo.trim()) return;
   try {
     applyHandling(r, await invoke<Handling>('set_memo', { id: r.id, index, memo }));
@@ -782,8 +800,8 @@ async function saveMemo(index: number, memo: string): Promise<void> {
 }
 
 /** 「対応済み」を付ける／外す。 */
-async function toggleDone(index: number, done: boolean): Promise<void> {
-  const r = state.selected;
+async function toggleDone(index: number, done: boolean, reviewId?: string): Promise<void> {
+  const r = findReviewTarget(reviewId);
   if (!r) return;
   try {
     applyHandling(r, await invoke<Handling>('set_done', { id: r.id, index, done }));
@@ -2314,6 +2332,34 @@ function noteBox(note: string): HTMLElement {
 }
 
 // ── 右: 履歴 ──────────────────────────────────────────────────────────────────
+let pendingScrollTarget: string | null = null;
+
+function scrollToReviewCard(id: string): void {
+  if (state.selected) {
+    state.selected = null;
+  }
+  if (!state.expandedRunLogs.has(id)) {
+    state.expandedRunLogs.add(id);
+  }
+  pendingScrollTarget = `review-${id}`;
+
+  if (!state.runLogReviewCache.has(id)) {
+    state.loadingRunLogs.add(id);
+    render();
+    void (async () => {
+      try {
+        const rev = await invoke<ReviewView | null>('get_review', { id });
+        if (rev) state.runLogReviewCache.set(id, rev);
+      } finally {
+        state.loadingRunLogs.delete(id);
+        render();
+      }
+    })();
+  } else {
+    render();
+  }
+}
+
 function rightPanel(): HTMLElement {
   const lang = getAppLang();
   const m = msg(lang).mainUi;
@@ -2330,8 +2376,8 @@ function rightPanel(): HTMLElement {
       state.preview?.repo ?? state.repo,
       emptyText,
       {
-        open: (id) => void select(id),
-        detail: (id) => void openDetail(id),
+        open: (id) => scrollToReviewCard(id),
+        detail: (id) => scrollToReviewCard(id),
         toggle: togglePick,
         toggleDay: (key) => {
           if (state.historyDays.has(key)) state.historyDays.delete(key);
@@ -2493,7 +2539,7 @@ function triageLabels(lang: Lang): [TriageState, string][] {
 }
 
 /** `resolved` は、直し済み（対応済みの印、または、エージェントの「対応した」の申告）。直し済みの指摘には、「CLI に渡す」を出さない。 */
-function triageControls(index: number, status: TriageState, hand: boolean, cls = 'triage', resolved = false): HTMLElement {
+function triageControls(index: number, status: TriageState, hand: boolean, cls = 'triage', resolved = false, reviewId?: string): HTMLElement {
   const lang = getAppLang();
   const m = msg(lang).mainUi;
   return h(
@@ -2506,7 +2552,10 @@ function triageControls(index: number, status: TriageState, hand: boolean, cls =
           class: `t-${k} ${status === k ? 'on' : ''}`,
           title: status === k ? m.triageResetTitle : '',
           // 同じ状態をもう一度押すと、未仕分けに戻す
-          onclick: () => void setTriage(index, status === k ? 'new' : k),
+          onclick: (e: Event) => {
+            e.stopPropagation();
+            void setTriage(index, status === k ? 'new' : k, reviewId);
+          },
         },
         label,
       ),
@@ -2569,11 +2618,25 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
       byAgent ? 'agent' : 'you',
     );
   }
-  const open = done || state.expanded.has(index);
-  const toggle = (): void => {
-    if (done) state.openCards.delete(index);
-    else if (state.expanded.has(index)) state.expanded.delete(index);
-    else state.expanded.add(index);
+  const cardKey = `${reviewId}:${index}`;
+  const isCardOpen = state.expandedFindings.has(cardKey) || (state.selected?.id === reviewId && state.expanded.has(index));
+  const open = done || isCardOpen;
+  const toggle = (e?: Event): void => {
+    if (e) e.stopPropagation();
+    if (done) {
+      if (state.openCards.has(index)) state.openCards.delete(index);
+      else state.openCards.add(index);
+    } else {
+      if (state.expandedFindings.has(cardKey)) {
+        state.expandedFindings.delete(cardKey);
+      } else {
+        state.expandedFindings.add(cardKey);
+      }
+      if (state.selected?.id === reviewId) {
+        if (state.expanded.has(index)) state.expanded.delete(index);
+        else state.expanded.add(index);
+      }
+    }
     render();
   };
   const loc = `${f.file || ut().app.noFile}${f.line === null ? '' : `:${f.line}`}`;
@@ -2582,7 +2645,10 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
   if (cont) chips.unshift(cont);
   return h(
     'article',
-    { class: `finding fc ${f.verified ? '' : 'unverified'} s-${status} fc-sev-${f.severity} ${open ? 'open' : ''}` },
+    {
+      class: `finding fc ${f.verified ? '' : 'unverified'} s-${status} fc-sev-${f.severity} ${open ? 'open' : ''}`,
+      onclick: (e: Event) => e.stopPropagation(),
+    },
     h(
       'div',
       {
@@ -2598,7 +2664,7 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
           if (e.target !== e.currentTarget) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            toggle();
+            toggle(e);
           }
         },
       },
@@ -2610,7 +2676,7 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
       h('span', { class: 'fc-caret' }, open ? '▾' : '▸'),
     ),
     // 仕分け（対応・待ち・無視・CLI に渡す）は、見出しと内容の間。閉じていても押せる。「対応した」と申告された指摘は、読むだけ
-    done ? null : triageControls(index, status, hand, 'triage fc-triage'),
+    done ? null : triageControls(index, status, hand, 'triage fc-triage', false, reviewId),
     // 閉じているときだけ、内容の 1 行目（はみ出す分は「…」）。開いたら、下に全文を出す
     h('div', { class: 'fc-sub' }, open ? null : h('span', { class: 'fc-peek' }, f.detail), ...chips),
     // 「CLI に渡す」を押した直後の案内は、閉じていても、見える所に出す（押した結果が見えなくならないように）
@@ -2647,7 +2713,7 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
             : null,
           carryNote(carry),
           hand ? agentBox(agent, when, showNowDiff) : null,
-          handlingBox(index, status, note, byAgent),
+          handlingBox(index, status, note, byAgent, reviewId),
         )
       : null,
   );
@@ -2722,7 +2788,7 @@ function triageStamp(status: TriageState, note?: Note): string {
 }
 
 /** 対応メモと、「対応済み」。成果物のレポートに載る、「いつ・どう対応したか」の記録。 */
-function handlingBox(index: number, status: TriageState, note?: Note, agentDone = false): HTMLElement {
+function handlingBox(index: number, status: TriageState, note?: Note, agentDone = false, reviewId?: string): HTMLElement {
   const m = msg(getAppLang()).mainUi;
   // エージェントが「対応した」と申告したものは、申告が、その記録になる。メモの入力と「対応済みにする」は、出さない
   // （すでに書いたメモと、対応済みの時刻は、読むだけで残す）
@@ -2742,7 +2808,8 @@ function handlingBox(index: number, status: TriageState, note?: Note, agentDone 
     maxlength: '2000',
     placeholder: m.memoPlaceholder,
     value: note?.memo ?? '',
-    onchange: (e) => void saveMemo(index, (e.target as HTMLInputElement).value),
+    onclick: (e: Event) => e.stopPropagation(),
+    onchange: (e) => void saveMemo(index, (e.target as HTMLInputElement).value, reviewId),
   });
   const done = note?.done_at ?? null;
   const stamp = triageStamp(status, note);
@@ -2754,7 +2821,13 @@ function handlingBox(index: number, status: TriageState, note?: Note, agentDone 
       ? h(
           'div',
           { class: 'row done-row' },
-          h('button', { class: `small done ${done !== null ? 'on' : ''}`, onclick: () => void toggleDone(index, done === null) }, done !== null ? m.doneRevertBtn : m.markDoneBtn),
+          h('button', {
+            class: `small done ${done !== null ? 'on' : ''}`,
+            onclick: (e: Event) => {
+              e.stopPropagation();
+              void toggleDone(index, done === null, reviewId);
+            },
+          }, done !== null ? m.doneRevertBtn : m.markDoneBtn),
           done !== null ? h('span', { class: 'muted' }, ut().app.doneStamp(when(done), note?.done_head ? note.done_head.slice(0, 7) : '')) : null,
         )
       : null,
@@ -3042,17 +3115,199 @@ function relatedSection(rel: Related | null): HTMLElement | null {
   );
 }
 
+function runLogReviewCard(s: ReviewSummary, lang: Lang): HTMLElement {
+  const m = msg(lang).mainUi;
+  const chip = (cls: string, label: string) => h('span', { class: `badge ${cls}` }, label);
+  const isExpanded = state.expandedRunLogs.has(s.id);
+  const isLoading = state.loadingRunLogs.has(s.id);
+  const cachedReview = state.runLogReviewCache.get(s.id);
+
+  const handleToggle = (e?: Event) => {
+    if (e) e.stopPropagation();
+    if (state.expandedRunLogs.has(s.id)) {
+      state.expandedRunLogs.delete(s.id);
+      render();
+    } else {
+      state.expandedRunLogs.add(s.id);
+      if (!state.runLogReviewCache.has(s.id)) {
+        state.loadingRunLogs.add(s.id);
+        render();
+        void (async () => {
+          try {
+            const rev = await invoke<ReviewView | null>('get_review', { id: s.id });
+            if (rev) state.runLogReviewCache.set(s.id, rev);
+          } finally {
+            state.loadingRunLogs.delete(s.id);
+            render();
+          }
+        })();
+      } else {
+        render();
+      }
+    }
+  };
+
+  // 展開時の詳細コンテンツ（指摘一覧）
+  let expandedContent: HTMLElement | null = null;
+  if (isExpanded) {
+    if (isLoading) {
+      expandedContent = h('div', { class: 'runlog-card-detail loading' }, h('span', { class: 'muted' }, '読み込み中…'));
+    } else if (cachedReview) {
+      const findingsList = cachedReview.findings.length
+        ? cachedReview.findings.map((f, i) =>
+            findingCard(
+              cachedReview.id,
+              f,
+              i,
+              cachedReview.triage[i] ?? 'new',
+              cachedReview.carries?.[i],
+              false,
+              cachedReview.finding_notes?.[i],
+              false,
+              cachedReview.agent_reports?.[i],
+            ),
+          )
+        : [h('p', { class: 'muted runlog-no-findings' }, '指摘はありませんでした')];
+
+      expandedContent = h(
+        'div',
+        { class: 'runlog-card-detail', onclick: (e: Event) => e.stopPropagation() },
+        h('div', { class: 'runlog-detail-findings findings' }, ...findingsList),
+      );
+    } else {
+      expandedContent = h(
+        'div',
+        { class: 'runlog-card-detail error', onclick: (e: Event) => e.stopPropagation() },
+        h('p', { class: 'muted runlog-load-error' }, 'レビュー詳細を取得できませんでした。'),
+      );
+    }
+  }
+
+  return h(
+    'div',
+    {
+      class: `runlog-card ${isExpanded ? 'expanded' : ''}`,
+      id: `review-${s.id}`,
+      onclick: () => handleToggle(),
+    },
+    h(
+      'div',
+      { class: 'runlog-card-head' },
+      h(
+        'div',
+        { class: 'runlog-card-meta' },
+        h('span', { class: 'muted runlog-time' }, formatWhen(s.created_at, lang)),
+        h('strong', { class: 'runlog-title' }, reviewName(s.recipe_title, s.seq, lang)),
+        s.failed ? chip('bad', msg(lang).historyView.failedBadge) : chip('ok', '完了'),
+        h('span', { class: 'muted' }, s.provider_label),
+      ),
+      h(
+        'div',
+        { class: 'runlog-card-actions' },
+        h(
+          'span',
+          { class: `runlog-findings-badge ${s.findings > 0 ? 'has-findings' : ''}` },
+          msg(lang).historyView.findingsCount(s.findings),
+        ),
+        h(
+          'button',
+          { class: 'small primary', onclick: (e: Event) => handleToggle(e) },
+          isExpanded ? m.closeDetailBtn : m.viewDetailBtn,
+        ),
+      ),
+    ),
+    s.counts ? countsLine(s.counts, lang) : null,
+    expandedContent,
+  );
+}
+
+function runLogFeedView(): HTMLElement {
+  const lang = getAppLang();
+  const m = msg(lang).mainUi;
+  const hm = msg(lang).hookUi;
+
+  const hookRuns = state.hook.status?.recent ?? [];
+  const historyItems = state.history;
+
+  const head = h(
+    'div',
+    { class: 'runlog-head' },
+    h('h3', {}, hm.lastRunTitle),
+    h('span', { class: 'spacer' }),
+    h(
+      'button',
+      {
+        class: 'small',
+        disabled: state.hook.busy,
+        onclick: () => {
+          void loadHook();
+          void refreshHistory();
+        },
+      },
+      hm.refresh,
+    ),
+  );
+
+  const unreadableNote = state.hook.status?.log_unreadable && state.hook.status.log_unreadable > 0
+    ? h('p', { class: 'err hooklog-unreadable' }, hm.logUnreadable(state.hook.status.log_unreadable))
+    : null;
+
+  const empty = !hookRuns.length && !historyItems.length;
+  if (empty) {
+    return h(
+      'div',
+      { class: 'result runlog-feed' },
+      head,
+      unreadableNote,
+      h('p', { class: 'muted' }, m.resultEmpty),
+    );
+  }
+
+  const hookCards = hookRuns.map((r) => runLogView(r, lang));
+
+  // 履歴レビューを日付ごとにグルーピング
+  const groups: { key: string; label: string; items: ReviewSummary[] }[] = [];
+  for (const s of historyItems) {
+    const key = dayKey(s.created_at);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) {
+      last.items.push(s);
+    } else {
+      groups.push({ key, label: dayLabel(s.created_at, lang), items: [s] });
+    }
+  }
+
+  const reviewGroupSections = groups.map((g) =>
+    h(
+      'div',
+      { class: 'runlog-day-group' },
+      h(
+        'div',
+        { class: 'runlog-day-header' },
+        h('span', { class: 'runlog-day-label' }, g.label),
+        h('span', { class: 'muted runlog-day-count' }, `(${g.items.length})`),
+      ),
+      h('div', { class: 'runlog-day-cards' }, ...g.items.map((s) => runLogReviewCard(s, lang))),
+    ),
+  );
+
+  return h(
+    'div',
+    { class: 'result runlog-feed' },
+    head,
+    unreadableNote,
+    ...hookCards,
+    ...reviewGroupSections,
+  );
+}
+
 /** 結果（指摘・差分・送った内容・応答・詳細）。 */
 function resultView(): HTMLElement {
   const r: ReviewView | null = state.selected;
   const lang = getAppLang();
   const m = msg(lang).mainUi;
   if (!r) {
-    return h(
-      'div',
-      { class: 'result empty' },
-      h('p', {}, m.resultEmpty),
-    );
+    return runLogFeedView();
   }
   if (isRecordTab(state.tab)) state.recordSub = state.tab;
   const tabs: [Tab, string, boolean][] = [
@@ -3060,10 +3315,29 @@ function resultView(): HTMLElement {
     ['diff', m.tabDiff, state.tab === 'diff'],
     [state.recordSub, m.tabRecord, isRecordTab(state.tab)],
   ];
+  const backBtn = h(
+    'button',
+    {
+      class: 'small linkish back-to-log-btn',
+      title: m.backToLog,
+      onclick: () => {
+        state.selected = null;
+        render();
+      },
+    },
+    m.backToLog,
+  );
   const head = h(
     'div',
     { class: 'd-head' },
-    h('div', { class: 'row dhead-row' }, h('h2', {}, `${reviewName(r.recipe.title, r.seq)} — ${shortRepo(r.repo)}`), h('span', { class: 'spacer' }), h('button', { class: 'small', title: m.reportThisReviewTitle, onclick: () => void openReportFor([r.id]) }, m.reportThisReviewBtn)),
+    h(
+      'div',
+      { class: 'row dhead-row' },
+      backBtn,
+      h('h2', {}, `${reviewName(r.recipe.title, r.seq)} — ${shortRepo(r.repo)}`),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'small', title: m.reportThisReviewTitle, onclick: () => void openReportFor([r.id]) }, m.reportThisReviewBtn),
+    ),
     // 見出しは、観点とリポジトリだけ。日時・LLM・モデル・所要時間・HEAD・差分・比較元は、履歴の行と、「詳細」タブにある
   );
   const nav = h(
@@ -3239,8 +3513,31 @@ function render(): void {
   );
   ['.left', '.detail', '.right'].forEach((sel, i) => {
     const el = root.querySelector(sel);
-    if (el) el.scrollTop = keep[i] ?? 0;
+    if (el) {
+      if (sel === '.detail' && pendingScrollTarget) {
+        // アンカー移動対象があるときは前回の位置に復元しない
+      } else {
+        el.scrollTop = keep[i] ?? 0;
+      }
+    }
   });
+
+  if (pendingScrollTarget) {
+    const targetId = pendingScrollTarget;
+    requestAnimationFrame(() => {
+      const el = document.getElementById(targetId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.remove('runlog-highlight');
+        void el.offsetWidth;
+        el.classList.add('runlog-highlight');
+        const reviewId = targetId.replace(/^review-/, '');
+        if (!state.loadingRunLogs.has(reviewId)) {
+          pendingScrollTarget = null;
+        }
+      }
+    });
+  }
 }
 
 async function boot(): Promise<void> {

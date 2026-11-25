@@ -209,25 +209,13 @@ describe('hookSection', () => {
     expect(picked).toEqual([['bugs', 'errors']]);
   });
 
-  it('実行ログ: まだ無ければ、そう言う', () => {
-    expect(text(hookSection(ui(), true, [], noop, 'ja'))).toContain('まだ実行されていません');
-  });
-
-  it('実行ログ: コミット・状態・観点ごとの結果が、新しい順に出る', () => {
-    const recent = [run({ commit: 'bbb2222', subject: '新しい' }), run({ commit: 'aaa1111', subject: '古い' })];
-    const t = text(hookSection(ui({ status: status({ recent }) }), true, [], noop, 'ja'));
+  it('runLogView: コミット・状態・観点ごとの結果が出る', () => {
+    const r = run({ commit: 'bbb2222', subject: '新しい' });
+    const t = text(runLogView(r, 'ja'));
     expect(t).toContain('コミット bbb2222「新しい」');
-    expect(t.indexOf('bbb2222')).toBeLessThan(t.indexOf('aaa1111'));
     expect(t).toContain('[1/2]');
     expect(t).toContain('指摘 3 件');
     expect(t).toContain('7.5 秒');
-  });
-
-  it('読めないログ行があれば、その数を知らせる。無ければ、何も出さない', () => {
-    const t = text(hookSection(ui({ status: status({ log_unreadable: 3 }) }), true, [], noop, 'ja'));
-    expect(t).toContain('読めない行が 3 行あります');
-    expect(text(hookSection(ui(), true, [], noop, 'ja'))).not.toContain('読めない行');
-    expect(text(hookSection(ui({ status: status({ log_unreadable: 1 }) }), true, [], noop, 'en'))).toContain('1 unreadable line');
   });
 
   it('操作の失敗と、読み取りの失敗は、別々に出る（状態があるときも）', () => {
@@ -236,13 +224,6 @@ describe('hookSection', () => {
     expect(both).toContain('最新の状態を読み取れませんでした: 接続できません');
     expect(text(hookSection(ui({ loadError: '接続できません' }), true, [], noop, 'ja'))).not.toContain('操作に失敗しました');
     expect(text(hookSection({ ...newHookUi(), loadError: 'x' }, true, [], noop, 'ja'))).toContain('x');
-  });
-
-  it('実行ログの「更新」を押すと refresh が呼ばれる', () => {
-    let n = 0;
-    const el = hookSection(ui(), true, [], { ...noop, refresh: () => n++ }, 'ja');
-    btn(el, '更新').click();
-    expect(n).toBe(1);
   });
 
   it('英語でも出る', () => {
@@ -386,5 +367,18 @@ describe('runLogView', () => {
     expect(text(runLogView(run({ commit: null, subject: null, steps: [] }), 'ja'))).toContain('コミットの記録なし');
     expect(text(runLogView(run({ state: 'aborted' }), 'ja'))).toContain('中断');
     expect(text(runLogView(run(), 'en'))).toContain('Commit abc1234 "件名"');
+  });
+
+  it('設定画面（hookSection）: 最近の実行ログがあっても実行ログ欄は表示されない', () => {
+    const s = ui({
+      status: status({
+        recent: [run()],
+      }),
+    });
+    const el = hookSection(s, true, [recipe('bugs')], noop, 'ja');
+    expect(text(el)).not.toContain('最近の実行');
+    expect(text(el)).not.toContain('まだ実行されていません');
+    expect(text(el)).not.toContain('abc1234');
+    expect(el.querySelector('.hookruns')).toBeNull();
   });
 });

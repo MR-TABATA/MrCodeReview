@@ -219,7 +219,6 @@ export function hookSection(st: HookUiState, repoSelected: boolean, recipes: Rec
     ? h('button', { class: 'primary hooksave', disabled: st.busy || chosen.length === 0, onclick: () => act.save(chosen, specNow()) }, m.saveRecipes)
     : null;
 
-  const runs = s.recent ?? [];
   return h(
     'section',
     { class: 'sgroup hookview' },
@@ -235,8 +234,5 @@ export function hookSection(st: HookUiState, repoSelected: boolean, recipes: Rec
     st.loadError ? h('p', { class: 'err' }, m.refreshFailed(st.loadError)) : null,
     h('p', { class: 'muted' }, m.costNote),
     h('p', { class: 'muted' }, m.keyNote),
-    h('div', { class: 'hookruns-head' }, h('h4', {}, m.lastRunTitle), h('button', { class: 'small', disabled: st.busy, onclick: () => act.refresh() }, m.refresh)),
-    s.log_unreadable > 0 ? h('p', { class: 'err hooklog-unreadable' }, m.logUnreadable(s.log_unreadable)) : null,
-    runs.length ? h('div', { class: 'hookruns' }, ...runs.map((r) => runLogView(r, lang))) : h('p', { class: 'muted' }, m.lastRunNone),
   );
 }

@@ -513,6 +513,9 @@ export interface Messages {
     tabRecord: string;
     reportThisReviewTitle: string;
     reportThisReviewBtn: string;
+    backToLog: string;
+    viewDetailBtn: string;
+    closeDetailBtn: string;
     recordSubDetail: string;
     recordSubSent: string;
     recordSubResponse: string;
@@ -1081,6 +1084,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       tabRecord: '記録',
       reportThisReviewTitle: 'このレビューだけを、レポートにします',
       reportThisReviewBtn: 'このレビューをレポートに',
+      backToLog: '← 実行ログ一覧',
+      viewDetailBtn: '詳細を開く',
+      closeDetailBtn: '詳細を閉じる',
       recordSubDetail: '詳細',
       recordSubSent: '送った内容',
       recordSubResponse: '応答',
@@ -1836,6 +1842,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       tabRecord: 'Record',
       reportThisReviewTitle: 'Create report for this review',
       reportThisReviewBtn: 'Report this review',
+      backToLog: '← Run log',
+      viewDetailBtn: 'View details',
+      closeDetailBtn: 'Close details',
       recordSubDetail: 'Detail',
       recordSubSent: 'Prompt',
       recordSubResponse: 'Response',
