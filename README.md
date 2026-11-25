@@ -22,8 +22,12 @@ Provides both a visual **Mac desktop app (GUI)** and a command-line **CLI tool (
 - **Isolated Aspect Reviews**: Instead of generic code reviews, each aspect is executed independently for maximum focus and depth, then bundled into a single report.
 - **Hallucination Detection**: Strictly verifies quoted lines against actual git diffs, automatically labeling them `Evidence found` or `⚠️ Evidence mismatch`.
 - **Coding Agent Handoff**: Automatically outputs findings to `.mrcodereview/out/review.md` (or structured JSON). Hand off directly to coding agents like `Claude Code` or `agy` for automated fix loops.
-- **Automatic review after each commit (Git hook)**: Turn it on from the desktop app (Settings → Git Hook) or with `mrcr hook enable`. Only the commit you just made is reviewed, in the background, and the commit is never blocked. A run log shows which commit, which recipes, how many findings and how long it took.
+- **Automatic review after each commit (Git hook) & Run Log**: Turn it on from the desktop app (Settings → Git Hook) or with `mrcr hook enable`. Only the commit you just made is reviewed in the background, and the commit is never blocked. Results appear in the initial screen's run log timeline grouped by date, and can be expanded inline without page navigation to inspect and triage findings directly.
 - **Pure Rust & Tauri v2**: Ultra-lightweight and fast. Native Apple Silicon support (Developer ID signed & Apple notarized).
+
+<p align="center">
+  <img src="art/runlog-feed-en.png" alt="MrCodeReview Run Log Timeline & Inline Expansion on Initial Screen" width="900">
+</p>
 
 ---
 
