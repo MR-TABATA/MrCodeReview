@@ -47,7 +47,13 @@ export function detailPanel(r: ReviewView, fmt: DetailFmt, lang: Lang = getAppLa
   const count = (s: string) => r.triage.filter((x) => x === s).length;
   const verified = r.findings.filter((f) => f.verified).length;
   const specVerified = r.findings.filter((f) => f.spec_verified === true).length;
-  const hasSpec = !!r.spec || r.findings.some((f) => f.spec_quote);
+  // 参照した基準文書の全部（古い記録・1 件だけのものは `spec` が全部）。複数あるときは、1 件ずつ行にする
+  const specDocs = r.specs && r.specs.length > 0 ? r.specs : r.spec ? [r.spec] : [];
+  const specRows = specDocs.map((d, i): [string, string] => [
+    specDocs.length > 1 ? `${t.specDoc} ${i + 1}` : t.specDoc,
+    t.specChars(d.display_name, nf.format(d.char_count)),
+  ]);
+  const hasSpec = specDocs.length > 0 || r.findings.some((f) => f.spec_quote);
   const done = (r.finding_notes ?? []).filter((n) => n.done_at !== null).length;
   const reports = r.agent_reports ?? [];
   const did = reports.filter((a) => a?.verdict === 'did').length;
@@ -77,7 +83,7 @@ export function detailPanel(r: ReviewView, fmt: DetailFmt, lang: Lang = getAppLa
     table(
       [t.range, fmt.base || t.uncommitted],
       [t.head, r.snapshot.head],
-      r.spec ? [t.specDoc, t.specChars(r.spec.display_name, nf.format(r.spec.char_count))] : null,
+      ...specRows,
       [t.diffId, r.snapshot.diff_hash],
       [t.diffSize, `${nf.format(r.snapshot.diff_bytes)} B`],
       [t.filesSent, t.items(r.snapshot.files.length)],

@@ -16,6 +16,7 @@ const status = (over: Partial<HookStatus> = {}): HookStatus => ({
   enabled: false,
   recipes: ['bugs'],
   spec: null,
+  specs: [],
   installed: false,
   cli: '/opt/homebrew/bin/mrcr',
   hook_cli: null,

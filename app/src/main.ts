@@ -231,8 +231,8 @@ const state = {
   /** 各リポジトリのデータの量（履歴など）。解除の可否と、削除の確認に使う */
   repoData: {} as Record<string, RepoDataRow>,
   repoMsg: { text: '', kind: '' as '' | 'ok' | 'err' },
-  /** 設計書参照レビューの入力パラメータ（ファイル選択または貼り付け） */
-  specParam: null as SpecParam | null,
+  /** 設計書参照レビューの入力パラメータ（ファイルは複数・貼り付けは 1 件。指定した順） */
+  specParams: [] as SpecParam[],
   specValid: true,
   specFiles: [] as string[],
   /** 選んだレビューの「対応」を、CUI に貼る文面にしたもの。空ならコピーするものが無い。 */
@@ -270,8 +270,8 @@ const specViewInstance =
   typeof document !== 'undefined'
     ? new SpecView({
         messages: msg(getAppLang()),
-        onChange: (param, valid) => {
-          state.specParam = param;
+        onChange: (params, valid) => {
+          state.specParams = params;
           state.specValid = valid;
           render();
         },
@@ -579,7 +579,7 @@ async function loadHook(): Promise<void> {
 }
 
 /** Git フックの ON/OFF と観点を変える（ON なら、フックを入れる。失敗したら、理由を見せて、状態はそのまま）。 */
-async function setHook(enabled: boolean, recipes: string[], spec: string | null): Promise<void> {
+async function setHook(enabled: boolean, recipes: string[], specs: string[]): Promise<void> {
   const repo = state.repo;
   const ui = state.hook; // 始めたときの入れ物。待っているあいだに、リポジトリが変わっても（入れ物が作り直されても）、結果は、こちらにだけ書く
   if (!repo || ui.busy) return;
@@ -588,7 +588,7 @@ async function setHook(enabled: boolean, recipes: string[], spec: string | null)
   ui.error = '';
   render();
   try {
-    ui.status = await invoke<HookStatus>('hook_set', { repo, enabled, recipes, spec });
+    ui.status = await invoke<HookStatus>('hook_set', { repo, enabled, recipes, specs });
     ui.draft = null;
     ui.specDraft = null;
   } catch (e) {
@@ -1055,7 +1055,7 @@ async function runRecipe(recipeId: string): Promise<void> {
       providerId: state.providerId,
       base: state.base,
       lang: getAppLang(),
-      spec: state.specParam,
+      specs: state.specParams,
     });
     // 設定を開いたまま、未保存の変更があるなら、閉じずに、設定の中で聞く（結果は、そのあとに出る）。黙って捨てない
     if (canLeaveSettings()) state.settings = null;
@@ -1891,7 +1891,7 @@ function currentRunPlan(): RunPlan {
     filesCount: p ? p.files.length : null,
     baseIsHead: state.base === HEAD,
     hasProvider: !!state.providerId,
-    hasSpec: !!state.specParam,
+    hasSpec: state.specParams.length > 0,
     specValid: state.specValid,
   });
 }
@@ -2711,6 +2711,7 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
                       : msg(getAppLang()).mainUi.specQuoteLabel,
                 ),
                 h('pre', { class: 'spec-quote' }, f.spec_quote),
+                f.spec_source ? h('div', { class: 'f-ev-label spec-source' }, msg(getAppLang()).mainUi.specQuoteSource(f.spec_source)) : null,
               )
             : null,
           carryNote(carry),
@@ -2771,6 +2772,7 @@ function findingCard(reviewId: string, f: Finding, index: number, status: Triage
     compact ? null : h('pre', { class: 'evidence' }, f.evidence || ut().app.noQuote),
     compact ? null : (f.spec_quote ? h('div', { class: 'f-ev-label' }, f.spec_verified ? ut().app.specQuoteOk : ut().app.specQuoteNg) : null),
     compact ? null : (f.spec_quote ? h('pre', { class: 'spec-quote' }, f.spec_quote) : null),
+    compact ? null : (f.spec_quote && f.spec_source ? h('div', { class: 'f-ev-label spec-source' }, msg(getAppLang()).mainUi.specQuoteSource(f.spec_source)) : null),
     carryNote(carry),
     // 「対応した」と申告された指摘は、読むだけ（仕分けと「CLI に渡す」は、出さない）。やり直すなら、もう一度レビューを実行する
     done ? null : triage,
@@ -3435,8 +3437,8 @@ function detailView(): HTMLElement {
         !!state.repo,
         state.recipes,
         {
-          toggle: (enabled, recipes, spec) => void setHook(enabled, recipes, spec),
-          save: (recipes, spec) => void setHook(true, recipes, spec),
+          toggle: (enabled, recipes, specs) => void setHook(enabled, recipes, specs),
+          save: (recipes, specs) => void setHook(true, recipes, specs),
           pick: (recipes) => {
             state.hook.draft = recipes;
             render();

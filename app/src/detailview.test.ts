@@ -132,3 +132,39 @@ describe('detailPanel（詳細タブ）', () => {
     expect(cells(el)['実行メモ']).toBe('<img src=x onerror=alert(1)>');
   });
 });
+
+describe('detailPanel: 参照した設計書', () => {
+  const doc = (name: string, n: number) => ({ display_name: name, content: 'c', content_hash: 'h', char_count: n });
+
+  it('古い記録・1 件だけ（spec のみ）は、これまでどおり 1 行', () => {
+    const c = cells(detailPanel(review({ spec: doc('docs/spec.md', 1234) }), FMT));
+    expect(c['基準の文書']).toBe('docs/spec.md（1,234 文字）');
+    expect(Object.keys(c).some((k) => k.startsWith('基準の文書 '))).toBe(false);
+  });
+
+  it('複数（specs）は、1 件ずつ行にして、指定した順に出す。spec（先頭の 1 件）と重ねて出さない', () => {
+    const specs = [doc('docs/design.md # 認証', 100), doc('docs/req.md', 2500)];
+    const c = cells(detailPanel(review({ spec: specs[0], specs }), FMT));
+    expect(c['基準の文書 1']).toBe('docs/design.md # 認証（100 文字）');
+    expect(c['基準の文書 2']).toBe('docs/req.md（2,500 文字）');
+    expect(c['基準の文書']).toBeUndefined();
+    const keys = Object.keys(c);
+    expect(keys.indexOf('基準の文書 1')).toBeLessThan(keys.indexOf('基準の文書 2'));
+  });
+
+  it('設計書が無い記録には、基準の文書の行も、根拠照合の行も出ない', () => {
+    const c = cells(detailPanel(review(), FMT));
+    expect(Object.keys(c).some((k) => k.startsWith('基準の文書'))).toBe(false);
+    expect(c['設計書の根拠照合']).toBeUndefined();
+  });
+
+  it('引用のある指摘があれば、根拠照合の行が出る（specs だけの記録でも）', () => {
+    const specs = [doc('a.md', 1), doc('b.md', 2)];
+    const findings = [
+      { ...F(true), spec_quote: 'q1', spec_verified: true, spec_source: 'a.md' },
+      { ...F(true), spec_quote: 'q2', spec_verified: false },
+    ];
+    const c = cells(detailPanel(review({ spec: null, specs, findings, triage: ['new', 'new'], finding_notes: [], agent_reports: [null, null] }), FMT));
+    expect(c['設計書の根拠照合']).toBe('1 件照合済／1 件不一致');
+  });
+});

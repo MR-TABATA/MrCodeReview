@@ -185,12 +185,27 @@ impl Provider for AnthropicApi {
 
 pub struct Mock;
 
+/// プロンプトの中の基準の文書（`# 基準の文書（名前）` の見出しで始まるブロック）から、（名前, 本文の最初の空でない行）を、出てきた順に拾う。
+fn spec_docs_in(prompt: &str) -> Vec<(String, String)> {
+    const HEAD: &str = "# 基準の文書（";
+    let mut out = Vec::new();
+    let mut lines = prompt.lines();
+    while let Some(line) = lines.next() {
+        let Some(rest) = line.strip_prefix(HEAD) else { continue };
+        let name = rest.strip_suffix('）').unwrap_or(rest).to_string();
+        if let Some(first) = lines.by_ref().map(str::trim).find(|l| !l.is_empty()) {
+            out.push((name, first.to_string()));
+        }
+    }
+    out
+}
+
 impl Provider for Mock {
     fn info(&self) -> ProviderInfo {
         ProviderInfo {
             id: "mock".into(),
             label: "モック（偽の応答・外へ送らない）".into(),
-            note: "画面の試験用。差分の最初の追加行を引用した指摘 1 件と、差分に無い行を引用した指摘 1 件（根拠不一致の見本）を返す。トークンは文字数からの偽の値。".into(),
+            note: "画面の試験用。差分の最初の追加行を引用した指摘 1 件と、差分に無い行を引用した指摘 1 件（根拠不一致の見本）を返す。設計書（基準の文書）を渡したときは、各文書の最初の行を引用した指摘を 1 件ずつと、どの文書にも無い引用の指摘 1 件も返す。トークンは文字数からの偽の値。".into(),
         }
     }
 
@@ -224,6 +239,27 @@ impl Provider for Mock {
                 "title": "（モック）根拠不一致の見本",
                 "detail": "モックの応答です。この引用は差分に存在しないので「根拠不一致」と出るはずです。",
                 "evidence": "eval(request.body.code)",
+            }));
+        }
+        // 基準の文書（設計書）が渡されているときは、文書ごとに、本文の最初の行を引用する指摘を 1 件ずつ。
+        // どの文書にも無い引用を 1 件（根拠不一致の見本）。画面の「設計書の根拠照合」と「出典」の試験用
+        let docs = spec_docs_in(prompt);
+        for (i, (name, first_line)) in docs.iter().enumerate() {
+            findings.push(serde_json::json!({
+                "file": if file.is_empty() { name.clone() } else { file.clone() }, "line": 3 + i, "severity": "low",
+                "title": format!("（モック）設計書の引用 {}", i + 1),
+                "detail": "モックの応答です。引用は渡した設計書の本文にあります。",
+                "evidence": "",
+                "spec_quote": first_line,
+            }));
+        }
+        if !docs.is_empty() {
+            findings.push(serde_json::json!({
+                "file": file, "line": 3 + docs.len(), "severity": "low",
+                "title": "（モック）設計書に無い引用の見本",
+                "detail": "モックの応答です。この引用は、どの設計書にも無いので「根拠不一致」と出るはずです。",
+                "evidence": "",
+                "spec_quote": "（モック）この一文は、どの設計書にも無い。",
             }));
         }
         let text = serde_json::json!({ "findings": findings }).to_string();
@@ -448,6 +484,24 @@ mod tests {
         crate::findings::verify(&mut f, &files);
         assert!(f[0].verified);
         assert!(!f[1].verified);
+    }
+
+    #[test]
+    fn mock_quotes_the_first_line_of_every_spec_document_and_one_invented_quote() {
+        let prompt = "指示\n# 基準の文書（docs/a.md）\n\n# 要件A\n本文A\n\n# 基準の文書（docs/b.md # 認証）\n\n## 認証\n本文B\n\n# 基準の文書（貼り付けた要件（3文字））\n\nメモ\n\n```diff\ndiff --git a/a.js b/a.js\n--- a/a.js\n+++ b/a.js\n@@ -1 +1,2 @@\n x\n+  danger(id);\n```\n";
+        let r = Mock.run(prompt).unwrap();
+        let f = crate::findings::parse(&r.text).unwrap();
+        let quotes: Vec<&str> = f.iter().filter_map(|x| x.spec_quote.as_deref()).collect();
+        assert_eq!(quotes, ["# 要件A", "## 認証", "メモ", "（モック）この一文は、どの設計書にも無い。"]);
+        assert_eq!(f.len(), 2 + 4, "差分の指摘 2 件 ＋ 設計書の指摘 4 件");
+    }
+
+    #[test]
+    fn mock_adds_no_spec_findings_without_a_spec_document() {
+        let prompt = "x\n```diff\ndiff --git a/a.js b/a.js\n--- a/a.js\n+++ b/a.js\n@@ -1 +1,2 @@\n x\n+  danger(id);\n```\n";
+        let f = crate::findings::parse(&Mock.run(prompt).unwrap().text).unwrap();
+        assert_eq!(f.len(), 2);
+        assert!(f.iter().all(|x| x.spec_quote.is_none()));
     }
 
     #[test]
