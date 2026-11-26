@@ -158,6 +158,8 @@ export interface Finding {
   spec_quote?: string | null;
   /** spec_quote が基準文書に実在するか */
   spec_verified?: boolean | null;
+  /** spec_quote が一致した基準文書の表示名（複数の文書を渡したとき、どの文書の原文か）。一致しなかったとき・古い記録は無い */
+  spec_source?: string | null;
 }
 
 export interface SectionMeta {
@@ -275,8 +277,10 @@ export interface ReviewRecord {
   notes: string[];
   /** 送った関連コード。関連コードを使う観点のときだけ */
   related: Related | null;
-  /** 参照した基準文書（設計書・仕様書）の情報 */
+  /** 参照した基準文書（設計書・仕様書）の情報。複数あるときは、先頭の 1 件 */
   spec?: SpecContext | null;
+  /** 参照した基準文書の全部（指定した順）。無ければ（古い記録・1 件以下）、`spec` が全部 */
+  specs?: SpecContext[];
   parse_error: string | null;
   error: string | null;
 }
@@ -526,8 +530,10 @@ export interface HookStatus {
   repo: string;
   enabled: boolean;
   recipes: string[];
-  /** 設計書が要る観点に渡す設計書（リポジトリ内の相対パス）。無ければ null */
+  /** 設計書が要る観点に渡す設計書（リポジトリ内の相対パス）。複数あるときは、先頭の 1 件。無ければ null */
   spec: string | null;
+  /** 設計書の全部（指定した順）。無ければ空 */
+  specs: string[];
   installed: boolean;
   /** いま見つかる mrcr（CLI）。無ければ null */
   cli: string | null;

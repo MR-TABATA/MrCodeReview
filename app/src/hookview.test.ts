@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { runLogView, currentRecipes, currentSpec, enableBlock, groupedRecipes, groupOf, hookSection, newHookUi, selectableRecipes, type HookActions, type HookUiState } from './hookview';
+import { runLogView, currentRecipes, currentSpecs, parseSpecLines, specsToText, enableBlock, groupedRecipes, groupOf, hookSection, newHookUi, selectableRecipes, type HookActions, type HookUiState } from './hookview';
 import type { HookRun, HookStatus, Recipe } from './types';
 
 const recipe = (id: string, over: Partial<Recipe> = {}): Recipe => ({ id, title: `観点 ${id}`, source: 'builtin', prompt: '', kind: 'llm', ...over });
@@ -9,6 +9,7 @@ const status = (over: Partial<HookStatus> = {}): HookStatus => ({
   enabled: false,
   recipes: ['bugs'],
   spec: null,
+  specs: [],
   installed: false,
   cli: '/opt/homebrew/bin/mrcr',
   hook_cli: null,
@@ -31,7 +32,7 @@ const flip = (el: HTMLElement): void => {
   i.checked = !i.checked;
   i.dispatchEvent(new Event('change'));
 };
-const specBox = (el: HTMLElement): HTMLInputElement => el.querySelector<HTMLInputElement>('input.hookspec')!;
+const specBox = (el: HTMLElement): HTMLTextAreaElement => el.querySelector<HTMLTextAreaElement>('textarea.hookspec')!;
 const typeSpec = (el: HTMLElement, v: string): void => {
   const i = specBox(el);
   i.value = v;
@@ -47,12 +48,21 @@ describe('selectableRecipes', () => {
 
 describe('画面で選んでいる値（draft）', () => {
   it('draft が無ければ保存済みの値のまま。設計書は、空白だけなら「指定なし」', () => {
-    const st = ui({ status: status({ recipes: ['bugs', 'errors'], spec: 'docs/spec.md' }) });
+    const st = ui({ status: status({ recipes: ['bugs', 'errors'], spec: 'docs/spec.md', specs: ['docs/spec.md'] }) });
     expect(currentRecipes(st)).toEqual(['bugs', 'errors']);
-    expect(currentSpec(st)).toBe('docs/spec.md');
-    expect(currentSpec({ ...st, specDraft: '  ' })).toBeNull();
-    expect(currentSpec({ ...st, specDraft: ' a.md ' })).toBe('a.md');
+    expect(currentSpecs(st)).toEqual(['docs/spec.md']);
+    expect(currentSpecs({ ...st, specDraft: '  ' })).toEqual([]);
+    expect(currentSpecs({ ...st, specDraft: ' a.md ' })).toEqual(['a.md']);
     expect(currentRecipes({ ...st, draft: ['bugs'] })).toEqual(['bugs']);
+  });
+
+  it('設計書は 1 行に 1 つ。複数も読める。空行と前後の空白は捨てる。古い状態（spec だけ）も読める', () => {
+    expect(parseSpecLines(' a.md \r\n\n b.md\n  \nc.md ')).toEqual(['a.md', 'b.md', 'c.md']);
+    expect(parseSpecLines('')).toEqual([]);
+    const two = ui({ status: status({ spec: 'docs/req.md', specs: ['docs/req.md', 'docs/design.md'] }) });
+    expect(currentSpecs(two)).toEqual(['docs/req.md', 'docs/design.md']);
+    expect(specsToText({ spec: 'old.md' })).toBe('old.md'); // specs が無い古い状態
+    expect(specsToText({ spec: null, specs: [] })).toBe('');
   });
 });
 
@@ -87,12 +97,12 @@ describe('hookSection', () => {
     expect(sw(el).disabled).toBe(false);
     expect(sw(el).checked).toBe(false);
     flip(el);
-    expect(calls).toEqual([[true, ['bugs'], null]]);
+    expect(calls).toEqual([[true, ['bugs'], []]]);
   });
 
   it('設計書の入力欄: 保存済みの値が入り、打った値が、ボタンを押したときに渡る（打つ間は画面を作り直さない）', () => {
     const calls: unknown[] = [];
-    const st = ui({ status: status({ spec: 'docs/old.md' }) });
+    const st = ui({ status: status({ spec: 'docs/old.md', specs: ['docs/old.md'] }) });
     const el = hookSection(st, true, [recipe('bugs'), recipe('spec', { needs_spec: true })], { ...noop, toggle: (e, r, s) => calls.push([e, r, s]) }, 'ja');
     expect(specBox(el).value).toBe('docs/old.md');
     const same = specBox(el);
@@ -100,11 +110,21 @@ describe('hookSection', () => {
     expect(specBox(el)).toBe(same);
     expect(st.specDraft).toBe(' docs/new.md ');
     flip(el);
-    expect(calls).toEqual([[true, ['bugs'], 'docs/new.md']]);
+    expect(calls).toEqual([[true, ['bugs'], ['docs/new.md']]]);
     typeSpec(el, '');
     sw(el).checked = false;
     flip(el);
-    expect(calls[1]).toEqual([true, ['bugs'], null]);
+    expect(calls[1]).toEqual([true, ['bugs'], []]);
+  });
+
+  it('設計書の入力欄: 複数（1 行に 1 つ）が、保存済みの値から表示され、順番のまま渡る', () => {
+    const calls: unknown[] = [];
+    const st = ui({ status: status({ spec: 'docs/req.md', specs: ['docs/req.md', 'docs/design.md'] }) });
+    const el = hookSection(st, true, [recipe('bugs'), recipe('spec', { needs_spec: true })], { ...noop, toggle: (e, r, s) => calls.push([e, r, s]) }, 'ja');
+    expect(specBox(el).value).toBe('docs/req.md\ndocs/design.md');
+    typeSpec(el, 'docs/design.md\n\n docs/req.md \ndocs/tasks.md');
+    flip(el);
+    expect(calls).toEqual([[true, ['bugs'], ['docs/design.md', 'docs/req.md', 'docs/tasks.md']]]);
   });
 
   it('設計書が要る観点には、印が付く', () => {
@@ -176,13 +196,13 @@ describe('hookSection', () => {
     expect(sw(el).checked).toBe(true);
     expect(sw(el).disabled).toBe(false);
     flip(el);
-    expect(calls).toEqual([[false, ['bugs'], null]]);
+    expect(calls).toEqual([[false, ['bugs'], []]]);
     expect(sw(hookSection({ ...on, busy: true }, true, [recipe('bugs')], noop, 'ja')).disabled).toBe(true);
   });
 
   it('ON: 「保存する」は状態の行（スイッチの隣）にだけあり、いまの観点と設計書を渡す。「OFF にする」というボタンは無い', () => {
     const calls: unknown[] = [];
-    const on = ui({ status: status({ enabled: true, installed: true, spec: 'docs/spec.md' }), draft: ['bugs', 'errors'] });
+    const on = ui({ status: status({ enabled: true, installed: true, spec: 'docs/spec.md', specs: ['docs/spec.md'] }), draft: ['bugs', 'errors'] });
     const el = hookSection(on, true, [recipe('bugs'), recipe('errors')], { ...noop, save: (r, s) => calls.push([r, s]) }, 'ja');
     const state = el.querySelector('.hookstate')!;
     expect(state.textContent).toContain('ON');
@@ -190,7 +210,7 @@ describe('hookSection', () => {
     expect([...state.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['保存する']);
     expect(buttons(el).map((b) => b.textContent).filter((t) => t === 'OFF にする' || t === 'ON にする')).toEqual([]);
     btn(el, '保存する').click();
-    expect(calls).toEqual([[['bugs', 'errors'], 'docs/spec.md']]);
+    expect(calls).toEqual([[['bugs', 'errors'], ['docs/spec.md']]]);
   });
 
   it('OFF のときは「保存する」を出さない（スイッチを ON にするとき、設定をまとめて保存する）', () => {

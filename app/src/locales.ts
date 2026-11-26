@@ -67,6 +67,9 @@ export interface Messages {
     specQuoteLabel: string;
     specUnverifiedBadge: string;
     specVerifiedBadge: string;
+    addedCount: (n: number, max: number) => string;
+    removeFile: string;
+    maxFilesReached: (max: number) => string;
   };
 
   // recipeinfo.ts
@@ -458,6 +461,7 @@ export interface Messages {
     specQuoteVerified: string;
     specQuoteMismatch: string;
     specQuoteLabel: string;
+    specQuoteSource: (name: string) => string;
     chipAgentDid: string;
     chipAgentSkipped: string;
     chipAgentTitle: string;
@@ -586,10 +590,10 @@ export const MESSAGES: Record<Lang, Messages> = {
       toggleLabel: '設計書・要件を参照する',
       tabFile: '📄 ファイルから選択',
       tabPaste: '📝 直接貼り付け',
-      cardTitle: '📘 参照する設計書・仕様書の指定',
+      cardTitle: '📘 参照する設計書・仕様書の指定（複数可）',
       pickFile: '📄 ファイルを選択...',
       pickFileTitle: 'macOSのファイル選択ダイアログを開きます',
-      filePathPlaceholder: 'ファイルパス（例: docs/spec.md）または「ファイルを選択...」ボタン',
+      filePathPlaceholder: 'ファイルパス（例: docs/spec.md）を入力して Enter、または「ファイルを選択...」で追加',
       clearSelectionTitle: '選択を解除',
       pasteAreaPlaceholder: 'GitHub Issue の要件、PR の説明文、受け入れ基準、または設計書のテキストをここに貼り付けてください...',
       clearInputTitle: '入力をクリア',
@@ -605,6 +609,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       specQuoteLabel: '設計書の要求（原文引用）',
       specUnverifiedBadge: '根拠不一致（設計書に原文なし）',
       specVerifiedBadge: '設計書照合済',
+      addedCount: (n, max) => `${n} / ${max} 件を指定中`,
+      removeFile: '外す',
+      maxFilesReached: (max) => `設計書は最大 ${max} 件までです`,
     },
 
     recipeSummaryMap: {
@@ -704,9 +711,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       saveRecipes: '保存する',
       noRecipes: '選べる観点がありません。',
       needsSpecBadge: '設計書が要る',
-      specLabel: '設計書（設計書が要る観点に渡します）',
+      specLabel: '設計書（設計書が要る観点に渡します。1 行に 1 つ、最大 5 件）',
       specHint: 'このリポジトリの中のファイルを、リポジトリからの相対パスで指定します（.md / .txt。章の指定はできません）。リポジトリの外のファイルは、指定できません。',
-      specPlaceholder: '例: docs/spec.md',
+      specPlaceholder: '例:\ndocs/requirements.md\ndocs/design.md',
       groupCode: 'コード',
       groupTf: 'Terraform（tfstate）',
       groupDoc: '文書',
@@ -1026,6 +1033,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       specQuoteVerified: '設計書の要求（原文引用・照合済）',
       specQuoteMismatch: '設計書の要求（原文引用・不一致）',
       specQuoteLabel: '設計書の要求（原文引用）',
+      specQuoteSource: (name) => `出典: ${name}`,
       chipAgentDid: '対応した',
       chipAgentSkipped: '対応しなかった',
       chipAgentTitle: 'エージェントの申告・判断です。MCR が、コードを確かめたものではありません',
@@ -1151,10 +1159,10 @@ export const MESSAGES: Record<Lang, Messages> = {
       toggleLabel: 'Refer to Spec / Requirements',
       tabFile: '📄 Select File',
       tabPaste: '📝 Paste Directly',
-      cardTitle: '📘 Reference specification / design document',
+      cardTitle: '📘 Reference specification / design documents (one or more)',
       pickFile: '📄 Choose a file...',
       pickFileTitle: 'Opens the macOS file chooser',
-      filePathPlaceholder: 'File path (e.g. docs/spec.md) or the "Choose a file..." button',
+      filePathPlaceholder: 'Type a file path (e.g. docs/spec.md) and press Enter, or add with "Choose a file..."',
       clearSelectionTitle: 'Clear the selection',
       pasteAreaPlaceholder: 'Paste requirements from a GitHub Issue, a PR description, acceptance criteria, or the text of a design document here...',
       clearInputTitle: 'Clear the input',
@@ -1170,6 +1178,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       specQuoteLabel: 'Specification Requirement',
       specUnverifiedBadge: 'Quote Not Found in Spec',
       specVerifiedBadge: 'Verified against Spec',
+      addedCount: (n, max) => `${n} / ${max} files selected`,
+      removeFile: 'Remove',
+      maxFilesReached: (max) => `Up to ${max} spec files can be used`,
     },
 
     recipeSummaryMap: {
@@ -1399,9 +1410,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       saveRecipes: 'Save changes',
       noRecipes: 'No recipes available.',
       needsSpecBadge: 'needs a spec',
-      specLabel: 'Spec document (passed to recipes that need one)',
-      specHint: 'A file inside this repository, as a path relative to the repository (.md / .txt; sections cannot be specified). Files outside the repository cannot be used.',
-      specPlaceholder: 'e.g. docs/spec.md',
+      specLabel: 'Spec documents (passed to recipes that need one; one per line, up to 5)',
+      specHint: 'Files inside this repository, as paths relative to the repository (.md / .txt; sections cannot be specified). Files outside the repository cannot be used.',
+      specPlaceholder: 'e.g.\ndocs/requirements.md\ndocs/design.md',
       groupCode: 'Code',
       groupTf: 'Terraform (tfstate)',
       groupDoc: 'Documents',
@@ -1783,6 +1794,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       specQuoteVerified: '📋 Specification Quote (Verified)',
       specQuoteMismatch: '⚠ Specification Quote (Mismatch)',
       specQuoteLabel: '📋 Specification Quote',
+      specQuoteSource: (name) => `Source: ${name}`,
       chipAgentDid: 'Agent: Did',
       chipAgentSkipped: 'Agent: Skipped',
       chipAgentTitle: 'Reported by coding agent',

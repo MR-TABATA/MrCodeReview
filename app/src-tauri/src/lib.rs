@@ -237,9 +237,10 @@ async fn hook_status(state: tauri::State<'_, AppState>, repo: String) -> Result<
 
 /// フックの ON/OFF と観点を設定する（ON なら、フックを入れる）。登録したリポジトリだけ。
 #[tauri::command]
-async fn hook_set(state: tauri::State<'_, AppState>, repo: String, enabled: bool, recipes: Vec<String>, spec: Option<String>) -> Result<hooks::Status, String> {
+async fn hook_set(state: tauri::State<'_, AppState>, repo: String, enabled: bool, recipes: Vec<String>, specs: Option<Vec<String>>) -> Result<hooks::Status, String> {
     let data_dir = state.data_dir.clone();
-    tauri::async_runtime::spawn_blocking(move || hook_set_checked(&data_dir, &repo, enabled, &recipes, spec.as_deref())).await.map_err(|e| e.to_string())?
+    let specs = specs.unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || hook_set_checked(&data_dir, &repo, enabled, &recipes, &specs)).await.map_err(|e| e.to_string())?
 }
 
 /// 入口の確認（登録済みか）つき。コマンドは、この 2 つだけを呼ぶ。
@@ -248,16 +249,9 @@ fn hook_status_checked(data_dir: &Path, repo: &str) -> Result<hooks::Status, Str
     hooks::status(data_dir, repo)
 }
 
-fn hook_set_checked(data_dir: &Path, repo: &str, enabled: bool, recipes: &[String], spec: Option<&str>) -> Result<hooks::Status, String> {
+fn hook_set_checked(data_dir: &Path, repo: &str, enabled: bool, recipes: &[String], specs: &[String]) -> Result<hooks::Status, String> {
     repos::require_registered(data_dir, repo)?;
-    // 画面が扱える設計書は 1 つだけ。CLI（`mrcr hook enable --spec a --spec b`）で 2 件以上を設定してあるとき、
-    // 画面で ON/OFF を切り替えただけで、2 件目以降が消えないようにする（画面が送ってくるのは、先頭の 1 件のまま）。
-    if let (Some(s), Ok(st)) = (spec, hooks::status(data_dir, repo)) {
-        if st.specs.len() > 1 && st.specs.first().map(String::as_str) == Some(s) {
-            return hooks::set_specs(data_dir, repo, enabled, recipes, &st.specs);
-        }
-    }
-    hooks::set(data_dir, repo, enabled, recipes, spec)
+    hooks::set_specs(data_dir, repo, enabled, recipes, specs)
 }
 
 #[tauri::command]
@@ -772,6 +766,41 @@ fn build_spec_context(repo_root: &Path, param: &SpecParam) -> Result<spec::SpecC
     }
 }
 
+/// 画面から渡された基準の文書（複数）を、一覧にする。指定した順のまま。
+///
+/// CLI（`spec::load_spec_set`）と同じ規則: 1 件でも読めなければ全体を失敗にする／同じファイル・同じ節は 1 件にまとめる／
+/// 貼り付けは 1 件まで／件数と合計の文字数は `spec::check_spec_set` で確かめる（超えたら切り捨てずにエラー）。
+fn build_spec_set(repo_root: &Path, params: &[SpecParam]) -> Result<Vec<spec::SpecContext>, String> {
+    let mut out: Vec<spec::SpecContext> = Vec::new();
+    let mut seen: Vec<(PathBuf, Option<String>)> = Vec::new();
+    let mut pasted = false;
+    for p in params {
+        match p.source_type.as_str() {
+            "file" => {
+                let rel = p.file_path.as_deref().unwrap_or("").trim();
+                if !rel.is_empty() {
+                    let section = p.section.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+                    let key = (spec::safe_repo_relative_path(repo_root, Path::new(rel))?, section);
+                    if seen.contains(&key) {
+                        continue;
+                    }
+                    seen.push(key);
+                }
+            }
+            "paste" => {
+                if pasted {
+                    return Err("貼り付けた基準の文書は、1 件までです".into());
+                }
+                pasted = true;
+            }
+            _ => {}
+        }
+        out.push(build_spec_context(repo_root, p)?);
+    }
+    spec::check_spec_set(&out)?;
+    Ok(out)
+}
+
 /// 実行の入口の確認（登録済みか）つき。
 #[allow(dead_code)]
 fn run_review_checked(
@@ -793,8 +822,21 @@ fn run_review_checked_with_lang(
     lang: Option<&str>,
     spec: Option<&SpecParam>,
 ) -> Result<ReviewRecord, String> {
+    run_review_checked_with_specs(data_dir, repo, recipe_id, provider_id, base, lang, spec.map(std::slice::from_ref).unwrap_or(&[]))
+}
+
+/// 基準の文書を複数渡せる形。
+fn run_review_checked_with_specs(
+    data_dir: &Path,
+    repo: &str,
+    recipe_id: &str,
+    provider_id: &str,
+    base: Option<&str>,
+    lang: Option<&str>,
+    specs: &[SpecParam],
+) -> Result<ReviewRecord, String> {
     repos::require_registered(data_dir, repo)?;
-    run_review_with_base_and_lang(data_dir, repo, recipe_id, provider_id, base, lang, spec)
+    run_review_with_specs(data_dir, repo, recipe_id, provider_id, base, lang, specs)
 }
 
 #[tauri::command]
@@ -805,12 +847,13 @@ async fn run_review(
     provider_id: String,
     base: Option<String>,
     lang: Option<String>,
-    spec: Option<SpecParam>,
+    specs: Option<Vec<SpecParam>>,
 ) -> Result<ReviewView, String> {
     let data_dir = state.data_dir.clone();
+    let specs = specs.unwrap_or_default();
     let rec = tauri::async_runtime::spawn_blocking({
         let data_dir = data_dir.clone();
-        move || run_review_checked_with_lang(&data_dir, &repo, &recipe_id, &provider_id, base.as_deref(), lang.as_deref(), spec.as_ref())
+        move || run_review_checked_with_specs(&data_dir, &repo, &recipe_id, &provider_id, base.as_deref(), lang.as_deref(), &specs)
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -896,6 +939,19 @@ fn run_review_with_base_and_lang(
     lang: Option<&str>,
     spec_param: Option<&SpecParam>,
 ) -> Result<ReviewRecord, String> {
+    run_review_with_specs(data_dir, repo, recipe_id, provider_id, base, lang, spec_param.map(std::slice::from_ref).unwrap_or(&[]))
+}
+
+/// レビューを 1 回実行して記録する。基準の文書は複数渡せる（`specs`。空なら、基準の文書なし）。
+fn run_review_with_specs(
+    data_dir: &Path,
+    repo: &str,
+    recipe_id: &str,
+    provider_id: &str,
+    base: Option<&str>,
+    lang: Option<&str>,
+    spec_params: &[SpecParam],
+) -> Result<ReviewRecord, String> {
     let is_file = Path::new(repo).is_file();
     let snap = if is_file {
         const DOC_RECIPES: &[&str] = &["doc-core", "doc-claims", "doc-reality", "doc-steps"];
@@ -946,13 +1002,10 @@ fn run_review_with_base_and_lang(
     }
 
     // 基準文書（設計書・仕様書）のコンテキスト構築
-    let spec_ctx = match spec_param {
-        Some(sp) => Some(build_spec_context(Path::new(&top), sp)?),
-        None if recipe.needs_spec => {
-            return Err("この観点には基準の文書（設計書・仕様書）が必要です。ファイルを選択するか、テキストを貼り付けてください。".into());
-        }
-        None => None,
-    };
+    let spec_ctxs = build_spec_set(Path::new(&top), spec_params)?;
+    if spec_ctxs.is_empty() && recipe.needs_spec {
+        return Err("この観点には基準の文書（設計書・仕様書）が必要です。ファイルを選択するか、テキストを貼り付けてください。".into());
+    }
 
     // ツール実行型（linter）は LLM を呼ばない。押したときの LLM の選択は使わない。
     let is_tool = recipe.kind == recipe::Kind::Tool;
@@ -988,10 +1041,11 @@ fn run_review_with_base_and_lang(
             related = Some(r);
         }
         let block = related.as_ref().map(related::render).unwrap_or_default();
-        let spec_block = spec_ctx
-            .as_ref()
+        let spec_block = spec_ctxs
+            .iter()
             .map(|s| format!("# 基準の文書（{}）\n\n{}\n", s.display_name, s.content))
-            .unwrap_or_default();
+            .collect::<Vec<_>>()
+            .join("\n");
         let prompt = recipe::compose_with_lang_and_spec_checked(&recipe, &block, &spec_block, &snap.diff_text, resolved_lang)?;
         let result = provider.run(&prompt);
         let notes = related.as_ref().map(|r| r.notes.clone()).unwrap_or_default();
@@ -1006,7 +1060,7 @@ fn run_review_with_base_and_lang(
             notes.insert(0, format!("このリポジトリの設定（{}）で、次の項目を上書きしています: {}", file.display(), effective.repo_keys.join("、")));
         }
     }
-    if let Some(s) = &spec_ctx {
+    for s in &spec_ctxs {
         notes.push(format!("基準の文書: {}（{} 文字、ハッシュ: {}）", s.display_name, s.char_count, s.content_hash));
     }
 
@@ -1032,8 +1086,8 @@ fn run_review_with_base_and_lang(
         notes,
         related,
         repo_overrides: effective.repo_keys,
-        spec: spec_ctx.clone(),
-        specs: Vec::new(),
+        spec: spec_ctxs.first().cloned(),
+        specs: spec_ctxs.clone(),
         settings: Some(settings.to_record()),
         parse_error: None,
         error: None,
@@ -1049,10 +1103,9 @@ fn run_review_with_base_and_lang(
             match findings::parse(&resp.text) {
                 Ok(mut f) => {
                     findings::verify(&mut f, &snap.files);
-                    if recipe.needs_spec {
-                        if let Some(s) = &spec_ctx {
-                            findings::verify_spec(&mut f, &s.content);
-                        }
+                    if recipe.needs_spec && !spec_ctxs.is_empty() {
+                        let docs: Vec<(&str, &str)> = spec_ctxs.iter().map(|s| (s.display_name.as_str(), s.content.as_str())).collect();
+                        findings::verify_specs(&mut f, &docs);
                     }
                     (rec.carries, rec.fates, inherited, rec.previous) = carry_over(data_dir, &rec.repo, &rec.recipe.id, &f, &settings);
                     triage_sources = vec![triage::SRC_CARRY; f.len()];
@@ -1990,31 +2043,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&data);
         let refused = |e: String| assert!(e.contains("登録されていません"), "{e}");
         refused(hook_status_checked(&data, repo_s).unwrap_err());
-        refused(hook_set_checked(&data, repo_s, false, &["bugs".to_string()], None).unwrap_err());
+        refused(hook_set_checked(&data, repo_s, false, &["bugs".to_string()], &[]).unwrap_err());
         assert!(!data.join("hooks.json").exists(), "断ったとき、設定は作らない");
         repos::add(&data, repo_s, None).unwrap();
         let s = hook_status_checked(&data, repo_s).unwrap();
         assert!(!s.enabled && !s.installed);
-        let off = hook_set_checked(&data, repo_s, false, &["bugs".to_string(), "errors".to_string()], None).unwrap();
+        let off = hook_set_checked(&data, repo_s, false, &["bugs".to_string(), "errors".to_string()], &[]).unwrap();
         assert_eq!(off.recipes, vec!["bugs", "errors"]);
 
-        // CLI で 2 件の設計書を設定済みのとき、画面が先頭の 1 件だけを送っても、2 件目は消えない。別の 1 件を送ったら、その 1 件になる
-        std::fs::create_dir_all(repo.join("docs")).unwrap();
-        std::fs::write(repo.join("docs/a.md"), "A").unwrap();
-        std::fs::write(repo.join("docs/b.md"), "B").unwrap();
-        std::fs::write(repo.join("docs/c.md"), "C").unwrap();
-        let two = vec!["docs/a.md".to_string(), "docs/b.md".to_string()];
-        hooks::set_specs(&data, repo_s, false, &["bugs".to_string()], &two).unwrap();
-        let kept = hook_set_checked(&data, repo_s, false, &["bugs".to_string()], Some("docs/a.md")).unwrap();
-        assert_eq!(kept.specs, two, "先頭と同じ 1 件が送られても、2 件目は残る");
-        let replaced = hook_set_checked(&data, repo_s, false, &["bugs".to_string()], Some("docs/c.md")).unwrap();
-        assert_eq!(replaced.specs, vec!["docs/c.md".to_string()], "別の設計書を送ったら、その 1 件になる");
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
     }
 
     #[test]
-    fn the_screen_never_drops_later_specs_by_accident_and_never_invents_them() {
+    fn the_screen_sets_and_clears_several_hook_specs_as_a_whole() {
         let repo = demo_repo("hook-specs");
         let repo_s = repo.to_str().unwrap();
         let data = std::env::temp_dir().join(format!("mrcr-hook-specs-data-{}", std::process::id()));
@@ -2025,35 +2067,35 @@ mod tests {
             std::fs::write(repo.join(format!("docs/{n}.md")), n).unwrap();
         }
         let bugs = vec!["bugs".to_string()];
-        let one = vec!["docs/a.md".to_string()];
-        let two = vec!["docs/a.md".to_string(), "docs/b.md".to_string()];
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
 
-        // 設定が 1 件（a）で、画面が a を送る → 1 件のまま（2 件目を作らない）
-        hooks::set_specs(&data, repo_s, false, &bugs, &one).unwrap();
-        assert_eq!(hook_set_checked(&data, repo_s, false, &bugs, Some("docs/a.md")).unwrap().specs, one);
-
-        // 設定が 2 件（a,b）で、画面が「設計書なし」を送る → 設計書は空になる（消したい操作を、残さない）
-        hooks::set_specs(&data, repo_s, false, &bugs, &two).unwrap();
-        let cleared = hook_set_checked(&data, repo_s, false, &bugs, None).unwrap();
+        // 画面が送った一覧が、そのまま設定になる（順番も）
+        let two = hook_set_checked(&data, repo_s, false, &bugs, &s(&["docs/b.md", "docs/a.md"])).unwrap();
+        assert_eq!(two.specs, s(&["docs/b.md", "docs/a.md"]));
+        assert_eq!(two.spec.as_deref(), Some("docs/b.md"), "spec は先頭の 1 件");
+        // 1 件に減らせる・増やせる・空にできる
+        assert_eq!(hook_set_checked(&data, repo_s, false, &bugs, &s(&["docs/c.md"])).unwrap().specs, s(&["docs/c.md"]));
+        assert_eq!(hook_set_checked(&data, repo_s, false, &bugs, &s(&["docs/a.md", "docs/b.md", "docs/c.md"])).unwrap().specs.len(), 3);
+        let cleared = hook_set_checked(&data, repo_s, false, &bugs, &[]).unwrap();
         assert!(cleared.specs.is_empty() && cleared.spec.is_none(), "{cleared:?}");
+        // 同じ指定は 1 件にまとまり、6 件（別々）は断られて、設定は変わらない
+        assert_eq!(hook_set_checked(&data, repo_s, false, &bugs, &s(&["docs/a.md", "./docs/a.md", " docs/a.md "])).unwrap().specs, s(&["docs/a.md"]));
+        let six = s(&["docs/a.md", "docs/b.md", "docs/c.md", "docs/d.md", "docs/e.md", "docs/f.md"]);
+        assert!(hook_set_checked(&data, repo_s, false, &bugs, &six).unwrap_err().contains("多すぎます"));
+        assert_eq!(hooks::status(&data, repo_s).unwrap().specs, s(&["docs/a.md"]), "断られたとき、設定は変わらない");
 
-        // 設定が 2 件（a,b）で、画面が先頭と違う 1 件（b）を送る → b だけになる
-        hooks::set_specs(&data, repo_s, false, &bugs, &two).unwrap();
-        assert_eq!(hook_set_checked(&data, repo_s, false, &bugs, Some("docs/b.md")).unwrap().specs, vec!["docs/b.md".to_string()]);
-
-        // ON にする経路でも、先頭と同じ 1 件が送られたら、2 件が残る（試験用の mrcr を見せる）
+        // ON にする経路でも、複数が通る（試験用の mrcr を見せる）
         static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
         std::fs::create_dir_all(&data).unwrap();
         let fake_cli = data.join("mrcr");
         std::fs::write(&fake_cli, "#!/bin/sh\n").unwrap();
         std::env::set_var("MRCR_CLI", &fake_cli);
-        hooks::set_specs(&data, repo_s, false, &bugs, &two).unwrap();
-        let on = hook_set_checked(&data, repo_s, true, &bugs, Some("docs/a.md"));
+        let on = hook_set_checked(&data, repo_s, true, &bugs, &s(&["docs/a.md", "docs/b.md"]));
         std::env::remove_var("MRCR_CLI");
         let on = on.unwrap();
         assert!(on.enabled && on.installed, "{on:?}");
-        assert_eq!(on.specs, two, "ON にしても、2 件が残る");
+        assert_eq!(on.specs, s(&["docs/a.md", "docs/b.md"]));
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
     }
@@ -3681,6 +3723,89 @@ mod tests {
         assert!(rec_paste.prompt.contains("ログイン試行回数は5回まで。"));
         assert!(rec_paste.spec.is_some());
 
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    fn spec_file(path: &str, section: Option<&str>) -> SpecParam {
+        SpecParam { source_type: "file".into(), file_path: Some(path.into()), section: section.map(Into::into), paste_text: None }
+    }
+
+    fn spec_paste(text: &str) -> SpecParam {
+        SpecParam { source_type: "paste".into(), file_path: None, section: None, paste_text: Some(text.into()) }
+    }
+
+    /// 設計書を置いたリポジトリ（設計書はコミット済み。未コミットだと、新規ファイルとして差分に入り、プロンプトに全文が出る）
+    fn repo_with_specs(tag: &str) -> (PathBuf, PathBuf) {
+        let repo = demo_repo(tag);
+        let data = std::env::temp_dir().join(format!("mrcr-{tag}-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        repos::add(&data, repo.to_str().unwrap(), None).unwrap();
+        std::fs::create_dir_all(repo.join("docs")).unwrap();
+        std::fs::write(repo.join("docs/req.md"), "# 要件\n要件の本文GG1\n").unwrap();
+        std::fs::write(repo.join("docs/design.md"), "# 設計\n## 認証\n認証の本文GG2\n## 決済\n決済の本文GG3\n").unwrap();
+        git(&repo, &["add", "docs"]);
+        git(&repo, &["commit", "-q", "-m", "docs"]);
+        (repo, data)
+    }
+
+    #[test]
+    fn several_specs_from_the_screen_all_reach_the_prompt_the_record_and_the_notes() {
+        let (repo, data) = repo_with_specs("gui-multi-spec");
+        let repo_s = repo.to_str().unwrap();
+        let specs = [spec_file("docs/design.md", Some("認証")), spec_file("docs/req.md", None), spec_paste("貼り付けのメモGG4")];
+        let rec = run_review_with_specs(&data, repo_s, "spec", "mock", None, Some("ja"), &specs).unwrap();
+        let names: Vec<&str> = rec.specs.iter().map(|c| c.display_name.as_str()).collect();
+        assert_eq!(names.len(), 3);
+        assert_eq!(&names[..2], ["docs/design.md # 認証", "docs/req.md"], "指定した順");
+        assert!(names[2].starts_with("貼り付けた要件"), "{names:?}");
+        assert_eq!(rec.spec.as_ref().map(|c| c.display_name.as_str()), Some("docs/design.md # 認証"), "spec には先頭の 1 件も入る");
+        assert!(rec.prompt.contains("認証の本文GG2") && rec.prompt.contains("要件の本文GG1") && rec.prompt.contains("貼り付けのメモGG4"));
+        assert!(!rec.prompt.contains("決済の本文GG3"), "節の指定は、ファイルごとに効く");
+        assert_eq!(rec.notes.iter().filter(|n| n.starts_with("基準の文書:")).count(), 3, "実行メモにも、3 件とも出る");
+        // 引用の照合は、全部の文書に対して行われ、一致した文書が出典になる（模擬は、各文書の最初の行と、どの文書にも無い引用を返す）
+        let quoted: Vec<(Option<&str>, Option<bool>)> = rec.findings.iter().filter(|f| f.spec_quote.is_some()).map(|f| (f.spec_source.as_deref(), f.spec_verified)).collect();
+        assert_eq!(quoted.len(), 4, "設計書 3 件の引用 ＋ どの設計書にも無い引用 1 件: {quoted:?}");
+        assert_eq!(quoted[0], (Some("docs/design.md # 認証"), Some(true)));
+        assert_eq!(quoted[1], (Some("docs/req.md"), Some(true)), "2 件目の文書も、照合から漏れない");
+        assert_eq!(quoted[2].1, Some(true));
+        assert!(quoted[2].0.is_some_and(|n| n.starts_with("貼り付けた要件")), "3 件目（貼り付け）も出典になる: {quoted:?}");
+        assert_eq!(quoted[3], (None, Some(false)), "どの文書にも無い引用は、不一致で、出典なし");
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn the_screen_refuses_bad_spec_sets_before_calling_the_llm_and_merges_duplicates() {
+        let (repo, data) = repo_with_specs("gui-bad-spec");
+        let repo_s = repo.to_str().unwrap();
+        let run = |specs: &[SpecParam]| run_review_with_specs(&data, repo_s, "spec", "mock", None, Some("ja"), specs);
+        // 同じファイル・同じ節は 1 件。節が違えば別
+        assert_eq!(run(&[spec_file("docs/req.md", None), spec_file("./docs/req.md", None)]).unwrap().specs.len(), 1);
+        assert_eq!(run(&[spec_file("docs/design.md", Some("認証")), spec_file("docs/design.md", Some("決済"))]).unwrap().specs.len(), 2);
+        let before = store::load_all(&data).len();
+        // 1 件でも外を指す・存在しない・拡張子違いなら、全体が失敗（記録は増えない＝LLM を呼ばない）
+        for (bad, why) in [("../outside.md", "リポジトリの外を指すパス"), ("docs/missing.md", "見つかりません"), ("db.js", ".md または .txt のみ対応")] {
+            let e = run(&[spec_file("docs/req.md", None), spec_file(bad, None)]).unwrap_err();
+            assert!(e.contains(why), "{bad}: 期待する理由「{why}」が無い: {e}");
+        }
+        // 貼り付けは 1 件まで
+        assert!(run(&[spec_paste("a"), spec_paste("b")]).unwrap_err().contains("1 件まで"));
+        // 6 件（別々）は断る。合計が上限を超えても断る（内訳つき）
+        for i in 0..6 {
+            std::fs::write(repo.join(format!("docs/f{i}.md")), "x").unwrap();
+        }
+        let six: Vec<SpecParam> = (0..6).map(|i| spec_file(&format!("docs/f{i}.md"), None)).collect();
+        assert!(run(&six).unwrap_err().contains("多すぎます"));
+        // 合計の上限の境界: ちょうど 30,000 文字は通り、30,001 文字は断られる（内訳つき）
+        let half = "あ".repeat(15_000);
+        std::fs::write(repo.join("docs/half.md"), &half).unwrap();
+        assert!(run(&[spec_file("docs/half.md", None), spec_paste(&half)]).is_ok(), "合計がちょうど 30,000 文字なら通る");
+        let e = run(&[spec_file("docs/half.md", None), spec_paste(&format!("{half}あ"))]).unwrap_err();
+        assert!(e.contains("超えています") && e.contains("30001") && e.contains("docs/half.md"), "30,001 文字は断られ、合計と内訳が出る: {e}");
+        assert_eq!(store::load_all(&data).len(), before + 1, "失敗したものは、記録に残らない（境界の成功の 1 件だけ増えた）");
+        // 設計書の要る観点を、設計書なしで実行すると断る（今までどおり）
+        assert!(run(&[]).unwrap_err().contains("基準の文書（設計書・仕様書）が必要です"));
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
     }

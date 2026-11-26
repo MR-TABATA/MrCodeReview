@@ -19,7 +19,7 @@ export interface HookUiState {
   status: HookStatus | null;
   /** 画面で選んでいる観点。保存するまで、`status.recipes` とは別。null なら、`status.recipes` のまま */
   draft: string[] | null;
-  /** 画面で入れている設計書のパス。null なら、`status.spec` のまま（空文字は「指定なし」） */
+  /** 画面で入れている設計書のパス（1 行に 1 つ）。null なら、`status.specs` のまま（空文字は「指定なし」） */
   specDraft: string | null;
   busy: boolean;
   /** 操作（ON/OFF・保存）の失敗。次の操作を始めるまで、残す（自動更新では、消さない） */
@@ -31,10 +31,10 @@ export interface HookUiState {
 export const newHookUi = (): HookUiState => ({ status: null, draft: null, specDraft: null, busy: false, error: '', loadError: '' });
 
 export interface HookActions {
-  /** ON/OFF にする。観点と設計書は、いま画面にあるもの（設計書は、空なら null） */
-  toggle(enabled: boolean, recipes: string[], spec: string | null): void;
+  /** ON/OFF にする。観点と設計書は、いま画面にあるもの（設計書は、無ければ空の配列） */
+  toggle(enabled: boolean, recipes: string[], specs: string[]): void;
   /** ON のまま、観点と設計書を保存する */
-  save(recipes: string[], spec: string | null): void;
+  save(recipes: string[], specs: string[]): void;
   /** 観点の選択が変わった（まだ保存しない） */
   pick(recipes: string[]): void;
   /** 状態と実行ログを、いま読み直す（開いている間は、自動でも読み直される） */
@@ -47,11 +47,18 @@ export const selectableRecipes = (recipes: Recipe[]): Recipe[] => recipes.filter
 /** いま画面で選んでいる観点。 */
 export const currentRecipes = (st: HookUiState): string[] => st.draft ?? st.status?.recipes ?? [];
 
-/** いま画面にある設計書のパス（空なら null）。 */
-export const currentSpec = (st: HookUiState): string | null => {
-  const v = (st.specDraft ?? st.status?.spec ?? '').trim();
-  return v === '' ? null : v;
-};
+/** 入力欄の文字（1 行に 1 つ）を、設計書のパスの並びにする。前後の空白と空行は捨てる。 */
+export const parseSpecLines = (text: string): string[] =>
+  text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l !== '');
+
+/** 状態にある設計書を、入力欄の文字にする（古い状態の `spec` だけでも読む）。 */
+export const specsToText = (s: { spec: string | null; specs?: string[] }): string => (s.specs && s.specs.length > 0 ? s.specs.join('\n') : (s.spec ?? ''));
+
+/** いま画面にある設計書のパス（無ければ空の配列）。 */
+export const currentSpecs = (st: HookUiState): string[] => parseSpecLines(st.specDraft ?? (st.status ? specsToText(st.status) : ''));
 
 export type RecipeGroupKey = 'code' | 'tf' | 'doc' | 'other';
 
@@ -191,15 +198,13 @@ export function hookSection(st: HookUiState, repoSelected: boolean, recipes: Rec
     : [h('p', { class: 'muted' }, m.noRecipes)];
 
   // 設計書の入力欄。打つたびに画面を作り直さない。打った値は状態に入れておき、ボタンを押したときに読む
-  const specInput = h('input', { class: 'sinput hookspec', type: 'text', placeholder: m.specPlaceholder, disabled: st.busy, spellcheck: 'false' });
-  specInput.value = st.specDraft ?? s.spec ?? '';
+  const specInput = h('textarea', { class: 'sinput hookspec', placeholder: m.specPlaceholder, disabled: st.busy, spellcheck: 'false' });
+  specInput.rows = 3;
+  specInput.value = st.specDraft ?? specsToText(s);
   specInput.addEventListener('input', () => {
     st.specDraft = specInput.value;
   });
-  const specNow = (): string | null => {
-    const v = specInput.value.trim();
-    return v === '' ? null : v;
-  };
+  const specNow = (): string[] => parseSpecLines(specInput.value);
 
   // ON/OFF は、状態の行のスイッチ。切り替えると、その場で反映する（ON にするときは、いまの観点と設計書も、一緒に保存する）。
   // ON にできない理由があるとき（mrcr が無い・フックを置けない、など）は、押せない。OFF にするのは、いつでもできる
