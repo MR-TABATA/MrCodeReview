@@ -17,18 +17,18 @@ pub fn run(action: HookAction) -> i32 {
     match action {
         HookAction::Enable { repo, recipe, spec } => {
             let recipes: Vec<String> = recipe.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-            report(hooks::set(&dir, &repo.to_string_lossy(), true, &recipes, spec.as_deref()))
+            report(hooks::set_specs(&dir, &repo.to_string_lossy(), true, &recipes, &spec))
         }
         HookAction::Disable { repo } => {
             // 観点と設計書は残す（いまの設定を読んで、そのまま渡す）
             let (recipes, spec) = match hooks::status(&dir, &repo.to_string_lossy()) {
-                Ok(s) => (s.recipes, s.spec),
+                Ok(s) => (s.recipes, s.specs),
                 Err(e) => {
                     eprintln!("エラー: {e}");
                     return 2;
                 }
             };
-            report(hooks::set(&dir, &repo.to_string_lossy(), false, &recipes, spec.as_deref()))
+            report(hooks::set_specs(&dir, &repo.to_string_lossy(), false, &recipes, &spec))
         }
         HookAction::Log { repo, count, json } => log_cmd(&dir, &repo.to_string_lossy(), count, json),
         HookAction::Status { repo, json } => match hooks::status(&dir, &repo.to_string_lossy()) {
@@ -65,7 +65,7 @@ fn report(r: Result<hooks::Status, String>) -> i32 {
 fn print_status(s: &hooks::Status) {
     println!("リポジトリ: {}", s.repo);
     println!("設定: {}（観点: {}）", if s.enabled { "ON" } else { "OFF" }, s.recipes.join(", "));
-    if let Some(sp) = &s.spec {
+    for sp in &s.specs {
         println!("設計書: {sp}");
     }
     println!("フック: {}", if s.installed { "入っている" } else { "入っていない" });
@@ -302,8 +302,8 @@ fn run_hook(dir: &Path, name: &str, verbose: bool, mock: bool) -> i32 {
         say(format!("[{}/{}] {recipe} を実行中…", i + 1, total));
         let mut cmd = Command::new(&exe);
         cmd.args(["review", "--commit", &full, "--format", "json", "--stdout", "-C", &key, "-r", recipe]);
-        if let Some(sp) = &entry.spec {
-            cmd.args(["--spec", sp]);
+        for sp in entry.spec_list() {
+            cmd.args(["--spec", &sp]);
         }
         if mock {
             cmd.arg("--mock");

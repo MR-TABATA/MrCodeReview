@@ -67,9 +67,9 @@ pub enum HookAction {
         #[arg(short = 'r', long, default_value = "bugs")]
         recipe: String,
 
-        /// 設計書が要る観点（`spec` など）に渡す設計書。リポジトリ内の相対パス（.md / .txt）
+        /// 設計書が要る観点（`spec` など）に渡す設計書。リポジトリ内の相対パス（.md / .txt）。複数回指定できる（最大 5 件）
         #[arg(long, value_name = "PATH")]
-        spec: Option<String>,
+        spec: Vec<String>,
     },
     /// フックを外して、OFF にする（観点の設定は残す）
     Disable {
@@ -229,9 +229,9 @@ pub struct ReviewArgs {
     #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(10..=3600))]
     pub timeout: u64,
 
-    /// 設計書・仕様書のファイルパス（例: docs/spec.md または docs/spec.md:##認証仕様）
+    /// 設計書・仕様書のファイルパス（例: docs/spec.md または docs/spec.md:##認証仕様）。複数回指定できる（最大 5 件・合計 30,000 文字）。`-` は標準入力（1 回まで）
     #[arg(long, value_name = "PATH[:SECTION]")]
-    pub spec: Option<String>,
+    pub spec: Vec<String>,
 
     /// 設計書・要件のテキスト直接入力（貼り付け・標準入力相当）
     #[arg(long, value_name = "TEXT")]

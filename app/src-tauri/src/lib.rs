@@ -250,6 +250,13 @@ fn hook_status_checked(data_dir: &Path, repo: &str) -> Result<hooks::Status, Str
 
 fn hook_set_checked(data_dir: &Path, repo: &str, enabled: bool, recipes: &[String], spec: Option<&str>) -> Result<hooks::Status, String> {
     repos::require_registered(data_dir, repo)?;
+    // 画面が扱える設計書は 1 つだけ。CLI（`mrcr hook enable --spec a --spec b`）で 2 件以上を設定してあるとき、
+    // 画面で ON/OFF を切り替えただけで、2 件目以降が消えないようにする（画面が送ってくるのは、先頭の 1 件のまま）。
+    if let (Some(s), Ok(st)) = (spec, hooks::status(data_dir, repo)) {
+        if st.specs.len() > 1 && st.specs.first().map(String::as_str) == Some(s) {
+            return hooks::set_specs(data_dir, repo, enabled, recipes, &st.specs);
+        }
+    }
     hooks::set(data_dir, repo, enabled, recipes, spec)
 }
 
@@ -1026,6 +1033,7 @@ fn run_review_with_base_and_lang(
         related,
         repo_overrides: effective.repo_keys,
         spec: spec_ctx.clone(),
+        specs: Vec::new(),
         settings: Some(settings.to_record()),
         parse_error: None,
         error: None,
@@ -1989,6 +1997,63 @@ mod tests {
         assert!(!s.enabled && !s.installed);
         let off = hook_set_checked(&data, repo_s, false, &["bugs".to_string(), "errors".to_string()], None).unwrap();
         assert_eq!(off.recipes, vec!["bugs", "errors"]);
+
+        // CLI で 2 件の設計書を設定済みのとき、画面が先頭の 1 件だけを送っても、2 件目は消えない。別の 1 件を送ったら、その 1 件になる
+        std::fs::create_dir_all(repo.join("docs")).unwrap();
+        std::fs::write(repo.join("docs/a.md"), "A").unwrap();
+        std::fs::write(repo.join("docs/b.md"), "B").unwrap();
+        std::fs::write(repo.join("docs/c.md"), "C").unwrap();
+        let two = vec!["docs/a.md".to_string(), "docs/b.md".to_string()];
+        hooks::set_specs(&data, repo_s, false, &["bugs".to_string()], &two).unwrap();
+        let kept = hook_set_checked(&data, repo_s, false, &["bugs".to_string()], Some("docs/a.md")).unwrap();
+        assert_eq!(kept.specs, two, "先頭と同じ 1 件が送られても、2 件目は残る");
+        let replaced = hook_set_checked(&data, repo_s, false, &["bugs".to_string()], Some("docs/c.md")).unwrap();
+        assert_eq!(replaced.specs, vec!["docs/c.md".to_string()], "別の設計書を送ったら、その 1 件になる");
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn the_screen_never_drops_later_specs_by_accident_and_never_invents_them() {
+        let repo = demo_repo("hook-specs");
+        let repo_s = repo.to_str().unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-hook-specs-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        repos::add(&data, repo_s, None).unwrap();
+        std::fs::create_dir_all(repo.join("docs")).unwrap();
+        for n in ["a", "b", "c"] {
+            std::fs::write(repo.join(format!("docs/{n}.md")), n).unwrap();
+        }
+        let bugs = vec!["bugs".to_string()];
+        let one = vec!["docs/a.md".to_string()];
+        let two = vec!["docs/a.md".to_string(), "docs/b.md".to_string()];
+
+        // 設定が 1 件（a）で、画面が a を送る → 1 件のまま（2 件目を作らない）
+        hooks::set_specs(&data, repo_s, false, &bugs, &one).unwrap();
+        assert_eq!(hook_set_checked(&data, repo_s, false, &bugs, Some("docs/a.md")).unwrap().specs, one);
+
+        // 設定が 2 件（a,b）で、画面が「設計書なし」を送る → 設計書は空になる（消したい操作を、残さない）
+        hooks::set_specs(&data, repo_s, false, &bugs, &two).unwrap();
+        let cleared = hook_set_checked(&data, repo_s, false, &bugs, None).unwrap();
+        assert!(cleared.specs.is_empty() && cleared.spec.is_none(), "{cleared:?}");
+
+        // 設定が 2 件（a,b）で、画面が先頭と違う 1 件（b）を送る → b だけになる
+        hooks::set_specs(&data, repo_s, false, &bugs, &two).unwrap();
+        assert_eq!(hook_set_checked(&data, repo_s, false, &bugs, Some("docs/b.md")).unwrap().specs, vec!["docs/b.md".to_string()]);
+
+        // ON にする経路でも、先頭と同じ 1 件が送られたら、2 件が残る（試験用の mrcr を見せる）
+        static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        std::fs::create_dir_all(&data).unwrap();
+        let fake_cli = data.join("mrcr");
+        std::fs::write(&fake_cli, "#!/bin/sh\n").unwrap();
+        std::env::set_var("MRCR_CLI", &fake_cli);
+        hooks::set_specs(&data, repo_s, false, &bugs, &two).unwrap();
+        let on = hook_set_checked(&data, repo_s, true, &bugs, Some("docs/a.md"));
+        std::env::remove_var("MRCR_CLI");
+        let on = on.unwrap();
+        assert!(on.enabled && on.installed, "{on:?}");
+        assert_eq!(on.specs, two, "ON にしても、2 件が残る");
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&data);
     }

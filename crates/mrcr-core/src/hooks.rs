@@ -34,6 +34,21 @@ pub struct RepoHook {
     /// 設計書が要る観点（`spec` など）に渡す設計書。リポジトリ内の相対パス（.md / .txt）。章の指定はできない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spec: Option<String>,
+    /// 設計書が 2 件以上のときだけ、こちらに書く（1 件のときは `spec`。古い版でも読めるように、1 件の形は変えない）。
+    /// 古い版は、この項目を知らず、設定ファイル全体を読めなくなる（`deny_unknown_fields`）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub specs: Vec<String>,
+}
+
+impl RepoHook {
+    /// 設計書のパスの全部（指定した順）。`specs` があればそれ、無ければ `spec`。
+    pub fn spec_list(&self) -> Vec<String> {
+        if !self.specs.is_empty() {
+            self.specs.clone()
+        } else {
+            self.spec.iter().cloned().collect()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -95,10 +110,32 @@ pub fn validate_spec_shape(spec: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// ON にするときの確認: 設計書のパスは、リポジトリ内の、あるファイル（.md / .txt）。
-/// 選んだ観点は、あるものだけ。設計書が要る観点を選んだら、設計書の指定が要る。
+/// ON にするときの確認（設計書が 1 件以下の形）。
 pub fn validate_for_enable(root: &Path, recipes: &[String], spec: Option<&str>) -> Result<(), String> {
-    if let Some(s) = spec {
+    let specs: Vec<String> = spec.map(|s| vec![s.to_string()]).unwrap_or_default();
+    validate_specs_for_enable(root, recipes, &specs)
+}
+
+/// 設計書のパスの並びから、前後の空白と先頭の `./` を取り除き、重複を 1 件にする（順番は保つ）。
+pub fn dedup_specs(specs: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for s in specs {
+        let t = s.trim();
+        let t = t.strip_prefix("./").unwrap_or(t).to_string();
+        if !out.contains(&t) {
+            out.push(t);
+        }
+    }
+    out
+}
+
+/// ON にするときの確認: 設計書のパスは、リポジトリ内の、あるファイル（.md / .txt）で、最大 `MAX_SPEC_FILES` 件。
+/// 選んだ観点は、あるものだけ。設計書が要る観点を選んだら、設計書の指定が要る。
+pub fn validate_specs_for_enable(root: &Path, recipes: &[String], specs: &[String]) -> Result<(), String> {
+    if specs.len() > crate::spec::MAX_SPEC_FILES {
+        return Err(format!("設計書が多すぎます（{} 件）。上限は {} 件です", specs.len(), crate::spec::MAX_SPEC_FILES));
+    }
+    for s in specs {
         validate_spec_shape(s)?;
         if !crate::spec::is_supported_spec_extension(Path::new(s)) {
             return Err("設計書は .md または .txt のファイルだけ指定できます".into());
@@ -112,7 +149,7 @@ pub fn validate_for_enable(root: &Path, recipes: &[String], spec: Option<&str>) 
         let Some(r) = crate::recipe::find_with_lang(Some(root), id, "ja") else {
             return Err(format!("観点 `{id}` が見つかりません"));
         };
-        if r.needs_spec && spec.is_none() {
+        if r.needs_spec && specs.is_empty() {
             return Err(format!("観点 `{id}` は設計書が要ります。リポジトリ内の設計書のパス（例: docs/spec.md）を指定してください"));
         }
     }
@@ -322,8 +359,10 @@ pub struct Status {
     /// 設定の ON/OFF
     pub enabled: bool,
     pub recipes: Vec<String>,
-    /// 設計書が要る観点に渡す設計書（リポジトリ内の相対パス）
+    /// 設計書が要る観点に渡す設計書（リポジトリ内の相対パス）。複数あるときは、先頭の 1 件（1 件だけを扱う画面のため）
     pub spec: Option<String>,
+    /// 設計書の全部（指定した順）。1 件以下なら、`spec` と同じ中身
+    pub specs: Vec<String>,
     /// フックのスクリプトに、管理のブロックが入っているか
     pub installed: bool,
     /// いま見つかる `mrcr`（無ければ、画面で案内する）
@@ -359,7 +398,8 @@ pub fn status(dir: &Path, repo: &str) -> Result<Status, String> {
         repo: key.clone(),
         enabled: entry.map(|e| e.enabled).unwrap_or(false),
         recipes: entry.map(|e| e.recipes.clone()).unwrap_or_else(|| DEFAULT_RECIPES.iter().map(|s| s.to_string()).collect()),
-        spec: entry.and_then(|e| e.spec.clone()),
+        spec: entry.and_then(|e| e.spec_list().into_iter().next()),
+        specs: entry.map(|e| e.spec_list()).unwrap_or_default(),
         installed,
         cli: cli.map(|p| p.to_string_lossy().into_owned()),
         hook_cli: recorded.as_ref().map(|p| p.to_string_lossy().into_owned()),
@@ -373,13 +413,25 @@ pub fn status(dir: &Path, repo: &str) -> Result<Status, String> {
 
 /// ON/OFF と観点を設定する。ON なら、フックを入れる（`mrcr` が見つからなければエラー）。OFF なら、外す（観点は残す）。
 pub fn set(dir: &Path, repo: &str, enabled: bool, recipes: &[String], spec: Option<&str>) -> Result<Status, String> {
+    let specs: Vec<String> = spec.map(|s| vec![s.to_string()]).unwrap_or_default();
+    set_specs(dir, repo, enabled, recipes, &specs)
+}
+
+/// `set` の、設計書を複数渡せる形。設計書が 1 件なら `spec`（古い版でも読める形）、2 件以上なら `specs` に書く。
+pub fn set_specs(dir: &Path, repo: &str, enabled: bool, recipes: &[String], specs: &[String]) -> Result<Status, String> {
     validate_recipes(recipes)?;
     let key = repo_key(repo)?;
+    let specs = dedup_specs(specs);
     // 外すときは、設計書のファイルが無くても外せるように、形だけを確かめる
-    match (enabled, spec) {
-        (true, _) => validate_for_enable(Path::new(&key), recipes, spec)?,
-        (false, Some(s)) => validate_spec_shape(s)?,
-        (false, None) => {}
+    if enabled {
+        validate_specs_for_enable(Path::new(&key), recipes, &specs)?;
+    } else {
+        if specs.len() > crate::spec::MAX_SPEC_FILES {
+            return Err(format!("設計書が多すぎます（{} 件）。上限は {} 件です", specs.len(), crate::spec::MAX_SPEC_FILES));
+        }
+        for s in &specs {
+            validate_spec_shape(s)?;
+        }
     }
     let mut cfg = load(dir)?;
     let hooks = hooks_dir(Path::new(&key));
@@ -389,7 +441,12 @@ pub fn set(dir: &Path, repo: &str, enabled: bool, recipes: &[String], spec: Opti
     } else if let Ok(h) = &hooks {
         uninstall_block(h)?;
     }
-    cfg.post_commit.insert(key.clone(), RepoHook { enabled, recipes: recipes.to_vec(), spec: spec.map(|s| s.to_string()) });
+    let (one, many) = match specs.len() {
+        0 => (None, Vec::new()),
+        1 => (Some(specs[0].clone()), Vec::new()),
+        _ => (None, specs),
+    };
+    cfg.post_commit.insert(key.clone(), RepoHook { enabled, recipes: recipes.to_vec(), spec: one, specs: many });
     if let Err(e) = save(dir, &cfg) {
         if enabled {
             // 入れたフックを外す。外せなかったときは、その旨も伝える（フックだけが残ると、設定は OFF のまま、コミットのたびに動く）
@@ -782,7 +839,7 @@ mod tests {
         let d = tmp("cfg");
         assert_eq!(load(&d).unwrap(), HooksConfig::default());
         let mut c = HooksConfig::default();
-        c.post_commit.insert("/r".into(), RepoHook { enabled: true, recipes: vec!["bugs".into()], spec: None });
+        c.post_commit.insert("/r".into(), RepoHook { enabled: true, recipes: vec!["bugs".into()], spec: None, specs: Vec::new() });
         save(&d, &c).unwrap();
         assert_eq!(load(&d).unwrap(), c);
         assert!(!d.join("hooks.json.tmp").exists());
