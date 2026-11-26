@@ -905,6 +905,8 @@ async function fetchAgent(consent: boolean): Promise<void> {
     if (res.needs_consent) next = { ...newAgentUi(), asking: true };
     else {
       r.agent_reports = res.agent_reports;
+      const cached = state.runLogReviewCache.get(r.id);
+      if (cached) cached.agent_reports = res.agent_reports;
       state.openCards = new Set();
       // 渡す文面も、申告済みを外した内容に作り直す
       await refreshHandoff();
@@ -3129,21 +3131,20 @@ function runLogReviewCard(s: ReviewSummary, lang: Lang): HTMLElement {
       render();
     } else {
       state.expandedRunLogs.add(s.id);
-      if (!state.runLogReviewCache.has(s.id)) {
+      const hasCache = state.runLogReviewCache.has(s.id);
+      if (!hasCache) {
         state.loadingRunLogs.add(s.id);
         render();
-        void (async () => {
-          try {
-            const rev = await invoke<ReviewView | null>('get_review', { id: s.id });
-            if (rev) state.runLogReviewCache.set(s.id, rev);
-          } finally {
-            state.loadingRunLogs.delete(s.id);
-            render();
-          }
-        })();
-      } else {
-        render();
       }
+      void (async () => {
+        try {
+          const rev = await invoke<ReviewView | null>('get_review', { id: s.id });
+          if (rev) state.runLogReviewCache.set(s.id, rev);
+        } finally {
+          if (!hasCache) state.loadingRunLogs.delete(s.id);
+          render();
+        }
+      })();
     }
   };
 
@@ -3163,7 +3164,7 @@ function runLogReviewCard(s: ReviewSummary, lang: Lang): HTMLElement {
               cachedReview.carries?.[i],
               false,
               cachedReview.finding_notes?.[i],
-              false,
+              true,
               cachedReview.agent_reports?.[i],
             ),
           )
