@@ -4,13 +4,18 @@
 #   （Linux は未検証）。本物のキーチェーンに触る試験は #[ignore] で、ここでは走らない。
 # - frontend: GUI の画面側（app/）の型検査・試験・ビルド。
 #
-# CLI の配布（タグ v* の push）は release.yml。そちらは CLI と core だけを試験する。
+# CLI の配布（タグ v* の push）は release.yml。そちらはテスト成功を前提条件としてから Release を作る。
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+
+# 連続 push 時に古いジョブを自動キャンセルしてキューの枯渇・待ちを防ぐ
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

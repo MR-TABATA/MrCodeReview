@@ -1,4 +1,6 @@
-# タグ v* を push したら、テストを通してから universal binary を zip にして Release に付ける。
+# タグ v* を push したら、CI テスト（Rust 全体 + フロントエンド全体）が完全に成功した時だけ、
+# universal binary を zip にして GitHub Release を作る。
+# いずれかのテストが失敗した場合は、Release 作成ステップを実行せずに即座に停止する。
 #
 # アセットは scripts/release.sh が作るもの（mrcr）。
 # Homebrew の formula（homebrew/mrcr.rb）はこの zip の URL と sha256 を指す。
@@ -13,7 +15,39 @@ permissions:
   contents: write
 
 jobs:
+  test-rust:
+    name: テスト（Rust ワークスペース全体）
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: テスト実行
+        run: cargo test --workspace --no-fail-fast
+
+  test-frontend:
+    name: テスト（フロントエンド 型検査・試験・ビルド）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: 依存の取得
+        run: npm ci
+      - name: 型検査
+        run: npm run typecheck
+      - name: 試験
+        run: npm test
+      - name: ビルド
+        run: npm run build
+
   release:
+    name: 配布物作成と GitHub Release
+    needs: [test-rust, test-frontend]
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -21,10 +55,6 @@ jobs:
       - name: Rust ツールチェーンの準備
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
-
-      # リリース前にワークスペース全体（CLI・core・GUI）のテストを必須化し、1つでも失敗したらリリースを止める
-      - name: テスト（ワークスペース全体）
-        run: cargo test --workspace
 
       - name: 配布物を作る
         id: build
