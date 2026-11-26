@@ -2066,7 +2066,7 @@ dependencies = [
 
 [[package]]
 name = "mrcodereview"
-version = "1.13.1"
+version = "1.13.2"
 dependencies = [
  "calamine",
  "clap",
@@ -2088,7 +2088,7 @@ dependencies = [
 
 [[package]]
 name = "mrcr"
-version = "1.13.1"
+version = "1.13.2"
 dependencies = [
  "clap",
  "clap_complete",
@@ -2099,7 +2099,7 @@ dependencies = [
 
 [[package]]
 name = "mrcr-core"
-version = "1.13.1"
+version = "1.13.2"
 dependencies = [
  "regex",
  "rusqlite",
