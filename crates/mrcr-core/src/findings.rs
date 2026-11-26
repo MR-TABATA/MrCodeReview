@@ -27,6 +27,9 @@ pub struct Finding {
     /// spec_quote が、参照した基準文書の本文に実際にあるか。
     #[serde(default)]
     pub spec_verified: Option<bool>,
+    /// spec_quote が一致した基準文書の表示名。複数の文書を渡したときに、どの文書の原文かを示す。一致しなかったとき・古い記録は None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_source: Option<String>,
 }
 
 fn str_field(v: &Value, key: &str) -> String {
@@ -85,6 +88,7 @@ pub fn parse(text: &str) -> Result<Vec<Finding>, String> {
             rule: Some(str_field(f, "rule")).filter(|r| !r.is_empty()),
             spec_quote: Some(str_field(f, "spec_quote")).filter(|s| !s.is_empty()),
             spec_verified: None,
+            spec_source: None,
         })
         .collect())
 }
@@ -123,6 +127,23 @@ pub fn verify_spec(findings: &mut [Finding], spec_text: &str) {
             f.spec_verified = Some(contains_quote(trimmed_spec, quote));
         } else {
             f.spec_verified = Some(false);
+        }
+    }
+}
+
+/// 複数の基準文書に対する、`verify_spec`。`docs` は（表示名, 本文）を、指定した順に並べたもの。
+///
+/// 引用は、**どれか 1 つの文書の本文**に連続して実在すれば一致（`spec_verified = Some(true)`）で、
+/// 一致した文書の表示名を `spec_source` に入れる。同じ原文が複数の文書にあるときは、先に指定した文書を根拠にする。
+/// 文書をまたぐ引用（A の末尾と B の先頭をつなげたもの）は、文書ごとに照合するので一致しない。
+pub fn verify_specs(findings: &mut [Finding], docs: &[(&str, &str)]) {
+    for f in findings.iter_mut() {
+        f.spec_source = None;
+        let quote = f.spec_quote.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let hit = quote.and_then(|q| docs.iter().find(|(_, text)| contains_quote(text.trim(), q)));
+        f.spec_verified = Some(hit.is_some());
+        if let Some((name, _)) = hit {
+            f.spec_source = Some((*name).to_string());
         }
     }
 }
@@ -344,5 +365,63 @@ mod tests {
         assert_eq!(findings[1].spec_verified, Some(false), "でっち上げ引用は false");
         assert_eq!(findings[2].spec_verified, Some(false), "空引用は false");
         assert_eq!(findings[3].spec_verified, Some(false), "引用欄なしは false");
+    }
+
+    fn quoting(q: Option<&str>) -> Finding {
+        Finding { spec_quote: q.map(String::from), ..Default::default() }
+    }
+
+    #[test]
+    fn verify_specs_matches_any_document_and_names_the_source() {
+        let a = "# 要件\n自動延長は行わない。";
+        let b = "# 設計\nセッションは 15 分で失効する。";
+        let mut v = vec![
+            quoting(Some("自動延長は行わない。")),
+            quoting(Some("セッションは 15 分で失効する。")),
+            quoting(Some("どこにも無い引用")),
+            quoting(None),
+        ];
+        verify_specs(&mut v, &[("req.md", a), ("design.md", b)]);
+        assert_eq!((v[0].spec_verified, v[0].spec_source.as_deref()), (Some(true), Some("req.md")));
+        assert_eq!((v[1].spec_verified, v[1].spec_source.as_deref()), (Some(true), Some("design.md")), "2 件目の文書の原文でも成功し、その文書名が付く");
+        assert_eq!((v[2].spec_verified, v[2].spec_source.as_deref()), (Some(false), None));
+        assert_eq!((v[3].spec_verified, v[3].spec_source.as_deref()), (Some(false), None));
+    }
+
+    #[test]
+    fn verify_specs_rejects_a_quote_that_spans_two_documents() {
+        let a = "前の文書の末尾の行";
+        let b = "後ろの文書の先頭の行";
+        let mut v = vec![quoting(Some("前の文書の末尾の行\n後ろの文書の先頭の行")), quoting(Some("前の文書の末尾の行後ろの文書の先頭の行"))];
+        verify_specs(&mut v, &[("a.md", a), ("b.md", b)]);
+        assert_eq!(v[0].spec_verified, Some(false), "文書をまたぐ引用は不一致");
+        assert_eq!(v[1].spec_verified, Some(false), "つなげた引用も不一致");
+    }
+
+    #[test]
+    fn verify_specs_prefers_the_first_document_when_both_contain_the_quote() {
+        let mut v = vec![quoting(Some("同じ原文"))];
+        verify_specs(&mut v, &[("first.md", "x 同じ原文 x"), ("second.md", "y 同じ原文 y")]);
+        assert_eq!(v[0].spec_source.as_deref(), Some("first.md"));
+    }
+
+    #[test]
+    fn verify_specs_with_one_document_agrees_with_verify_spec() {
+        let text = "行A: 認証仕様\n行B: 中間\n行C: 延長は行わない。";
+        for q in [Some("行A: 認証仕様"), Some("存在しない"), Some("  "), None, Some("行A: 認証仕様\n行C: 延長は行わない。")] {
+            let mut one = vec![quoting(q)];
+            let mut many = vec![quoting(q)];
+            verify_spec(&mut one, text);
+            verify_specs(&mut many, &[("s.md", text)]);
+            assert_eq!(one[0].spec_verified, many[0].spec_verified, "{q:?}");
+        }
+    }
+
+    #[test]
+    fn spec_source_is_absent_in_old_json_and_not_written_when_none() {
+        let old = r#"{"file":"a","line":null,"severity":"low","title":"t","detail":"d","evidence":"e"}"#;
+        let f: Finding = serde_json::from_str(old).unwrap();
+        assert_eq!(f.spec_source, None);
+        assert!(!serde_json::to_string(&f).unwrap().contains("spec_source"));
     }
 }

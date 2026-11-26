@@ -183,6 +183,92 @@ pub fn extract_section_content(text: &str, heading_title: &str) -> Result<String
     Ok(section_text.trim().to_string())
 }
 
+/// 基準の文書として渡せる件数の上限（複数ファイルの指定。要件・設計・タスクの 3 枚＋余裕）。
+pub const MAX_SPEC_FILES: usize = 5;
+/// 渡した基準の文書の、合計の文字数の上限（サイレント切り捨て防止。超過時はエラー）。
+pub const MAX_SPEC_TOTAL_CHARS: usize = 30_000;
+
+/// `PATH` または `PATH:##節` を、（パス, 節）に分ける。
+pub fn split_spec_arg(arg: &str) -> (String, Option<String>) {
+    match arg.split_once(':') {
+        Some((p, s)) => (p.trim().to_string(), Some(s.trim().trim_start_matches('#').trim().to_string())),
+        None => (arg.trim().to_string(), None),
+    }
+}
+
+/// リポジトリ内のファイル 1 つ（任意で節）を、基準の文書として読む。
+pub fn load_spec_file(repo_root: &Path, arg: &str) -> Result<SpecContext, String> {
+    let (rel, section) = split_spec_arg(arg);
+    let safe_path = safe_repo_relative_path(repo_root, Path::new(&rel))?;
+    if !is_supported_spec_extension(&safe_path) {
+        return Err("基準の文書は .md または .txt のみ対応しています".into());
+    }
+    let full_text = std::fs::read_to_string(&safe_path)
+        .map_err(|e| format!("基準文書を読み込めません: {}: {e}", safe_path.display()))?;
+    let (content, display_name) = match section.as_deref().filter(|s| !s.is_empty()) {
+        Some(sec) => (extract_section_content(&full_text, sec)?, format!("{rel} # {sec}")),
+        None => (full_text, rel.clone()),
+    };
+    SpecContext::new(SpecSource::File { path: rel, section }, display_name, content)
+}
+
+/// 複数の基準の文書の、件数と合計の文字数を確かめる。超えたら、切り捨てずにエラー（内訳つき）。
+pub fn check_spec_set(ctxs: &[SpecContext]) -> Result<(), String> {
+    if ctxs.len() > MAX_SPEC_FILES {
+        return Err(format!(
+            "基準の文書が多すぎます（{} 件）。上限は {} 件です。必要なものに絞ってください。",
+            ctxs.len(),
+            MAX_SPEC_FILES
+        ));
+    }
+    let total: usize = ctxs.iter().map(|c| c.char_count).sum();
+    if total > MAX_SPEC_TOTAL_CHARS {
+        let breakdown = ctxs.iter().map(|c| format!("{}: {} 文字", c.display_name, c.char_count)).collect::<Vec<_>>().join("、");
+        return Err(format!(
+            "基準の文書の合計の文字数（{total} 文字）が上限（{MAX_SPEC_TOTAL_CHARS} 文字）を超えています（{breakdown}）。対象の節（見出し）を絞り込むか、文書を減らしてください。"
+        ));
+    }
+    Ok(())
+}
+
+/// `--spec` の指定（複数可）を、基準の文書の一覧にする。指定した順のまま。
+///
+/// - 1 件でも読めなければ、全体を失敗にする（一部だけで続けない）。
+/// - 同じファイルの同じ節の重複は、1 件にまとめる。
+/// - `-` は標準入力（1 回まで）。`read_stdin` が本文を返す。
+/// - 件数と合計の文字数は `check_spec_set` で確かめる。
+pub fn load_spec_set(
+    repo_root: &Path,
+    args: &[String],
+    read_stdin: &mut dyn FnMut() -> Result<String, String>,
+) -> Result<Vec<SpecContext>, String> {
+    let mut out: Vec<SpecContext> = Vec::new();
+    let mut seen: Vec<(PathBuf, Option<String>)> = Vec::new();
+    let mut stdin_used = false;
+    for arg in args {
+        let arg = arg.trim();
+        if arg == "-" {
+            if stdin_used {
+                return Err("標準入力（--spec -）は 1 回までです".into());
+            }
+            stdin_used = true;
+            let text = read_stdin().map_err(|e| format!("標準入力からの読み込みに失敗しました: {e}"))?;
+            let count = text.chars().count();
+            out.push(SpecContext::new(SpecSource::DirectPaste, format!("標準入力の要件（{count}文字）"), text)?);
+            continue;
+        }
+        let (rel, section) = split_spec_arg(arg);
+        let key = (safe_repo_relative_path(repo_root, Path::new(&rel))?, section.filter(|s| !s.is_empty()));
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key);
+        out.push(load_spec_file(repo_root, arg)?);
+    }
+    check_spec_set(&out)?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,5 +414,122 @@ JWTを使用。
     fn fnv1a64_deterministic() {
         assert_eq!(fnv1a64("hello world"), fnv1a64("hello world"));
         assert_ne!(fnv1a64("hello"), fnv1a64("world"));
+    }
+
+    fn repo_with(files: &[(&str, &str)]) -> (PathBuf, PathBuf) {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let base = std::env::temp_dir().join(format!("spec-set-{}-{n}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let repo = base.join("repo");
+        fs::create_dir_all(&repo).unwrap();
+        for (p, c) in files {
+            let f = repo.join(p);
+            fs::create_dir_all(f.parent().unwrap()).unwrap();
+            fs::write(f, c).unwrap();
+        }
+        (base, repo)
+    }
+
+    fn no_stdin() -> Result<String, String> {
+        Err("標準入力は使わない".into())
+    }
+
+    fn args(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn loads_several_files_in_the_given_order_with_sections() {
+        let (base, repo) = repo_with(&[("docs/a.md", "# A\n本文A"), ("docs/b.md", "# B\n## 認証\nb の認証\n## 決済\nb の決済"), ("c.txt", "テキスト C")]);
+        let set = load_spec_set(&repo, &args(&["docs/b.md:##認証", "docs/a.md", "c.txt"]), &mut no_stdin).unwrap();
+        let names: Vec<&str> = set.iter().map(|c| c.display_name.as_str()).collect();
+        assert_eq!(names, ["docs/b.md # 認証", "docs/a.md", "c.txt"], "指定した順");
+        assert!(set[0].content.contains("b の認証") && !set[0].content.contains("b の決済"));
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn one_bad_file_fails_the_whole_set() {
+        let (base, repo) = repo_with(&[("a.md", "A"), ("img.png", "x")]);
+        for bad in ["missing.md", "img.png", "../outside.md", "/etc/hosts"] {
+            let e = load_spec_set(&repo, &args(&["a.md", bad]), &mut no_stdin).unwrap_err();
+            assert!(!e.is_empty(), "{bad}");
+        }
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_inside_the_repo_that_points_outside_fails_the_whole_set() {
+        let (base, repo) = repo_with(&[("a.md", "A"), ("inside.md", "内側の文書")]);
+        let outside = base.join("secret.md");
+        fs::write(&outside, "外のファイルの中身").unwrap();
+        fs::create_dir_all(repo.join("docs")).unwrap();
+        std::os::unix::fs::symlink(&outside, repo.join("docs/link.md")).unwrap();
+        // 複数指定の中に混ぜても、1 件でも外へ出るリンクがあれば、全体が失敗する（外の中身は読まない）
+        for order in [["a.md", "docs/link.md"], ["docs/link.md", "a.md"]] {
+            let e = load_spec_set(&repo, &args(&order), &mut no_stdin).unwrap_err();
+            assert!(e.contains("シンボリックリンク") || e.contains("リポジトリ外"), "{order:?}: {e}");
+        }
+        // 内側を指すリンクは、今までどおり通る
+        std::os::unix::fs::symlink(repo.join("inside.md"), repo.join("docs/ok.md")).unwrap();
+        assert_eq!(load_spec_set(&repo, &args(&["a.md", "docs/ok.md"]), &mut no_stdin).unwrap().len(), 2);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn duplicates_are_merged_but_other_sections_of_the_same_file_are_kept() {
+        let (base, repo) = repo_with(&[("a.md", "# A\n## x\n1\n## y\n2")]);
+        let set = load_spec_set(&repo, &args(&["a.md", "./a.md", "a.md"]), &mut no_stdin).unwrap();
+        assert_eq!(set.len(), 1, "同じファイルは 1 件");
+        let set = load_spec_set(&repo, &args(&["a.md:##x", "a.md:x", "a.md:##y"]), &mut no_stdin).unwrap();
+        assert_eq!(set.len(), 2, "同じ節は 1 件・別の節は別");
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn more_than_the_file_limit_is_refused() {
+        let files: Vec<(String, String)> = (0..=MAX_SPEC_FILES).map(|i| (format!("f{i}.md"), "x".to_string())).collect();
+        let refs: Vec<(&str, &str)> = files.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let (base, repo) = repo_with(&refs);
+        let all: Vec<String> = files.iter().map(|f| f.0.clone()).collect();
+        let e = load_spec_set(&repo, &all, &mut no_stdin).unwrap_err();
+        assert!(e.contains("多すぎます") && e.contains(&MAX_SPEC_FILES.to_string()), "{e}");
+        assert!(load_spec_set(&repo, &all[..MAX_SPEC_FILES], &mut no_stdin).is_ok(), "上限ちょうどは通る");
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn total_size_limit_is_exact_and_the_error_shows_the_breakdown() {
+        let half = "a".repeat(MAX_SPEC_TOTAL_CHARS / 2);
+        let (base, repo) = repo_with(&[("a.md", &half), ("b.md", &half), ("c.md", "z")]);
+        assert!(load_spec_set(&repo, &args(&["a.md", "b.md"]), &mut no_stdin).is_ok(), "合計がちょうど上限なら通る");
+        let e = load_spec_set(&repo, &args(&["a.md", "b.md", "c.md"]), &mut no_stdin).unwrap_err();
+        assert!(e.contains("超えています") && e.contains("a.md: 15000 文字") && e.contains("c.md: 1 文字"), "{e}");
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn stdin_counts_as_one_document_and_only_once() {
+        let (base, repo) = repo_with(&[("a.md", "A")]);
+        let mut calls = 0;
+        let mut stdin = || {
+            calls += 1;
+            Ok("標準入力の本文".to_string())
+        };
+        let set = load_spec_set(&repo, &args(&["a.md", "-"]), &mut stdin).unwrap();
+        assert_eq!(set.len(), 2);
+        assert!(set[1].display_name.starts_with("標準入力の要件"));
+        let e = load_spec_set(&repo, &args(&["-", "-"]), &mut stdin).unwrap_err();
+        assert!(e.contains("1 回まで"), "{e}");
+        assert_eq!(calls, 2, "2 回目の `-` では読まない");
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn split_spec_arg_separates_the_section() {
+        assert_eq!(split_spec_arg("docs/a.md"), ("docs/a.md".into(), None));
+        assert_eq!(split_spec_arg(" docs/a.md : ## 認証 "), ("docs/a.md".into(), Some("認証".into())));
     }
 }

@@ -109,6 +109,10 @@ pub struct ReviewRecord {
     /// 参照した基準文書（設計書・仕様書）の情報。基準文書を参照するレビューのときだけ。
     #[serde(default)]
     pub spec: Option<crate::spec::SpecContext>,
+    /// 参照した基準文書の全部（複数のファイルを渡したとき）。空なら、古い記録か、基準文書が 1 件以下（そのときは `spec` が全部）。
+    /// 複数あるときも、`spec` には先頭の 1 件を入れる（古い版・1 件だけを見る画面で、設計書の欄が空にならないように）。
+    #[serde(default)]
+    pub specs: Vec<crate::spec::SpecContext>,
     /// 応答から指摘を読めなかった理由。
     pub parse_error: Option<String>,
     /// 実行そのものが失敗した理由。
@@ -116,6 +120,15 @@ pub struct ReviewRecord {
 }
 
 impl ReviewRecord {
+    /// 参照した基準文書の全部。`specs` があればそれ、無ければ `spec`（古い記録・1 件だけのもの）。
+    pub fn spec_docs(&self) -> Vec<&crate::spec::SpecContext> {
+        if !self.specs.is_empty() {
+            self.specs.iter().collect()
+        } else {
+            self.spec.iter().collect()
+        }
+    }
+
     /// 実行も、指摘の読み取りも成功した記録か。
     pub fn is_ok(&self) -> bool {
         self.error.is_none() && self.parse_error.is_none()
@@ -589,6 +602,7 @@ pub fn sample_record(id: &str, at: u64) -> ReviewRecord {
         repo_overrides: vec![],
         settings: None,
         spec: None,
+        specs: Vec::new(),
         parse_error: None,
         error: None,
     }

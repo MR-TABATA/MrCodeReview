@@ -460,3 +460,112 @@ fn unreadable_log_lines_are_warned_about_by_log_and_status() {
     assert!(String::from_utf8_lossy(&st.stdout).contains("読めない行が 1 行"), "{}", String::from_utf8_lossy(&st.stdout));
     assert_eq!(status_json(&repo, &data)["log_unreadable"], 1);
 }
+
+fn add_specs(repo: &Tmp) {
+    std::fs::create_dir_all(repo.0.join("docs")).unwrap();
+    std::fs::write(repo.0.join("docs/req.md"), "# 要件\n要件の本文QQ1\n").unwrap();
+    std::fs::write(repo.0.join("docs/design.md"), "# 設計\n設計の本文QQ2\n").unwrap();
+}
+
+fn hooks_json(data: &Tmp) -> serde_json::Value {
+    serde_json::from_str(&std::fs::read_to_string(data.0.join("hooks.json")).unwrap()).unwrap()
+}
+
+#[test]
+fn two_specs_are_saved_as_specs_and_one_spec_keeps_the_old_shape() {
+    let (repo, data) = setup_repo();
+    add_spec(&repo);
+    add_specs(&repo);
+    // 1 件: 古い版でも読める形（`spec` だけ）
+    assert_eq!(mrcr(&repo, &data, &["hook", "enable", "-r", "spec", "--spec", "docs/spec.md"]).status.code(), Some(0));
+    let entry = hooks_json(&data)["post_commit"].as_object().unwrap().values().next().unwrap().clone();
+    assert_eq!(entry["spec"], "docs/spec.md");
+    assert!(entry.get("specs").is_none(), "1 件のときは specs を書かない（古い版が読めなくなる）");
+
+    // 2 件: specs に書く
+    let o = mrcr(&repo, &data, &["hook", "enable", "-r", "spec", "--spec", "docs/req.md", "--spec", "docs/design.md"]);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    let entry = hooks_json(&data)["post_commit"].as_object().unwrap().values().next().unwrap().clone();
+    assert_eq!(entry["specs"], serde_json::json!(["docs/req.md", "docs/design.md"]));
+    assert!(entry.get("spec").is_none());
+    let s = status_json(&repo, &data);
+    assert_eq!(s["specs"], serde_json::json!(["docs/req.md", "docs/design.md"]));
+    assert_eq!(s["spec"], "docs/req.md", "spec は先頭の 1 件");
+}
+
+#[test]
+fn an_old_config_with_a_single_spec_is_read_as_one_entry_of_specs() {
+    let (repo, data) = setup_repo();
+    add_spec(&repo);
+    let key = std::fs::canonicalize(&repo.0).unwrap().to_string_lossy().into_owned();
+    let cfg = serde_json::json!({ "post_commit": { key: { "enabled": false, "recipes": ["spec"], "spec": "docs/spec.md" } } });
+    std::fs::write(data.0.join("hooks.json"), cfg.to_string()).unwrap();
+    let s = status_json(&repo, &data);
+    assert_eq!((s["spec"].as_str(), s["specs"].clone()), (Some("docs/spec.md"), serde_json::json!(["docs/spec.md"])));
+}
+
+#[test]
+fn run_passes_every_spec_to_the_review() {
+    let (repo, data) = setup_repo();
+    add_specs(&repo);
+    let o = mrcr(&repo, &data, &["hook", "enable", "-r", "spec", "--spec", "docs/req.md", "--spec", "docs/design.md"]);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    let o = mrcr(&repo, &data, &["hook", "run", "post-commit", "--mock"]);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    let records = mrcr_core::store::load_all(&data.0);
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].specs.len(), 2, "2 件とも、レビューに渡されている");
+    assert!(records[0].prompt.contains("要件の本文QQ1") && records[0].prompt.contains("設計の本文QQ2"));
+}
+
+#[test]
+fn disable_keeps_every_spec_and_too_many_or_a_bad_one_is_refused() {
+    let (repo, data) = setup_repo();
+    add_specs(&repo);
+    assert_eq!(mrcr(&repo, &data, &["hook", "enable", "-r", "spec", "--spec", "docs/req.md", "--spec", "docs/design.md"]).status.code(), Some(0));
+    assert_eq!(mrcr(&repo, &data, &["hook", "disable"]).status.code(), Some(0));
+    let s = status_json(&repo, &data);
+    assert_eq!((s["enabled"].as_bool(), s["specs"].clone()), (Some(false), serde_json::json!(["docs/req.md", "docs/design.md"])));
+
+    let o = mrcr(&repo, &data, &["hook", "enable", "-r", "spec", "--spec", "docs/req.md", "--spec", "../outside.md"]);
+    assert_eq!(o.status.code(), Some(2), "1 件でも外を指したら、全体を断る");
+    let mut a = vec!["hook", "enable", "-r", "spec"];
+    for _ in 0..6 {
+        a.push("--spec");
+        a.push("docs/req.md");
+    }
+    // 同じ指定は 1 件にまとまるので、上限には数えない
+    assert_eq!(mrcr(&repo, &data, &a).status.code(), Some(0));
+    assert_eq!(status_json(&repo, &data)["specs"], serde_json::json!(["docs/req.md"]));
+}
+
+#[test]
+fn six_different_specs_are_refused_and_nothing_is_written_while_exactly_five_pass() {
+    let (repo, data) = setup_repo();
+    std::fs::create_dir_all(repo.0.join("docs")).unwrap();
+    for i in 0..6 {
+        std::fs::write(repo.0.join(format!("docs/s{i}.md")), format!("# 設計{i}\n")).unwrap();
+    }
+    let enable = |n: usize| {
+        let mut a: Vec<String> = ["hook", "enable", "-r", "spec"].iter().map(|s| s.to_string()).collect();
+        for i in 0..n {
+            a.push("--spec".into());
+            a.push(format!("docs/s{i}.md"));
+        }
+        let refs: Vec<&str> = a.iter().map(String::as_str).collect();
+        mrcr(&repo, &data, &refs)
+    };
+    // 別々の 6 件 → 断る。設定もフックも作らない
+    let o = enable(6);
+    assert_eq!(o.status.code(), Some(2), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("多すぎます"), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(!data.0.join("hooks.json").exists(), "断ったとき、設定は書かない");
+    assert!(!repo.0.join(".git/hooks/post-commit").exists(), "断ったとき、フックは入れない");
+    // ちょうど 5 件 → 通る
+    let o = enable(5);
+    assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(status_json(&repo, &data)["specs"].as_array().unwrap().len(), 5);
+    // 5 件ある状態で、6 件を渡して断られても、前の設定は変わらない
+    assert_eq!(enable(6).status.code(), Some(2));
+    assert_eq!(status_json(&repo, &data)["specs"].as_array().unwrap().len(), 5, "断られたとき、設定は変わらない");
+}

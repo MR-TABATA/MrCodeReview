@@ -308,6 +308,7 @@ mod tests {
             related: None,
             repo_overrides: vec![],
             spec: None,
+            specs: Vec::new(),
             settings: None,
             parse_error: None,
             error: None,
