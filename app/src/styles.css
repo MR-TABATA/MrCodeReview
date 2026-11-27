@@ -1448,14 +1448,7 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 .recipe-chip.skipped { opacity: 0.7; border-style: dashed; }
 .badge.skip { font-size: 10px; color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 0 5px; margin-left: 6px; white-space: nowrap; }
 
-/* ── 初期画面: 実行ログ一覧（タイムライン） ── */
-.runlog-feed {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  /* 幅と余白は、ページの枠（.detail.page）が持つ */
-  padding: 0;
-}
+
 .back-to-log-btn {
   display: inline-flex;
   align-items: center;
@@ -1467,22 +1460,16 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
   cursor: pointer;
 }
 
-/* ── 日付ごとのグルーピング ── */
-
-/* ── ログの 1 行を開いたときの、実行の詳細（実行・入力） ── */
-.runlog-card-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.runlog-card-detail.loading { padding: 12px 0; text-align: center; }
+/* ── 結果のページの下の「実行の記録」（実行・入力・差分） ── */
+.rld-record { margin-top: 16px; }
+.rld-record > summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 600; }
+.rld-record > .rld { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .rld { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
 .rld-group h4 { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
 .rld-row { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 8px; padding: 2px 0; font-size: 13px; }
 .rld-value { overflow-wrap: anywhere; }
-.rld-foot { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
 @media (max-width: 899px) { .rld { grid-template-columns: minmax(0, 1fr); } }
 .rld-wide { grid-column: 1 / -1; }
-.rld-finding { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--bg); }
-.rld-finding-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.rld-detail { margin: 6px 0; font-size: 13px; white-space: pre-wrap; }
-.rld-quote { margin: 6px 0; }
 .rld-pre { margin: 4px 0 0; padding: 8px 10px; background: var(--code-bg); border-radius: 6px; font-size: 12px; overflow: auto; white-space: pre; }
 .rld-diff summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 600; }
 .rld-diff-pre { max-height: 360px; }
@@ -1496,16 +1483,18 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 .history .hwhen { flex: 0 0 13em; color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .history .h1 { flex: 1 1 0; min-width: 0; }
 .history .hfind { flex: 0 0 5.5em; color: var(--muted); font-size: 12px; white-space: nowrap; text-align: right; }
-.history li .hcounts-empty { flex: 0 0 15em; }
-.history li .hcounts { flex: 0 0 15em; margin-top: 0; flex-wrap: nowrap; justify-content: flex-end; }
+.history li .hcommit { flex: 0 0 6em; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; }
+/* 右端の欄: レビューは仕分けの件数、フックは所要時間。幅を決めて、行ごとに、列の位置をそろえる */
+.history li .hcounts-empty, .history li .hcounts { flex: 0 0 300px; margin-top: 0; flex-wrap: nowrap; justify-content: flex-end; }
 
-/* ログの行: 履歴と同じ書式。開いたときの詳細は、行の下に、全幅で出す */
+/* 行の下に、全幅で出す詳細（フックの内訳） */
 .history li { flex-wrap: wrap; }
 .history li .hlead { flex: 0 0 18px; display: flex; align-items: center; }
 .history li .hlead .pick { margin: 0; }
-.history li .runlog-card-detail { flex: 1 1 100%; cursor: default; }
+.history li .hookrun-detail { flex: 1 1 100%; cursor: default; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .history li.expanded { background: var(--accent-bg); }
 .hday-h.static { cursor: default; }
 .hday-h.static:hover { color: var(--muted); }
-.history .hdur { text-align: right; color: var(--muted); font-size: 12px; white-space: nowrap; }
+/* フックの行の右端: 所要時間（レビューの仕分けの件数と、同じ幅の欄） */
+.history .hdur { text-align: right; color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .history li.hookrun-failed .hookrun-commit { color: var(--bad); }

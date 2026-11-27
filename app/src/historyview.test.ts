@@ -82,11 +82,19 @@ describe('historyPanel', () => {
   it('1 行: 日時・観点・指摘の件数・仕分けの件数が、1 つの行に並ぶ。「詳細」のボタンは無い（行を押すと開く）', () => {
     const { el } = render([]);
     const row = el.querySelector('li') as HTMLElement;
-    expect([...row.children].map((c) => c.className.split(' ').pop())).toEqual(['hlead', 'hwhen', 'h1', 'hfind', 'hcounts']);
+    expect([...row.children].map((c) => c.className.split(' ').pop())).toEqual(['hlead', 'hwhen', 'h1', 'hcommit', 'hfind', 'hcounts']);
     expect(row.querySelector('.hdetail')).toBeNull();
     expect(row.querySelector('.hbody')).toBeNull();
     expect(row.querySelector('.ht')?.textContent).toBe('潜在バグ');
     expect(row.querySelector('.hfind')?.textContent).toBe('指摘 3 件');
+  });
+
+  it('コミット: レビューしたときの HEAD を、7 文字で出す（全文は title）。記録に無いときは、空', () => {
+    const items = [S('a', { head: 'abcdef0123456789' }), S('b'), S('c', { head: null })];
+    const { el } = render([], acts(), null, items);
+    const cells = [...el.querySelectorAll('li .hcommit')] as HTMLElement[];
+    expect(cells.map((c) => c.textContent)).toEqual(['abcdef0', '', '']);
+    expect(cells[0].title).toBe('abcdef0123456789');
   });
 
   it('チェックを押すと toggle を呼び、行を開かない。行を押すと open を呼ぶ', () => {

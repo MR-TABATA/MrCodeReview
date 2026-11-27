@@ -4,22 +4,18 @@ import { extractDiff } from './diffview';
 import type { ReviewView } from './types';
 
 /**
- * ログの 1 行を開いたときの、実行の詳細（指摘は、ここには出さない。結果は、結果のページで見る）。
+ * 結果のページの下に置く「実行の記録」（指摘は、ここには出さない。結果は、結果のページ本体にある）。
  * 「実行」: 観点・プロバイダ・モデル・所要時間・トークン・費用。「入力」: 比較元・差分・設計書・関連コード・プロンプト。
- * 「結果の内容」: 指摘の本文・引用・対応内容・対象ファイル（読むだけ。仕分けやメモの編集は、結果のページ）。
  * 「レビューに送った差分」: 記録（プロンプト）の中の差分。
  */
 export function runLogDetail(
   r: ReviewView,
   lang: Lang,
-  onOpenResult: () => void,
   /** 差分の欄の開閉。開いているとき（と、開いたとき）にだけ、差分を取り出す */
   diff: { open?: boolean; onToggle?: (open: boolean) => void } = {},
 ): HTMLElement {
   const t = msg(lang).mainUi.runLogDetail;
   const hm = msg(lang).hookUi;
-  const mu = msg(lang).mainUi;
-  const stateLabel = new Map(mu.triageLabels);
   const row = (label: string, value: string | Node): HTMLElement =>
     h('div', { class: 'rld-row' }, h('span', { class: 'muted rld-label' }, label), h('span', { class: 'rld-value' }, value));
 
@@ -31,7 +27,7 @@ export function runLogDetail(
 
   return h(
     'div',
-    { class: 'runlog-card-detail rld', onclick: (e: Event) => e.stopPropagation() },
+    { class: 'rld' },
     h(
       'div',
       { class: 'rld-group' },
@@ -53,41 +49,11 @@ export function runLogDetail(
       r.related ? row(t.related, t.relatedValue(r.related.snippets.length)) : null,
       row(t.prompt, t.promptValue(r.prompt.length)),
     ),
-    h('div', { class: 'rld-group rld-wide' }, h('h4', {}, t.groupResult), ...resultItems(r, t, stateLabel)),
     diffBlock(r, t, diff.open ?? false, diff.onToggle),
-    h('div', { class: 'rld-foot' }, h('button', { class: 'small primary', onclick: onOpenResult }, t.openResult)),
   );
 }
 
 type Dict = ReturnType<typeof msg>['mainUi']['runLogDetail'];
-
-/** 指摘 1 件ずつ（読むだけ）。 */
-function resultItems(r: ReviewView, t: Dict, stateLabel: Map<string, string>): HTMLElement[] {
-  if (!r.findings.length) return [h('p', { class: 'muted rld-nofindings' }, r.error ? r.error : t.noFindings)];
-  return r.findings.map((f, i) => {
-    const st = r.triage[i] ?? 'new';
-    const memo = r.finding_notes?.[i]?.memo?.trim();
-    const where = f.line === null || f.line === undefined ? f.file : `${f.file}:${f.line}`;
-    return h(
-      'div',
-      { class: `rld-finding sev-${f.severity}` },
-      h(
-        'div',
-        { class: 'rld-finding-head' },
-        h('span', { class: 'muted' }, `#${i + 1}`),
-        h('span', { class: `badge sev-${f.severity}` }, f.severity),
-        h('strong', {}, f.title),
-        h('span', { class: 'badge rld-state' }, stateLabel.get(st) ?? st),
-      ),
-      h('div', { class: 'rld-row' }, h('span', { class: 'muted rld-label' }, t.target), h('code', { class: 'rld-value' }, where)),
-      f.detail ? h('p', { class: 'rld-detail' }, f.detail) : null,
-      f.evidence
-        ? h('div', { class: 'rld-quote' }, h('span', { class: 'muted rld-label' }, t.quote), h('pre', { class: 'rld-pre' }, f.evidence))
-        : null,
-      h('div', { class: 'rld-row' }, h('span', { class: 'muted rld-label' }, t.handling), h('span', { class: 'rld-value' }, memo || t.handlingNone)),
-    );
-  });
-}
 
 /**
  * レビューに送った差分。記録のプロンプトから取り出す。

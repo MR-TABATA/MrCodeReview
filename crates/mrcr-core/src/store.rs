@@ -162,6 +162,8 @@ pub struct ReviewSummary {
     pub seq: Option<u32>,
     /// 仕分けの件数。読み取りに失敗したときは None（間違った数を出さない）。履歴の一覧を作るときだけ、入れる
     pub counts: Option<TriageCounts>,
+    /// レビューしたときの HEAD のコミット（全文）。記録に無い・読めないときは None
+    pub head: Option<String>,
 }
 
 fn total_tokens(input: Option<u64>, output: Option<u64>) -> Option<u64> {
@@ -185,6 +187,7 @@ impl From<&ReviewRecord> for ReviewSummary {
             failed: !r.is_ok(),
             seq: r.seq,
             counts: None,
+            head: Some(r.snapshot.head.clone()).filter(|h| !h.is_empty()),
         }
     }
 }
@@ -493,7 +496,9 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
     let Ok(conn) = db::open(dir) else { return Vec::new() };
     let Ok(mut stmt) = conn.prepare(
         "SELECT id, created_at, repo, recipe_title, provider_label, findings_count, verified_count, \
-         input_tokens, output_tokens, ok, seq FROM reviews WHERE (?2 IS NULL OR repo = ?2) \
+         input_tokens, output_tokens, ok, seq, \
+         CASE WHEN json_valid(record) THEN json_extract(record, '$.snapshot.head') END \
+         FROM reviews WHERE (?2 IS NULL OR repo = ?2) \
          ORDER BY created_at DESC, rowid DESC LIMIT ?1",
     ) else {
         return Vec::new();
@@ -513,6 +518,8 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
             failed: !r.get::<_, bool>(9)?,
             seq: r.get::<_, Option<i64>>(10)?.and_then(|n| u32::try_from(n).ok()),
             counts: None,
+            // 記録の全文が壊れていても、一覧は出す（コミットだけ、空になる）
+            head: r.get::<_, Option<String>>(11).ok().flatten().filter(|h| !h.is_empty()),
         })
     }) else {
         return Vec::new();
@@ -976,6 +983,26 @@ mod tests {
         let via_record = ReviewSummary::from(&r);
         assert_eq!((via_record.findings, via_record.verified, via_record.total_tokens), (1, 1, Some(12)));
         assert_eq!(summaries(&dir, 1).len(), 1, "limit が効く");
+        // コミット（レビューしたときの HEAD）。列には無いので、記録から取り出す。記録から作った要約と、同じ値
+        assert_eq!(s[1].head, via_record.head);
+        assert_eq!(s[1].head.as_deref(), Some(r.snapshot.head.as_str()).filter(|h| !h.is_empty()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_commit_in_the_summary_is_empty_not_fatal_when_the_record_is_broken() {
+        let dir = scratch("summ-head-broken");
+        let mut a = rec("a", 1);
+        a.snapshot.head = "abc1234def5678".into();
+        append(&dir, &a).unwrap();
+        append(&dir, &rec("b", 2)).unwrap();
+        let conn = db::open(&dir).unwrap();
+        conn.execute("UPDATE reviews SET record = '{broken' WHERE id = 'b'", []).unwrap();
+        let s = summaries(&dir, 10);
+        assert_eq!(s.len(), 2, "壊れた記録が 1 件あっても、一覧は出る");
+        let by = |id: &str| s.iter().find(|x| x.id == id).unwrap().head.clone();
+        assert_eq!(by("a").as_deref(), Some("abc1234def5678"));
+        assert_eq!(by("b"), None, "壊れた記録の分は、コミットだけ空");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

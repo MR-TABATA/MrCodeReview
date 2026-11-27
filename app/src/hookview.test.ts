@@ -233,7 +233,8 @@ describe('hookSection', () => {
   it('hookRunRow: コミット・状態・観点ごとの結果が出る', () => {
     const r = run({ commit: 'bbb2222', subject: '新しい' });
     const t = text(rowOf(r, 'ja'));
-    expect(t).toContain('コミット bbb2222「新しい」');
+    expect(t).toContain('新しい');
+    expect(rowOf(r).querySelector('.hcommit')?.textContent).toBe('bbb2222');
     expect(t).toContain('[1/2]');
     expect(t).toContain('指摘 3 件');
     expect(t).toContain('7.5 秒');
@@ -351,7 +352,8 @@ const run = (over: Partial<HookRun> = {}): HookRun => ({
 describe('hookRunRow（ログの、フックの行）', () => {
   it('完了: コミット・状態・件数・全体の時間・各観点・終わりのメッセージ', () => {
     const t = text(rowOf(run(), 'ja'));
-    expect(t).toContain('コミット abc1234「件名」');
+    expect(t).toContain('件名');
+    expect(rowOf(run()).querySelector('.hcommit')?.textContent).toBe('abc1234');
     expect(t).toContain('完了');
     expect(t).toContain('指摘 3 件');
     expect(t).toContain('11.6 秒');
@@ -360,11 +362,11 @@ describe('hookRunRow（ログの、フックの行）', () => {
     expect(t).toContain('→ レビュー完了（指摘あり 3 件）');
   });
 
-  it('閉じているときは、内訳を出さない。1 行は、履歴と同じ列（日時・フック＋コミット・指摘の件数・所要時間）。押すと onToggle', () => {
+  it('閉じているときは、内訳を出さない。1 行は、履歴のレビューの行と同じ列（日時・フック＋件名・コミット・指摘の件数・所要時間）。押すと onToggle', () => {
     let toggled = 0;
     const el = hookRunRow(run(), 'ja', { expanded: false, onToggle: () => toggled++ });
     expect(el.querySelector('.hookstep')).toBeNull();
-    expect([...el.children].map((c) => c.className.split(' ')[0])).toEqual(['hlead', 'hwhen', 'h1', 'hfind', 'hcounts-empty']);
+    expect([...el.children].map((c) => c.className.split(' ')[0])).toEqual(['hlead', 'hwhen', 'h1', 'hcommit', 'hfind', 'hcounts-empty']);
     expect(el.querySelector('.h1 .badge')?.textContent).toBe('フック');
     expect(el.querySelector('.hfind')?.textContent).toBe('指摘 3 件');
     expect(el.querySelector('.hdur')?.textContent).toBe('11.6 秒');
@@ -402,7 +404,8 @@ describe('hookRunRow（ログの、フックの行）', () => {
   it('コミットの記録が無い従来の 1 行も、出せる。中断も、そう出る。英語でも出る', () => {
     expect(text(rowOf(run({ commit: null, subject: null, steps: [] }), 'ja'))).toContain('コミットの記録なし');
     expect(text(rowOf(run({ state: 'aborted' }), 'ja'))).toContain('中断');
-    expect(text(rowOf(run(), 'en'))).toContain('Commit abc1234 "件名"');
+    expect(text(rowOf(run(), 'en'))).toContain('件名');
+    expect(rowOf(run(), 'en').querySelector('.hcommit')?.textContent).toBe('abc1234');
   });
 
   it('設定画面（hookSection）: 最近の実行ログがあっても実行ログ欄は表示されない', () => {

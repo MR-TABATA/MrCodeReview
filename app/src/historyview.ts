@@ -105,9 +105,13 @@ export function countsLine(c: TriageCounts, lang: Lang = getAppLang()): HTMLElem
   );
 }
 
+/** コミットの短い表示（7 文字）。無ければ空。 */
+export const shortCommit = (commit: string | null | undefined): string => (commit ?? '').slice(0, 7);
+
 /**
  * レビュー 1 回ぶんの 1 行。履歴と、ログで、同じ書式にする。
- * 左から: 先頭の欄（履歴はチェック、ログは空。幅は同じ）・日時・観点（と失敗）・指摘の件数・仕分けの件数。
+ * 左から: 先頭の欄（チェック。フックの行は空。幅は同じ）・日時・観点（と失敗）・コミット・指摘の件数・仕分けの件数。
+ * フックの実行の行（hookview.ts の hookRunRow）も、同じ列にそろえる。
  */
 export function reviewRow(
   s: ReviewSummary,
@@ -127,6 +131,7 @@ export function reviewRow(
       h('span', { class: 'ht' }, reviewName(s.recipe_title, s.seq, lang)),
       s.failed ? h('span', { class: 'badge bad' }, m.failedBadge) : null,
     ),
+    h('span', { class: 'hcommit', title: s.head ?? '' }, shortCommit(s.head)),
     h('span', { class: 'hfind' }, m.findingsCount(s.findings)),
     // 指摘のあるレビューだけ（0 件・失敗には、出さない）。読み取りに失敗したとき（null）も、出さない（0 件に見せない）
     s.counts && s.findings > 0 ? countsLine(s.counts, lang) : h('span', { class: 'hcounts-empty' }),

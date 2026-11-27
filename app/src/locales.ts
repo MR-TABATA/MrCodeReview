@@ -396,7 +396,8 @@ export interface Messages {
     pageTabsLabel: string;
     pageTabRepos: string;
     pageTabHistory: string;
-    pageTabLog: string;
+    hookRunsHeading: string;
+    runRecordSummary: string;
     pageTabNewReview: string;
     usageTitle: string;
     usageBtn: string;
@@ -505,7 +506,6 @@ export interface Messages {
     tabRecord: string;
     reportThisReviewTitle: string;
     reportThisReviewBtn: string;
-    backToLog: string;
     backToHistory: string;
     closeResult: string;
     runLogDetail: {
@@ -529,16 +529,9 @@ export interface Messages {
       relatedValue: (snippets: number) => string;
       prompt: string;
       promptValue: (chars: number) => string;
-      openResult: string;
       loading: string;
       loadFailed: string;
       notFound: string;
-      groupResult: string;
-      noFindings: string;
-      target: string;
-      quote: string;
-      handling: string;
-      handlingNone: string;
       diffSummary: string;
       diffMissing: string;
     };
@@ -979,8 +972,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       baseFormCancelBtn: 'やめる',
       pageTabsLabel: 'ページ',
       pageTabRepos: 'リポジトリ',
-      pageTabHistory: '履歴',
-      pageTabLog: 'ログ',
+      pageTabHistory: '履歴・ログ',
+      hookRunsHeading: 'フックの実行',
+      runRecordSummary: '実行の記録（モデル・トークン・所要時間・入力・差分）',
       pageTabNewReview: '新規レビュー',
       usageTitle: 'トークン使用量',
       usageBtn: '使用量',
@@ -1098,8 +1092,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       tabRecord: '記録',
       reportThisReviewTitle: 'このレビューだけを、レポートにします',
       reportThisReviewBtn: 'このレビューをレポートに',
-      backToLog: '← 実行ログ一覧',
-      backToHistory: '← 履歴',
+      backToHistory: '← 履歴・ログ',
       closeResult: '✕ 結果を閉じる',
       runLogDetail: {
         groupRun: '実行',
@@ -1122,16 +1115,9 @@ export const MESSAGES: Record<Lang, Messages> = {
         relatedValue: (n) => `${n.toLocaleString()} 件の断片を送りました`,
         prompt: 'プロンプト',
         promptValue: (chars) => `${chars.toLocaleString()} 文字`,
-        openResult: '結果を開く',
         loading: '読み込み中…',
         loadFailed: 'レビューの詳細を取得できませんでした。',
         notFound: 'レビューの記録が見つかりません。',
-        groupResult: '結果の内容',
-        noFindings: '指摘はありませんでした。',
-        target: '対象ファイル',
-        quote: '引用',
-        handling: '対応内容',
-        handlingNone: '（記入なし）',
         diffSummary: 'レビューに送った差分',
         diffMissing: '差分を、記録から取り出せませんでした。',
       },
@@ -1736,8 +1722,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       baseFormCancelBtn: 'Cancel',
       pageTabsLabel: 'Pages',
       pageTabRepos: 'Repositories',
-      pageTabHistory: 'History',
-      pageTabLog: 'Log',
+      pageTabHistory: 'History & log',
+      hookRunsHeading: 'Hook runs',
+      runRecordSummary: 'Run record (model, tokens, duration, input, diff)',
       pageTabNewReview: 'New review',
       usageTitle: 'Token usage',
       usageBtn: 'Usage',
@@ -1856,8 +1843,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       tabRecord: 'Record',
       reportThisReviewTitle: 'Create report for this review',
       reportThisReviewBtn: 'Report this review',
-      backToLog: '← Run log',
-      backToHistory: '← History',
+      backToHistory: '← History & log',
       closeResult: '✕ Close the result',
       runLogDetail: {
         groupRun: 'Run',
@@ -1880,16 +1866,9 @@ export const MESSAGES: Record<Lang, Messages> = {
         relatedValue: (n) => `${n.toLocaleString()} snippets sent`,
         prompt: 'Prompt',
         promptValue: (chars) => `${chars.toLocaleString()} chars`,
-        openResult: 'Open the result',
         loading: 'Loading…',
         loadFailed: 'Could not load the review details.',
         notFound: 'The review record was not found.',
-        groupResult: 'Result details',
-        noFindings: 'No findings.',
-        target: 'File',
-        quote: 'Quote',
-        handling: 'How it was handled',
-        handlingNone: '(nothing written)',
         diffSummary: 'The diff sent for review',
         diffMissing: 'The diff could not be read from the record.',
       },

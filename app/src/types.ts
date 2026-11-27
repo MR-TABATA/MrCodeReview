@@ -357,6 +357,8 @@ export interface ReviewSummary {
   seq?: number | null;
   /** 仕分けの件数。読み取りに失敗したときは null */
   counts: TriageCounts | null;
+  /** レビューしたときの HEAD のコミット（全文）。古い記録・読めない記録は、無い */
+  head?: string | null;
 }
 
 /** 設定項目 1 つぶんの説明（`settings.rs` の `meta()`）。 */

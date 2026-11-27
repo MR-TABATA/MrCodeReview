@@ -7,7 +7,7 @@
 //   設計書が要る観点なのに設計書が空、などの確認は、Rust 側（`hooks::validate_for_enable`）が、理由つきで断る。
 
 import { h } from './dom';
-import { formatWhen } from './historyview';
+import { formatWhen, shortCommit } from './historyview';
 import { getAppLang, msg, type Lang } from './i18n';
 import { CODE_IDS, DOC_IDS, TERRAFORM_IDS } from './recipescope';
 import type { HookRun, HookStatus, Recipe } from './types';
@@ -79,11 +79,12 @@ export function groupedRecipes(recipes: Recipe[]): { key: RecipeGroupKey; items:
 /** 実行ログの 1 回ぶん（コミット・状態・観点ごとの結果・終了のメッセージ）。 */
 /**
  * フックの実行 1 回ぶんの 1 行。ログで、レビューの行（履歴と同じ書式）と、同じ列に並ぶ。
- * 左から: 先頭の欄（空。履歴の行と、同じ幅）・日時・「フック」とコミット（と状態）・指摘の件数・所要時間。押すと、観点ごとの内訳と終わりのメッセージが、行の下に開く。
+ * 左から: 先頭の欄（空。履歴の行と、同じ幅）・日時・「フック」と件名（と状態）・コミット・指摘の件数・所要時間。押すと、観点ごとの内訳と終わりのメッセージが、行の下に開く。
  */
 export function hookRunRow(r: HookRun, lang: Lang = getAppLang(), o: { expanded: boolean; onToggle: () => void } = { expanded: false, onToggle: () => {} }): HTMLElement {
   const m = msg(lang).hookUi;
-  const commit = r.commit ? m.runCommit(r.commit, r.subject ?? '') : m.runNoCommit;
+  // 件名の欄（コミットは、別の列）。コミットの記録が無い従来の 1 行は、その旨を出す
+  const subject = r.commit ? (r.subject ?? '') : m.runNoCommit;
   const rows = r.steps.map((st) =>
     h(
       'div',
@@ -110,7 +111,7 @@ export function hookRunRow(r: HookRun, lang: Lang = getAppLang(), o: { expanded:
   const detail = o.expanded
     ? h(
         'div',
-        { class: 'runlog-card-detail hookrun-detail', onclick: (e: Event) => e.stopPropagation() },
+        { class: 'hookrun-detail', onclick: (e: Event) => e.stopPropagation() },
         ...rows,
         r.message ? h('div', { class: r.state === 'failed' ? 'err hookrun-msg' : 'muted hookrun-msg' }, `→ ${r.message}`) : null,
       )
@@ -124,9 +125,10 @@ export function hookRunRow(r: HookRun, lang: Lang = getAppLang(), o: { expanded:
       'span',
       { class: 'h1' },
       h('span', { class: 'badge' }, m.runKind),
-      h('span', { class: 'ht hookrun-commit' }, commit),
+      h('span', { class: 'ht hookrun-commit' }, subject),
       h('span', { class: `hookrun-state hookrun-state-${r.state}` }, m.runState(r.state)),
     ),
+    h('span', { class: 'hcommit', title: r.commit ?? '' }, shortCommit(r.commit)),
     h('span', { class: 'hfind' }, r.findings === null ? '' : msg(lang).historyView.findingsCount(r.findings)),
     h('span', { class: 'hcounts-empty hdur' }, r.ms === null ? '' : m.secs(r.ms)),
     detail,

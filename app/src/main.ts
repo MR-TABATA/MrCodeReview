@@ -23,7 +23,7 @@ import { findingOrder, isDoneFinding } from './findingorder';
 import { agentBox, agentDone, agentNotice, agentStatus, agentStatusBar, foldedRow, newAgentUi, refreshAgentReportsOnFocus, type AgentActions } from './agentview';
 import { handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffActions, type HandoffTarget } from './handoffview';
 import type { AgentDef } from './types';
-import { reviewRow, dayKey, dayLabel, displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
+import { displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
 import { providerLabel, providerNote } from './providertext';
 import { ut } from './uitext';
 import { continuityOf, filteredFates, flowOf, shownByContinuity, type ContinuityKind } from './continuity';
@@ -147,23 +147,15 @@ const state = {
   /** 左のコンボで選んでいるレビューの種類（レシピの id） */
   recipeId: lsGet(RECIPE_KEY),
   /** 結果を開いたとき、来た場所。履歴・ログからは、結果のページ（戻るで、そこへ戻る）。実行した直後（と、そこからの移動）は、新規レビューの実行バーの下 */
-  backTo: 'log' as 'log' | 'history' | 'newreview',
+  backTo: 'history' as 'history' | 'newreview',
   /** いま開いているページ（上部タブ）。設定・レポート・使用量は、ページではなく、ページ領域を使う「モード」 */
   page: DEFAULT_PAGE as Page,
   /** 各リポジトリのアプリアイコン（base64 data URL、無ければ null）のキャッシュ */
   repoIcons: {} as Record<string, string | null>,
   /** 実行ログ内でインライン展開されている指摘の識別子（"reviewId:findingIndex"） */
   expandedFindings: new Set<string>(),
-  /** ログで、差分の欄を開いているレビューの ID */
-  openRunLogDiffs: new Set<string>(),
-  /** ログの、実行の詳細を読み込めなかった理由（レビューの ID ごと） */
-  runLogLoadErrors: new Map<string, string>(),
-  /** ログで、内訳を開いているフックの実行の ID */
+  /** 履歴・ログのページで、内訳を開いているフックの実行の ID */
   expandedHookRuns: new Set<string>(),
-  /** ログで、実行の詳細を開いているレビューの ID */
-  expandedRunLogs: new Set<string>(),
-  /** ログの、実行の詳細の読み込み中のレビューの ID */
-  loadingRunLogs: new Set<string>(),
   /** 実行ログのインライン展開用のキャッシュ（レビュー詳細） */
   runLogReviewCache: new Map<string, ReviewView>(),
   /** 右サイドバー: 履歴パネルを折り畳んでいるか */
@@ -527,13 +519,18 @@ let hookPollTimer: ReturnType<typeof setTimeout> | undefined;
 /** 操作（ON/OFF・保存）のたびに進める。操作より前に始めた読み取りの結果で、操作の結果を上書きしないため。 */
 let hookEpoch = 0;
 
-/** 設定を開いている間、Git フックの状態と実行ログを読み直す（実行中は 2 秒ごと、それ以外は 8 秒ごと）。閉じたら止まる。 */
+/** Git フックの状態と実行ログを、いま読む必要があるか。設定を開いているとき、または、「履歴・ログ」のページを開いているとき。 */
+function wantsHook(): boolean {
+  return !!state.settings || (state.page === 'history' && !state.report && !state.usage);
+}
+
+/** 設定かログを開いている間、Git フックの状態と実行ログを読み直す（実行中は 2 秒ごと、それ以外は 8 秒ごと）。閉じたら止まる。 */
 function scheduleHookPoll(): void {
   if (hookPollTimer !== undefined) {
     clearTimeout(hookPollTimer);
     hookPollTimer = undefined;
   }
-  if (!state.settings || !state.repo) return;
+  if (!wantsHook() || !state.repo) return;
   const running = state.hook.status?.recent?.some((r) => r.state === 'running') ?? false;
   hookPollTimer = setTimeout(() => {
     hookPollTimer = undefined;
@@ -541,10 +538,10 @@ function scheduleHookPoll(): void {
   }, running ? 2000 : 8000);
 }
 
-/** Git フック（post-commit）の状態と実行ログを読む。リポジトリが選ばれていない・設定を閉じたときは、何もしない。 */
+/** Git フック（post-commit）の状態と実行ログを読む。リポジトリが選ばれていない・設定もログも開いていないときは、何もしない。 */
 async function loadHook(): Promise<void> {
   const repo = state.repo;
-  if (!repo || !state.settings) return;
+  if (!repo || !wantsHook()) return;
   const epoch = hookEpoch;
   const before = JSON.stringify([state.hook.status, state.hook.loadError]);
   let status: HookStatus | null = null;
@@ -554,7 +551,7 @@ async function loadHook(): Promise<void> {
   } catch (e) {
     error = String(e);
   }
-  if (epoch !== hookEpoch || !state.settings) {
+  if (epoch !== hookEpoch || !wantsHook()) {
     scheduleHookPoll(); // 読んでいる間に、操作があった・閉じた。古い結果は、捨てる
     return;
   }
@@ -707,11 +704,11 @@ async function refreshHandoff(): Promise<void> {
 
 async function select(id: string): Promise<void> {
   if (!canLeaveSettings()) return;
-  if (state.page === 'history' || state.page === 'log') {
-    state.backTo = state.page;
+  if (state.page === 'history') {
+    state.backTo = 'history';
     state.page = 'result';
   } else if (state.page !== 'newreview' && state.page !== 'result') {
-    state.backTo = 'log';
+    state.backTo = 'history';
     state.page = 'result';
   }
   // 新規レビューの下の結果から、別のレビュー（「前回」など）へ移るときは、新規レビューのまま。結果のページの中では、来たページのまま
@@ -2940,66 +2937,6 @@ function relatedSection(rel: Related | null): HTMLElement | null {
   );
 }
 
-/**
- * ログの 1 行（レビュー 1 回ぶんの記録）。履歴と同じ書式の行。押すと、行の下に、実行の詳細・結果の内容・差分が開く。
- * 「結果を開く」で、結果のページ（戻ると、ログ）。
- */
-function runLogReviewCard(s: ReviewSummary, lang: Lang): HTMLElement {
-  const m = msg(lang).mainUi;
-  const isExpanded = state.expandedRunLogs.has(s.id);
-  const cached = state.runLogReviewCache.get(s.id);
-
-  const toggle = (): void => {
-    if (state.expandedRunLogs.has(s.id)) {
-      state.expandedRunLogs.delete(s.id);
-      render();
-      return;
-    }
-    state.expandedRunLogs.add(s.id);
-    state.runLogLoadErrors.delete(s.id); // 開き直したら、もう一度読み込む
-    const hasCache = state.runLogReviewCache.has(s.id);
-    if (!hasCache) state.loadingRunLogs.add(s.id);
-    render();
-    if (hasCache) return;
-    void (async () => {
-      try {
-        const rev = await invoke<ReviewView | null>('get_review', { id: s.id });
-        if (rev) state.runLogReviewCache.set(s.id, rev);
-        else state.runLogLoadErrors.set(s.id, m.runLogDetail.notFound);
-      } catch (e) {
-        state.runLogLoadErrors.set(s.id, String(e));
-      } finally {
-        state.loadingRunLogs.delete(s.id);
-        render();
-      }
-    })();
-  };
-
-  let detail: HTMLElement | null = null;
-  if (isExpanded) {
-    if (state.loadingRunLogs.has(s.id)) {
-      detail = h('div', { class: 'runlog-card-detail loading' }, h('span', { class: 'muted' }, m.runLogDetail.loading));
-    } else if (cached) {
-      detail = runLogDetail(cached, lang, () => void select(s.id), {
-        open: state.openRunLogDiffs.has(s.id),
-        onToggle: (open) => {
-          if (open) state.openRunLogDiffs.add(s.id);
-          else state.openRunLogDiffs.delete(s.id);
-        },
-      });
-    } else {
-      const why = state.runLogLoadErrors.get(s.id);
-      detail = h('div', { class: 'runlog-card-detail error', onclick: (e: Event) => e.stopPropagation() }, h('p', { class: 'muted' }, why ? `${m.runLogDetail.loadFailed} ${why}` : m.runLogDetail.loadFailed));
-    }
-  }
-
-  return reviewRow(s, lang, {
-    cls: isExpanded ? 'expanded' : '',
-    onOpen: toggle,
-    extra: detail,
-  });
-}
-
 /** 4 つのページの先頭に付ける、共通の見出し（タイトル・補足・右側の操作）。 */
 function pageHeader(title: string, opts: { note?: string; actions?: Node | null } = {}): HTMLElement {
   return h(
@@ -3028,65 +2965,55 @@ function runLogRefreshButton(): HTMLElement {
   );
 }
 
-function runLogFeedView(): HTMLElement {
+/**
+ * 「履歴・ログ」のページの上に出す、フックの実行（新しい順）。レビューの履歴と、同じ書式の行。
+ * 押すと、観点ごとの内訳と終わりのメッセージが、行の下に開く。フックの実行も、読めない行の知らせも無ければ、出さない。
+ */
+function hookRunsSection(): HTMLElement | null {
   const lang = getAppLang();
   const m = msg(lang).mainUi;
   const hm = msg(lang).hookUi;
-
-  const hookRuns = state.hook.status?.recent ?? [];
-  const historyItems = state.history;
-
-  const unreadableNote = state.hook.status?.log_unreadable && state.hook.status.log_unreadable > 0
-    ? h('p', { class: 'err hooklog-unreadable' }, hm.logUnreadable(state.hook.status.log_unreadable))
-    : null;
-
-  const empty = !hookRuns.length && !historyItems.length;
-  if (empty) {
-    return h(
-      'div',
-      { class: 'result runlog-feed' },
-      unreadableNote,
-      h('p', { class: 'muted' }, m.resultEmpty),
-    );
-  }
-
-  // フックの実行と、レビューを、1 つの時系列（新しい順）に、日付ごとに並べる。どちらも、同じ書式の行
-  type Entry = { t: number; el: () => HTMLElement };
-  const entries: Entry[] = [
-    ...hookRuns.map((r): Entry => ({
-      t: r.started_at_ms,
-      el: () =>
-        hookRunRow(r, lang, {
-          expanded: state.expandedHookRuns.has(r.run),
-          onToggle: () => {
-            if (state.expandedHookRuns.has(r.run)) state.expandedHookRuns.delete(r.run);
-            else state.expandedHookRuns.add(r.run);
-            render();
-          },
-        }),
-    })),
-    ...historyItems.map((s): Entry => ({ t: s.created_at, el: () => runLogReviewCard(s, lang) })),
-  ].sort((a, b) => b.t - a.t);
-  const groups: { key: string; label: string; items: Entry[] }[] = [];
-  for (const en of entries) {
-    const key = dayKey(en.t);
-    const last = groups[groups.length - 1];
-    if (last && last.key === key) last.items.push(en);
-    else groups.push({ key, label: dayLabel(en.t, lang), items: [en] });
-  }
-  const sections = groups.map((g) =>
-    h(
-      'div',
-      { class: 'hday' },
-      h('div', { class: 'hday-h static' }, `${g.label} (${g.items.length})`),
-      h('ul', { class: 'history' }, ...g.items.map((en) => en.el())),
-    ),
+  const runs = state.hook.status?.recent ?? [];
+  const unreadable = state.hook.status?.log_unreadable ?? 0;
+  if (!runs.length && unreadable <= 0) return null;
+  return h(
+    'div',
+    { class: 'hday hookruns-section' },
+    h('div', { class: 'hday-h static' }, `${m.hookRunsHeading} (${runs.length})`),
+    unreadable > 0 ? h('p', { class: 'err hooklog-unreadable' }, hm.logUnreadable(unreadable)) : null,
+    runs.length
+      ? h(
+          'ul',
+          { class: 'history' },
+          ...runs.map((r) =>
+            hookRunRow(r, lang, {
+              expanded: state.expandedHookRuns.has(r.run),
+              onToggle: () => {
+                if (state.expandedHookRuns.has(r.run)) state.expandedHookRuns.delete(r.run);
+                else state.expandedHookRuns.add(r.run);
+                render();
+              },
+            }),
+          ),
+        )
+      : null,
   );
-
-  return h('div', { class: 'result runlog-feed' }, unreadableNote, ...sections);
 }
 
 /** 結果（指摘・差分・送った内容・応答・詳細）。 */
+/** 結果のページの下の、折りたたみ「実行の記録」。開いたときにだけ、中身を作る（差分も、その中で、開いたときにだけ取り出す）。 */
+function runRecord(r: ReviewView, lang: Lang): HTMLElement {
+  const m = msg(lang).mainUi;
+  const det = h('details', { class: 'rld-record' }, h('summary', {}, m.runRecordSummary)) as HTMLDetailsElement;
+  const fill = (): void => {
+    if (!det.querySelector('.rld')) det.append(runLogDetail(r, lang));
+  };
+  det.addEventListener('toggle', () => {
+    if (det.open) fill();
+  });
+  return det;
+}
+
 function resultView(): HTMLElement {
   const r: ReviewView | null = state.selected;
   const lang = getAppLang();
@@ -3101,7 +3028,7 @@ function resultView(): HTMLElement {
     ['diff', m.tabDiff, state.tab === 'diff'],
     [state.recordSub, m.tabRecord, isRecordTab(state.tab)],
   ];
-  const backLabel = state.backTo === 'history' ? m.backToHistory : state.backTo === 'newreview' ? m.closeResult : m.backToLog;
+  const backLabel = state.backTo === 'newreview' ? m.closeResult : m.backToHistory;
   const backBtn = h(
     'button',
     {
@@ -3168,6 +3095,8 @@ function resultView(): HTMLElement {
       // 「前回」の帯と変化は、指摘のカードの下（説明が長いので、指摘を先に見せる）
       continuityBand(r),
       fatesPanel(filteredFates(r, continuityOf(r), state.continuity), prevTitle),
+      // 実行の記録（モデル・トークン・所要時間・入力・差分）。折りたたみ。開いたときにだけ、中身を作る
+      runRecord(r, lang),
     );
   }
 
@@ -3292,17 +3221,15 @@ function detailView(): HTMLElement {
   if (state.page === 'repos') return h('main', { class: 'detail page page-aside' }, pageHeader(pm.pageTabRepos), leftPanel());
   if (state.page === 'history') {
     const n = state.history.length;
-    return h('main', { class: 'detail page page-aside' }, pageHeader(n ? `${pm.pageTabHistory} (${n})` : pm.pageTabHistory), rightPanel());
-  }
-  if (state.page === 'log') {
     return h(
       'main',
-      { class: 'detail page' },
-      pageHeader(pm.pageTabLog, { note: msg(lang).hookUi.lastRunTitle, actions: runLogRefreshButton() }),
-      runLogFeedView(),
+      { class: 'detail page page-aside' },
+      pageHeader(n ? `${pm.pageTabHistory} (${n})` : pm.pageTabHistory, { actions: runLogRefreshButton() }),
+      hookRunsSection(),
+      rightPanel(),
     );
   }
-  if (state.page === 'result') return h('main', { class: 'detail page' }, pageHeader(state.backTo === 'history' ? pm.pageTabHistory : pm.pageTabLog), resultView());
+  if (state.page === 'result') return h('main', { class: 'detail page' }, pageHeader(pm.pageTabHistory), resultView());
   const r = currentRecipe();
   const tool = r ? r.kind === 'tool' : false;
   // 実行バーと「送る内容」は、1 枚のカードにまとめる
@@ -3325,11 +3252,10 @@ function render(): void {
   if (!root) return;
   // 結果を閉じた（履歴から消した・リポジトリを替えた）ときは、来たページへ戻す
   if (state.page === 'result' && !state.selected) state.page = state.backTo;
-  // いま結果のページ（または新規レビューの下）で開いている記録を、ログの行のキャッシュとして共有する。
-  // 仕分け・メモは、開いている記録を直接書き換えるので、ログに戻っても、古い状態が出ない。
-  if (state.selected) state.runLogReviewCache.set(state.selected.id, state.selected);
   const pageChanged = lastRenderedPage !== state.page;
   lastRenderedPage = state.page;
+  // 「履歴・ログ」のページは、フックの実行を出す。ページが変わって、これになったとき（タブでも、結果からの戻りでも）、読む
+  if (pageChanged && state.page === 'history') queueMicrotask(() => void loadHook());
   const keepTop = pageChanged ? 0 : (root.querySelector('.detail')?.scrollTop ?? 0);
   const m = msg(getAppLang()).mainUi;
   // 設定・レポート・使用量を開いているあいだは、どのタブも「いま」にしない
@@ -3344,7 +3270,7 @@ function render(): void {
         headerView(),
         pageTabs(
           inMode ? null : state.page === 'result' ? (state.backTo === 'newreview' ? null : state.backTo) : state.page,
-          { nav: m.pageTabsLabel, repos: m.pageTabRepos, history: m.pageTabHistory, log: m.pageTabLog, newreview: m.pageTabNewReview },
+          { nav: m.pageTabsLabel, repos: m.pageTabRepos, history: m.pageTabHistory, newreview: m.pageTabNewReview },
           goPage,
         ),
         baseForm(),

@@ -6,11 +6,11 @@ import { h } from './dom';
  * 観点のページは、step 3 で足す（今は出さない）。
  */
 /** 上部タブに並ぶページ。 */
-export type TabPage = 'repos' | 'history' | 'log' | 'newreview';
+export type TabPage = 'repos' | 'history' | 'newreview';
 export type Page = TabPage | 'result';
 
 /** タブの並び。「結果」は、タブではなく、履歴・ログ・実行直後から掘り下げて開くページ（戻るボタンで、来たページへ戻る）。 */
-export const PAGES: readonly TabPage[] = ['repos', 'history', 'log', 'newreview'];
+export const PAGES: readonly TabPage[] = ['repos', 'history', 'newreview'];
 
 /** 起動時に開くページ。新しいレビューを実行する場所。 */
 export const DEFAULT_PAGE: Page = 'newreview';
@@ -20,7 +20,6 @@ export interface PageTabLabels {
   nav: string;
   repos: string;
   history: string;
-  log: string;
   newreview: string;
 }
 
