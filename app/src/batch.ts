@@ -106,8 +106,6 @@ export interface BatchContext {
   reason: string;
   /** 実行中の経過時間の文字（実行中の 1 件のぶん） */
   elapsed: string;
-  /** 「リンター」について、添える注意（許可が要る linter を除く、など）。無ければ空 */
-  lintNote: string;
 }
 
 export interface BatchActions {
@@ -185,7 +183,6 @@ export function batchPanel(ui: BatchUi, recipes: Recipe[], ctx: BatchContext, ac
           {},
           lastBox,
           list,
-          ctx.lintNote && ui.picked.has('lint') ? h('p', { class: 'note' }, ctx.lintNote) : null,
           est.count > 0 ? h('p', { class: 'note' }, t.selected(est.count, est.tokensText)) : h('p', { class: 'muted' }, t.pickHint),
           est.timeText ? h('p', { class: 'note est' }, est.timeText) : null,
           confirmBox,

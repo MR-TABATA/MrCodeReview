@@ -4,7 +4,7 @@
 # - config.js: 直書きの（偽の）鍵（未コミット）
 # - package-lock.json: ロックファイルの変更（送らない対象の見本）
 # - notes.txt: 未追跡の新規ファイル（差分に含まれる）
-# - app.py: 未使用の import を足した Python（AI のレビューで、差分の小さな変更を見つけられるかを試す見本。linter のボタンは、もう無い）
+# - app.py: 未使用の import を足した Python（AI のレビューで、差分の小さな変更を見つけられるかを試す見本）
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

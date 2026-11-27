@@ -41,7 +41,7 @@ JA_FINDINGS = [
     ("秘密の値がソースに直書きされている", "コミットすると、履歴に残ります。環境変数から読む形にしてください。"),
     ("リトライの上限が無い", "失敗が続くと、無限に再試行します。"),
 ]
-JA_RECIPES = ["セキュリティ", "潜在バグ", "例外処理", "パフォーマンス", "テスト不足", "ファイル間の不整合", "リンター"]
+JA_RECIPES = ["セキュリティ", "潜在バグ", "例外処理", "パフォーマンス", "テスト不足", "ファイル間の不整合"]
 
 NOW = 1795500000000  # 約 2026-11-25
 JST = datetime.timezone(datetime.timedelta(hours=9))
@@ -139,8 +139,8 @@ def get_demo_data(lang):
         d["review"]["recipe"] = d["recipes"]["recipes"][0]
         d["providers"][0]["note"] = "自分の API キーで、直接送ります。中継のサーバはありません。"
         d["snap"]["excluded"] = d["review"]["snapshot"]["excluded"] = [{"path": "package-lock.json", "reason": "ロックファイル"}]
-        d["hist"][0]["recipe_title"], d["hist"][1]["recipe_title"], d["hist"][2]["recipe_title"] = "セキュリティ", "潜在バグ", "リンター"
-        d["hist"][2]["provider_label"] = "リンター"
+        d["hist"][0]["recipe_title"], d["hist"][1]["recipe_title"], d["hist"][2]["recipe_title"] = "セキュリティ", "潜在バグ", "例外処理"
+        d["hist"][2]["provider_label"] = "Anthropic API"
         d["settings"]["values"]["language"] = "ja"
     add_continuity_data(d, lang)
     d["hook_status"] = make_hook_status(lang)
@@ -162,7 +162,7 @@ window.__TAURI_INTERNALS__ = {{
         {{value: 'HEAD', label: '{("コミット前の変更" if lang == "ja" else "Uncommitted changes")}', hint: '{("作業ツリーの変更" if lang == "ja" else "Changes in working tree")}'}},
         {{value: 'HEAD~1', label: '{("直前のコミット" if lang == "ja" else "Latest commit")}', hint: '{("直前のコミットと、未コミットの変更" if lang == "ja" else "Last commit and uncommitted")}'}}
       ];
-      case 'list_recipes': return args && args.repo ? D.recipes : {{recipes: D.recipes.recipes.filter(r => r.kind !== 'tool'), warnings: [], lint: null}};
+      case 'list_recipes': return args && args.repo ? D.recipes : {{recipes: D.recipes.recipes.filter(r => r.kind !== 'tool'), warnings: []}};
       case 'preview_snapshot': return D.snap;
       case 'list_reviews': return D.hist;
       case 'get_review': return D.review;

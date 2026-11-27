@@ -83,7 +83,6 @@ RECIPES = [
     {"id": "performance", "title": "Performance", "source": "builtin", "kind": "llm", "prompt": "# Performance\nCheck loops and heavy allocations."},
     {"id": "tests", "title": "Missing Tests", "source": "builtin", "kind": "llm", "prompt": "# Missing Tests\nIdentify untested branches."},
     {"id": "consistency", "title": "Cross-file Inconsistencies", "source": "builtin", "kind": "llm", "prompt": "# Consistency\nCheck interface contract mismatches."},
-    {"id": "lint", "title": "Linters", "source": "builtin", "kind": "tool", "prompt": "Run linters without LLM."},
 ]
 
 def make_demo_data():
@@ -91,7 +90,7 @@ def make_demo_data():
         "providers": [
             {"id": "anthropic-api", "label": "Anthropic API", "note": "Direct communication with Anthropic. No relay server."}
         ],
-        "recipes": {"recipes": RECIPES, "warnings": [], "lint": None},
+        "recipes": {"recipes": RECIPES, "warnings": []},
         "snap": {
             "repo": REPO,
             "head": "6dae70c8",
@@ -130,11 +129,11 @@ def make_demo_data():
                 "id": "r3",
                 "created_at": NOW - 86400000,
                 "repo": "/Users/me/Git/dotfiles",
-                "recipe_title": "Linters",
-                "provider_label": "Linters",
+                "recipe_title": "Error Handling",
+                "provider_label": "Anthropic API",
                 "findings": 0,
                 "verified": 0,
-                "total_tokens": 0,
+                "total_tokens": 1100,
                 "failed": False,
                 "counts": {"open": 0, "done": 0, "wait": 0, "dismiss": 0},
             },
@@ -210,7 +209,7 @@ window.__TAURI_INTERNALS__ = {
     switch (cmd) {
       case 'list_providers': return D.providers;
       case 'list_bases': return [{value: 'HEAD', label: 'Uncommitted changes', hint: 'Changes in working tree'}, {value: 'HEAD~1', label: 'Latest commit', hint: 'Last commit and uncommitted'}];
-      case 'list_recipes': return args && args.repo ? D.recipes : {recipes: D.recipes.recipes.filter(r => r.kind !== 'tool'), warnings: [], lint: null};
+      case 'list_recipes': return args && args.repo ? D.recipes : {recipes: D.recipes.recipes.filter(r => r.kind !== 'tool'), warnings: []};
       case 'preview_snapshot': return D.snap;
       case 'list_reviews': return D.hist;
       case 'get_review': return D.review;

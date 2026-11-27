@@ -58,7 +58,7 @@ describe('batchSummary', () => {
 });
 
 describe('batchPanel', () => {
-  const ctx = (over: Partial<BatchContext> = {}): BatchContext => ({ stats: {}, inputTokens: 35_000, isMock: false, reason: '', elapsed: '12 秒', lintNote: '', ...over });
+  const ctx = (over: Partial<BatchContext> = {}): BatchContext => ({ stats: {}, inputTokens: 35_000, isMock: false, reason: '', elapsed: '12 秒', ...over });
   const acts = () => ({ toggle: vi.fn(), pick: vi.fn(), start: vi.fn(), confirm: vi.fn(), cancelConfirm: vi.fn(), stop: vi.fn() });
   const ui = (over: Partial<BatchUi> = {}): BatchUi => ({ ...newBatchUi(), open: true, ...over });
 
@@ -97,12 +97,6 @@ describe('batchPanel', () => {
     const el = batchPanel(ui({ picked: ids('bug') }), RECIPES, ctx({ reason: '送る差分がありません（未コミットの変更が無い）' }), acts());
     expect(btn(el, '1 観点を、順に実行')!.disabled).toBe(true);
     expect(el.textContent).toContain('送る差分がありません');
-  });
-
-  it('リンターを選んだときだけ、リンターの注意（許可が要るものを除く）を出す', () => {
-    const note = 'リンターは、許可が要るもの（ESLint）を除いて実行します。';
-    expect(batchPanel(ui({ picked: ids('lint') }), RECIPES, ctx({ lintNote: note }), acts()).textContent).toContain(note);
-    expect(batchPanel(ui({ picked: ids('bug') }), RECIPES, ctx({ lintNote: note }), acts()).textContent).not.toContain(note);
   });
 
   it('確認を出しているときは、送る回数と量を言い、「実行する」「やめる」を出す。実行ボタンは、出さない', () => {

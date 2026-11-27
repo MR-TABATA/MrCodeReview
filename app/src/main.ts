@@ -64,7 +64,6 @@ import { SpecView } from './specview';
 import { fixAllBySeverity as runFixAllBySeverity, fixAllSeverityButtons } from './fixall';
 import { newReportState, reportFileName, reportOptions, reportPanel, reportRange, htmlNodes, type ReportState } from './reportview';
 import { periodSince, usagePanel, type Period, type UsageState } from './usageview';
-import { canTrustRerun } from './lintrerun';
 import type {
   HookStatus,
   AgentFetch,
@@ -84,8 +83,6 @@ import type {
   RepoDataRow,
   Recipe,
   ReportPreview,
-  LintItem,
-  LintPlan,
   RecipeList,
   Related,
   ReviewSummary,
@@ -205,12 +202,8 @@ const state = {
   nowDiff: null as { id: string; loading: boolean; error: string; data: CurrentDiff | null; view: DiffView | null } | null,
   providers: [] as ProviderInfo[],
   recipes: [] as Recipe[],
-  /** レシピの一覧に添えて返される警告（linters.json の間違い、読まなかったファイルなど） */
+  /** レシピの一覧に添えて返される警告 */
   recipeWarnings: [] as string[],
-  /** このリポジトリで出番のある linter と、その状態 */
-  lintPlan: null as LintPlan | null,
-  /** 「許可して実行しますか」の確認を出しているか */
-  lintConfirm: false,
   preview: null as SnapshotInfo | null,
   previewError: '',
   history: [] as ReviewSummary[],
@@ -340,8 +333,6 @@ async function loadRecipes(repo: string | null): Promise<void> {
   state.recipes = list.recipes;
   if (!list.recipes.some((r) => r.id === state.recipeId)) state.recipeId = list.recipes[0]?.id ?? '';
   state.recipeWarnings = list.warnings;
-  state.lintPlan = list.lint;
-  if (!list.lint?.items.some((i) => i.state === 'needs_trust')) state.lintConfirm = false;
 }
 
 /** 見る範囲の候補を読む。読めなかったら、候補は空にして（別のリポジトリの候補を残さない）、理由を返す（読めたら空文字）。 */
@@ -938,12 +929,6 @@ const handoffActs = (): HandoffActions => ({
   close: closeHandoff,
 });
 
-/** この linter が、今回の差分のファイルを見るか。 */
-const itemHitsDiff = (i: LintItem): boolean => !!state.preview?.files.some((f) => i.exts.includes(f.path.split('.').pop() ?? ''));
-
-/** 今回の差分に対象があるのに、許可が無くて走らせられない linter（ESLint・Clippy）。 */
-const needsTrustNow = (): LintItem[] => (state.lintPlan?.items ?? []).filter((i) => i.state === 'needs_trust' && itemHitsDiff(i));
-
 const isDocFile = (path: string): boolean => /\.(md|markdown|txt)$/i.test(path);
 
 /** 観点バーに出している観点。文書ファイルの場合は文書レビュー観点のみ、通常は差分に向くものだけ。 */
@@ -960,7 +945,7 @@ function activeChecked(): Set<string> {
   return new Set([...state.checkedRecipeIds].filter((id) => shown.has(id)));
 }
 
-/** 「リンター」を含む実行。許可が要る linter が今回の対象にあれば、先に確認する。 */
+/** 選んでいる観点を実行する。 */
 function startCheckedRecipes(): void {
   // 実行できない観点は外す（設計書が未指定の「設計書・仕様書との一致」など）。外したものは、画面に理由を出している。
   // 何を始めるかは、`launchOf` の結果だけに従う（外した観点は、1 つの実行にも、まとめての実行にも入らない）
@@ -975,47 +960,7 @@ function startCheckedRecipes(): void {
   void runBatch();
 }
 
-async function trustRepoOnly(): Promise<boolean> {
-  try {
-    await invoke('trust_repo', { repo: state.repo });
-    await loadRecipes(state.preview?.repo ?? state.repo);
-    state.runError = '';
-    render();
-    return true;
-  } catch (e) {
-    state.runError = String(e);
-    render();
-    return false;
-  }
-}
-
-async function trustAndRun(): Promise<void> {
-  state.lintConfirm = false;
-  if (!(await trustRepoOnly())) return;
-  if (state.checkedRecipeIds.has('lint')) {
-    startCheckedRecipes();
-  } else {
-    await runRecipe('lint');
-  }
-}
-
-async function trustAndRerunLint(): Promise<void> {
-  state.lintConfirm = false;
-  if (!(await trustRepoOnly())) return;
-  await runRecipe('lint');
-}
-
-async function untrust(): Promise<void> {
-  try {
-    await invoke('untrust_repo', { repo: state.repo });
-    await loadRecipes(state.preview?.repo ?? state.repo);
-  } catch (e) {
-    state.runError = String(e);
-  }
-  render();
-}
-
-/** 実績を引く相手: リンターは LLM を使わないので、プロバイダは `tool`。 */
+/** 実績を引く相手: LLM を使わない観点（tool 型）は、プロバイダが `tool`。 */
 function statsTarget(): { providerId: string; recipeId: string } | null {
   const r = currentRecipe();
   if (!r) return null;
@@ -1970,11 +1915,6 @@ function clearAllRecipes(): void {
 function runCheckedRecipes(): void {
   const plan = currentRunPlan();
   if (plan.block || plan.run.length === 0) return;
-  if (plan.run.some((r) => r.id === 'lint') && needsTrustNow().length > 0) {
-    state.lintConfirm = true;
-    render();
-    return;
-  }
   startCheckedRecipes();
 }
 
@@ -2160,14 +2100,12 @@ function byokSection(lang: Lang = getAppLang()): HTMLElement {
   );
 }
 
-/** 実行バーの下: 選んでいる観点の中身（LLM へ送る文章・リンターの状態）。ふだんはたたむ。開閉は、画面を作り直しても残す。 */
+/** 実行バーの下: 選んでいる観点の中身（LLM へ送る文章）。ふだんはたたむ。開閉は、画面を作り直しても残す。 */
 function recipeInfoSection(): HTMLElement | null {
   const chosen = pickedRecipes(state.recipes, activeChecked());
   if (!chosen.length) return null;
   const lang = getAppLang();
   const m = msg(lang).mainUi;
-  // リンターの許可の確認（「許可して実行」）は、ここに出る。たたんだままだと、止まって見えるので、開く
-  const forceLint = state.lintConfirm && chosen.some((r) => r.kind === 'tool');
   const track = (id: string, el: HTMLDetailsElement): HTMLDetailsElement => {
     el.addEventListener('toggle', () => {
       if (el.open) state.infoOpen.add(id);
@@ -2177,7 +2115,7 @@ function recipeInfoSection(): HTMLElement | null {
   };
   const item = (r: Recipe): HTMLElement => {
     const tool = r.kind === 'tool';
-    const open = state.infoOpen.has(r.id) || (tool && forceLint);
+    const open = state.infoOpen.has(r.id);
     const recipeTitle = displayRecipeTitle(r.title, lang);
     const title = tool ? m.recipeInfoToolTitle(recipeTitle) : recipeTitle;
     const source = r.source === 'repo' ? m.recipeInfoRepoSource : '';
@@ -2188,7 +2126,7 @@ function recipeInfoSection(): HTMLElement | null {
         { class: 'recipe-info-item', ...(open ? { open: true } : {}) },
         h('summary', {}, title, source),
         h('p', { class: 'muted' }, recipeSummary(r, lang)),
-        tool ? lintBody() : h('pre', { class: 'prompt' }, r.prompt),
+        tool ? null : h('pre', { class: 'prompt' }, r.prompt),
       ),
     );
   };
@@ -2196,7 +2134,7 @@ function recipeInfoSection(): HTMLElement | null {
     '*',
     h(
       'details',
-      { class: 'recipe-info', ...(state.infoOpen.has('*') || forceLint ? { open: true } : {}) },
+      { class: 'recipe-info', ...(state.infoOpen.has('*') ? { open: true } : {}) },
       h('summary', {}, m.recipeInfoSummary(chosen.length)),
       ...chosen.map(item),
       ...state.recipeWarnings.map((w) => h('p', { class: 'note-line' }, w)),
@@ -2232,57 +2170,6 @@ function leftPanel(): HTMLElement {
 }
 
 // ── メイン上部: 観点の中身と、送る内容 ────────────────────────────────────────────────
-/** 「リンター」を選んだときの、観点の中身: どの linter が、どの状態か。名前だけでは何の linter か分からないので、言語と、今回の差分に対象があるかも出す。 */
-function lintBody(): HTMLElement {
-  const plan = state.lintPlan;
-  const m = msg(getAppLang()).mainUi;
-  const stateMap = m.lintStateText;
-  const lintItem = (i: LintItem): HTMLElement =>
-    h(
-      'li',
-      { class: `lintitem ${i.state}` },
-      h('div', {}, h('strong', {}, m.lintItemTitle(i.title, i.lang)), h('span', { class: `badge ${i.state === 'ready' ? 'okb' : 'warnb'}` }, stateMap[i.state])),
-      h('div', { class: 'muted' }, itemHitsDiff(i) ? m.lintTargetInDiff : m.lintNoTargetInDiff),
-      i.command ? h('div', { class: 'muted' }, h('code', {}, i.command)) : null,
-      i.state === 'missing' && i.hint ? h('div', { class: 'note-line' }, m.lintInstallHint(i.hint)) : null,
-    );
-  const hasCodeRunners = !!plan?.items.some((i) => i.runs_repo_code);
-  const trustNow = needsTrustNow();
-  const confirmBox = state.lintConfirm
-    ? h(
-        'div',
-        { class: 'confirm' },
-        h('p', {}, m.lintConfirmBody(trustNow)),
-        h('p', { class: 'muted' }, m.lintConfirmRemember),
-        h(
-          'div',
-          { class: 'row' },
-          h('button', { class: 'run', onclick: () => void trustAndRun() }, m.lintAllowAndRunBtn),
-          h('button', { onclick: () => void ((state.lintConfirm = false), startCheckedRecipes()) }, m.lintRunOthersBtn),
-          h('button', { onclick: () => void ((state.lintConfirm = false), render()) }, m.cancelBtn),
-        ),
-      )
-    : null;
-  return h(
-    'div',
-    {},
-    confirmBox,
-    plan && plan.items.length
-      ? h(
-          'div',
-          {},
-          h('p', { class: 'muted' }, m.lintRunningNote),
-          h('ul', { class: 'lintlist' }, ...plan.items.map(lintItem)),
-          hasCodeRunners
-            ? plan.trusted
-              ? h('p', { class: 'muted lint-trust-row' }, h('span', {}, m.lintAllowedNote), h('button', { class: 'small', onclick: () => void untrust() }, m.lintRevokeBtn))
-              : h('p', { class: 'muted lint-trust-row' }, h('span', {}, m.lintNotAllowedNote), h('button', { class: 'small run', onclick: () => void trustRepoOnly() }, m.lintAllowRepoBtn))
-            : null,
-        )
-      : h('p', { class: 'muted' }, state.preview ? m.lintNoneFound : m.lintSelectRepo),
-  );
-}
-
 /** 送る内容（見えること）。ふだんは 1 行にたたんでおく。 */
 function sendBox(isTool: boolean): HTMLElement {
   const p = state.preview;
@@ -3364,18 +3251,14 @@ function resultView(): HTMLElement {
 
   let body: HTMLElement;
   if (state.tab === 'findings') {
-    const canRerun = canTrustRerun(r.recipe.id, r.error, state.lintPlan);
     body = h(
       'div',
       {},
       r.error
         ? h(
             'p',
-            { class: canRerun ? 'err err-row' : 'err' },
+            { class: 'err' },
             h('span', {}, m.execFailed(r.error)),
-            canRerun
-              ? h('button', { class: 'small run', onclick: () => void trustAndRerunLint() }, m.allowAndRerunBtn)
-              : null,
           )
         : null,
       ...(r.notes ?? []).map((n) => h('p', { class: 'note-line' }, n)),

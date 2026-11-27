@@ -6,7 +6,7 @@ const r = (over: Partial<Recipe> & { id: string }): Recipe => ({ title: over.id,
 
 describe('recipeSummary', () => {
   it('組み込みの観点は、決まった 1 行の説明を返す', () => {
-    for (const id of ['bugs', 'errors', 'security', 'performance', 'tests', 'consistency', 'lint']) {
+    for (const id of ['bugs', 'errors', 'security', 'performance', 'tests', 'consistency']) {
       expect(recipeSummary(r({ id })).length, id).toBeGreaterThan(5);
       expect(recipeSummary(r({ id }), 'en').length, id).toBeGreaterThan(5);
     }

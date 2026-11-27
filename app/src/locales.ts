@@ -3,7 +3,7 @@
 // 2. `MESSAGES` に同じ型のエントリを足す（TypeScript が不足キーをすべて検出する）
 // これだけで UI コンポーネント側のコードには一切手を触れずに言語を増やせる。
 
-import type { LintItem, SettingMeta, TriageState } from './types';
+import type { SettingMeta, TriageState } from './types';
 
 export const SUPPORTED_LANGS = [
   { code: 'ja', nativeName: '日本語', englishName: 'Japanese', bcp47: 'ja-JP' },
@@ -421,22 +421,6 @@ export interface Messages {
     recipeInfoToolTitle: (title: string) => string;
     recipeInfoRepoSource: string;
     recipeInfoSummary: (count: number) => string;
-    lintStateText: Record<LintItem['state'], string>;
-    lintItemTitle: (title: string, lang: string) => string;
-    lintTargetInDiff: string;
-    lintNoTargetInDiff: string;
-    lintInstallHint: (hint: string) => string;
-    lintConfirmBody: (items: { title: string; lang: string }[]) => string;
-    lintConfirmRemember: string;
-    lintAllowAndRunBtn: string;
-    lintRunOthersBtn: string;
-    lintRunningNote: string;
-    lintAllowedNote: string;
-    lintRevokeBtn: string;
-    lintNotAllowedNote: string;
-    lintAllowRepoBtn: string;
-    lintNoneFound: string;
-    lintSelectRepo: string;
     sendBoxTitleTool: string;
     sendBoxTitleLlm: string;
     sendBoxCannotRead: string;
@@ -622,7 +606,6 @@ export const MESSAGES: Record<Lang, Messages> = {
       tests: 'テストが足りない所・弱い検証を探す',
       consistency: '変えた所と、変えていない他の場所の食い違いを探す',
       spec: '設計書・仕様書と差分を見比べ、矛盾や要求への逆行を探す',
-      lint: '差分に合う linter を、全部まとめて実行（LLM なし）',
     },
     recipeGroupLlm: 'LLM でレビュー',
     recipeGroupTool: 'LLM を使わない',
@@ -871,7 +854,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       byRepo: 'リポジトリ別',
       byModel: 'LLM・モデル別',
       footnote:
-        'リンターは LLM を呼ばないので、トークンは 0 です（測っての 0 で、報告なしではありません）。提供元が値を返さなかった項目は、推定で埋めていません。',
+        'LLM を使わない観点（過去のリンターなど）は LLM を呼ばないので、トークンは 0 です（測っての 0 で、報告なしではありません）。提供元が値を返さなかった項目は、推定で埋めていません。',
     },
 
     reportView: {
@@ -980,30 +963,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       byokModelLabel: 'モデル名 ',
       byokMaxTokensLabel: '最大出力トークン ',
       byokInvalidConfig: (err) => `byok.json が正しくありません（いまは初期値を表示）: ${err}`,
-      recipeInfoToolTitle: (title) => `${title}（リンターの状態）`,
+      recipeInfoToolTitle: (title) => `${title}（LLM を使わない観点）`,
       recipeInfoRepoSource: '（設定）',
       recipeInfoSummary: (count) => `観点の中身を見る（${count} 件。LLM へ送る文章）`,
-      lintStateText: {
-        ready: '実行できます',
-        needs_trust: '許可が要ります（このリポジトリのコードを動かします）',
-        missing: '入っていません',
-      },
-      lintItemTitle: (title, lang) => `${title}（${lang}）`,
-      lintTargetInDiff: '今回の差分に、対象のファイルがあります',
-      lintNoTargetInDiff: '今回の差分に、対象のファイルはありません',
-      lintInstallHint: (hint) => `入れると、ここで使えます: ${hint}`,
-      lintConfirmBody: (items) =>
-        `${items.map((i) => `${i.title}（${i.lang}）`).join('・')} は、このリポジトリのコードを動かします（ESLint は設定ファイル、Clippy は build.rs）。信頼できるリポジトリでだけ、許可してください。`,
-      lintConfirmRemember: '許可すると、このリポジトリでは覚えておきます（あとで取り消せます）。',
-      lintAllowAndRunBtn: '許可して実行',
-      lintRunOthersBtn: '許可せず、ほかだけ実行',
-      lintRunningNote: '実行すると、今回の差分に合う linter を、全部実行します。',
-      lintAllowedNote: 'このリポジトリでは、コードを動かす linter（ESLint・Clippy）を許可しています。',
-      lintRevokeBtn: '許可を取り消す',
-      lintNotAllowedNote: 'このリポジトリでは、コードを動かす linter（ESLint・Clippy）をまだ許可していません。',
-      lintAllowRepoBtn: 'このリポジトリで許可する',
-      lintNoneFound: 'このリポジトリで使える linter は見つかりませんでした（ESLint・Ruff・Clippy・SwiftLint・ShellCheck のほか、linters.json で足せます）。',
-      lintSelectRepo: 'リポジトリを選ぶと、使える linter が出ます。',
       sendBoxTitleTool: '対象の差分',
       sendBoxTitleLlm: '送る内容',
       sendBoxCannotRead: '読めません',
@@ -1191,7 +1153,6 @@ export const MESSAGES: Record<Lang, Messages> = {
       tests: 'Find missing test coverage and weak assertions',
       consistency: 'Find inconsistencies between changed parts and untouched code',
       spec: 'Check the diff against a specification or requirements doc for contradictions',
-      lint: 'Run all matching linters for the diff at once (no LLM)',
     },
     recipeGroupLlm: 'Review with LLM',
     recipeGroupTool: 'Without LLM',
@@ -1259,27 +1220,6 @@ export const MESSAGES: Record<Lang, Messages> = {
         why: 'Prevents infinite UI hangs on network issues or slow provider responses.',
         when: 'Increase if reviews on large diffs frequently time out.',
         unit: 's',
-      },
-      tool_timeout_secs: {
-        label: 'Linter timeout',
-        description: 'Timeout for running local linters (ESLint, Clippy, Ruff, etc.).',
-        why: 'Initial compilations (like Clippy) may take time, but hangs must be stopped.',
-        when: 'Increase if linter runs on large projects time out.',
-        unit: 's',
-      },
-      max_tool_files: {
-        label: 'Max files passed to linter at once',
-        description: 'Maximum number of file arguments passed in a single linter command.',
-        why: 'Prevents command line length limits from failing execution.',
-        when: 'Adjust if your shell or linter has specific argument limitations.',
-        unit: ' files',
-      },
-      max_raw_bytes: {
-        label: 'Max raw linter output stored',
-        description: 'Size limit for storing raw stdout/stderr output in history.',
-        why: 'Prevents gigantic compiler logs from bloating database storage.',
-        when: 'Increase if compiler outputs are truncated.',
-        unit: ' bytes',
       },
       related_max_bytes: {
         label: 'Max related code context size',
@@ -1629,7 +1569,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       byRepo: 'By Repository',
       byModel: 'By LLM & Model',
       footnote:
-        'Linters do not call LLMs, so their token count is 0 (measured 0, not unreported). Missing values from providers are not filled with estimates.',
+        'Reviews that do not use an LLM (such as past Linter runs) do not call one, so their token count is 0 (measured 0, not unreported). Missing values from providers are not filled with estimates.',
     },
 
     reportView: {
@@ -1740,31 +1680,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       byokModelLabel: 'Model ',
       byokMaxTokensLabel: 'Max output tokens ',
       byokInvalidConfig: (err) => `Invalid byok.json (showing defaults): ${err}`,
-      recipeInfoToolTitle: (title) => `${title} (Linter status)`,
+      recipeInfoToolTitle: (title) => `${title} (no LLM)`,
       recipeInfoRepoSource: ' (repo setting)',
       recipeInfoSummary: (count) => `View angle prompts (${count} prompt${count > 1 ? 's' : ''} to LLM)`,
-      lintStateText: {
-        ready: 'Ready',
-        needs_trust: 'Needs permission (runs code in this repository)',
-        missing: 'Not installed',
-      },
-      lintItemTitle: (title, lang) => `${title} (${lang})`,
-      lintTargetInDiff: 'Target files exist in current diff',
-      lintNoTargetInDiff: 'No target files in current diff',
-      lintInstallHint: (hint) => `Install to use here: ${hint}`,
-      lintConfirmBody: (items) =>
-        `${items.map((i) => `${i.title} (${i.lang})`).join(', ')} will execute code in this repository (ESLint config files, Clippy build.rs). Allow only for trusted repositories.`,
-      lintConfirmRemember: 'Once allowed, this repository will be remembered (you can revoke it later).',
-      lintAllowAndRunBtn: 'Allow and Run',
-      lintRunOthersBtn: 'Run others without allowing',
-      lintRunningNote: 'Running will execute all linters matching the current diff.',
-      lintAllowedNote: 'Linters that execute repository code (ESLint, Clippy) are allowed for this repository.',
-      lintRevokeBtn: 'Revoke permission',
-      lintNotAllowedNote: 'Linters that execute repository code (ESLint, Clippy) are not yet allowed for this repository.',
-      lintAllowRepoBtn: 'Allow for this repository',
-      lintNoneFound:
-        'No usable linters found for this repository (ESLint, Ruff, Clippy, SwiftLint, ShellCheck, or custom linters in linters.json).',
-      lintSelectRepo: 'Select a repository to see available linters.',
       sendBoxTitleTool: 'Target Diff',
       sendBoxTitleLlm: 'Diff to send',
       sendBoxCannotRead: 'Cannot read',

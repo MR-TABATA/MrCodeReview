@@ -22,7 +22,7 @@ export function recipeSummary(r: Pick<Recipe, 'id' | 'prompt' | 'kind'>, lang?: 
 export const GROUP_LLM = msg(DEFAULT_LANG).recipeGroupLlm;
 export const GROUP_TOOL = msg(DEFAULT_LANG).recipeGroupTool;
 
-/** 一覧の順は、LLM の観点（組み込み → リポジトリ側）、そのあとにリンター。 */
+/** 一覧の順は、LLM の観点（組み込み → リポジトリ側）、そのあとに LLM を使わない観点。 */
 export function comboItems(recipes: Recipe[], lang?: string): ComboItem[] {
   const currentLang = lang ?? getAppLang();
   const m = msg(currentLang);

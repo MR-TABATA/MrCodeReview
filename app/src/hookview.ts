@@ -41,7 +41,7 @@ export interface HookActions {
   refresh(): void;
 }
 
-/** フックで選べる観点。LLM の観点（linter は、フックでは走らせない）。設計書が要るものも含む（設計書を指定すれば使える）。 */
+/** フックで選べる観点。LLM の観点（LLM を使わない観点は、フックでは走らせない）。設計書が要るものも含む（設計書を指定すれば使える）。 */
 export const selectableRecipes = (recipes: Recipe[]): Recipe[] => recipes.filter((r) => r.kind === 'llm');
 
 /** いま画面で選んでいる観点。 */

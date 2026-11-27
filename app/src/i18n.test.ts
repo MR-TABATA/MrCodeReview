@@ -29,7 +29,7 @@ describe('i18n', () => {
     setAppLang('ja');
     const invoke = vi.fn(async (cmd: string, _args?: Record<string, unknown>) => {
       if (cmd === 'set_menu_language') throw new Error('menu fail');
-      return { recipes: [], warnings: [], lint: null };
+      return { recipes: [], warnings: [] };
     });
     const loadRecipes = vi.fn(async (repo: string | null) => {
       await invoke('list_recipes', { repo, lang: getAppLang() });
