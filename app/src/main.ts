@@ -15,7 +15,7 @@ import { combo, closeCombo } from './combo';
 import type { DurationStats } from './duration';
 import { h } from './dom';
 import { agentConsentSection, newAgentConsent } from './agentconsent';
-import { hookSection, newHookUi, runLogView } from './hookview';
+import { hookRunRow, hookSection, newHookUi } from './hookview';
 import { DOC_IDS, recipesForDiff } from './recipescope';
 import { batchEstimate, newBatchUi, pickedRecipes, STOPPED, type BatchResult } from './batch';
 import { detailPanel } from './detailview';
@@ -23,7 +23,7 @@ import { findingOrder, isDoneFinding } from './findingorder';
 import { agentBox, agentDone, agentNotice, agentStatus, agentStatusBar, foldedRow, newAgentUi, refreshAgentReportsOnFocus, type AgentActions } from './agentview';
 import { handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffActions, type HandoffTarget } from './handoffview';
 import type { AgentDef } from './types';
-import { countsLine, dayKey, dayLabel, displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
+import { reviewRow, dayKey, dayLabel, displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
 import { providerLabel, providerNote } from './providertext';
 import { ut } from './uitext';
 import { continuityOf, filteredFates, flowOf, shownByContinuity, type ContinuityKind } from './continuity';
@@ -64,6 +64,8 @@ import { SpecView } from './specview';
 import { fixAllBySeverity as runFixAllBySeverity, fixAllSeverityButtons } from './fixall';
 import { newReportState, reportFileName, reportOptions, reportPanel, reportRange, htmlNodes, type ReportState } from './reportview';
 import { periodSince, usagePanel, type Period, type UsageState } from './usageview';
+import { DEFAULT_PAGE, pageTabs, type Page } from './pages';
+import { runLogDetail } from './runlogdetail';
 import type {
   HookStatus,
   AgentFetch,
@@ -100,17 +102,6 @@ const REPO_KEY = 'mrcr.repo';
 const PROVIDER_KEY = 'mrcr.provider';
 const RECIPE_KEY = 'mrcr.recipe';
 const CHECKED_RECIPES_KEY = 'mrcr.checked_recipes';
-const LEFT_KEY = 'mrcr.left';
-const RIGHT_KEY = 'mrcr.right';
-const LEFTW_KEY = 'mrcr.leftw';
-const RIGHTW_KEY = 'mrcr.rightw';
-/** 左右のサイドバーの幅（px）。標準は狭めにして、ドラッグで変えられる */
-const SIDE_W = { left: { def: 220, min: 150, max: 500 }, right: { def: 200, min: 150, max: 500 } } as const;
-function loadSideW(key: string, side: keyof typeof SIDE_W): number {
-  const n = Number(lsGet(key));
-  const { def, min, max } = SIDE_W[side];
-  return Number.isFinite(n) && n >= min && n <= max ? Math.round(n) : def;
-}
 
 function parseCheckedRecipes(raw: string): Set<string> {
   try {
@@ -155,20 +146,22 @@ const state = {
   providerId: lsGet(PROVIDER_KEY),
   /** 左のコンボで選んでいるレビューの種類（レシピの id） */
   recipeId: lsGet(RECIPE_KEY),
-  leftOpen: lsGet(LEFT_KEY) !== '0',
-  rightOpen: lsGet(RIGHT_KEY) !== '0',
-  leftW: loadSideW(LEFTW_KEY, 'left'),
-  rightW: loadSideW(RIGHTW_KEY, 'right'),
+  /** 結果を開いたとき、来た場所。履歴・ログからは、結果のページ（戻るで、そこへ戻る）。実行した直後（と、そこからの移動）は、新規レビューの実行バーの下 */
+  backTo: 'log' as 'log' | 'history' | 'newreview',
+  /** いま開いているページ（上部タブ）。設定・レポート・使用量は、ページではなく、ページ領域を使う「モード」 */
+  page: DEFAULT_PAGE as Page,
   /** 各リポジトリのアプリアイコン（base64 data URL、無ければ null）のキャッシュ */
   repoIcons: {} as Record<string, string | null>,
-  /** 実行ログタイムラインでインライン展開されているレビューID */
-  expandedRunLogs: new Set<string>(),
   /** 実行ログ内でインライン展開されている指摘の識別子（"reviewId:findingIndex"） */
   expandedFindings: new Set<string>(),
+  /** ログで、内訳を開いているフックの実行の ID */
+  expandedHookRuns: new Set<string>(),
+  /** ログで、実行の詳細を開いているレビューの ID */
+  expandedRunLogs: new Set<string>(),
+  /** ログの、実行の詳細の読み込み中のレビューの ID */
+  loadingRunLogs: new Set<string>(),
   /** 実行ログのインライン展開用のキャッシュ（レビュー詳細） */
   runLogReviewCache: new Map<string, ReviewView>(),
-  /** 実行ログのインライン展開でローディング中のレビューID */
-  loadingRunLogs: new Set<string>(),
   /** 右サイドバー: 履歴パネルを折り畳んでいるか */
   historyCollapsed: false,
   /** 結果先頭の「前回 → 今回」の帯で選んだ絞り込み。レビューを切り替えたら外す */
@@ -710,6 +703,14 @@ async function refreshHandoff(): Promise<void> {
 
 async function select(id: string): Promise<void> {
   if (!canLeaveSettings()) return;
+  if (state.page === 'history' || state.page === 'log') {
+    state.backTo = state.page;
+    state.page = 'result';
+  } else if (state.page !== 'newreview' && state.page !== 'result') {
+    state.backTo = 'log';
+    state.page = 'result';
+  }
+  // 新規レビューの下の結果から、別のレビュー（「前回」など）へ移るときは、新規レビューのまま。結果のページの中では、来たページのまま
   state.handoffUi = newHandoffUi();
   state.agentUi = newAgentUi();
   state.openCards = new Set();
@@ -1007,7 +1008,10 @@ async function runRecipe(recipeId: string): Promise<void> {
     state.usage = null;
     closeReport();
     state.topOpen = null;
+    state.page = 'newreview';
+    state.backTo = 'newreview';
     state.selected = rec;
+    scrollToResultNext = true;
     state.expanded = new Set();
     state.diffWhen = 'then';
     state.nowDiff = null;
@@ -1477,59 +1481,15 @@ async function chooseRepo(): Promise<void> {
 const currentRecipe = (): Recipe | undefined => state.recipes.find((r) => r.id === state.recipeId) ?? state.recipes[0];
 
 // ── ヘッダ ────────────────────────────────────────────────────────────────────
-function toggleLeft(): void {
-  state.leftOpen = !state.leftOpen;
-  lsSet(LEFT_KEY, state.leftOpen ? '1' : '0');
+/** 上部タブを押したとき。設定・レポート・使用量を開いていれば閉じて（設定は、未保存の変更があれば、移らずに聞く）、そのページへ移る。 */
+function goPage(page: Page): void {
+  if (!canLeaveSettings()) return;
+  state.settings = null;
+  state.usage = null;
+  closeReport();
   closeCombo();
+  state.page = page;
   render();
-}
-
-function toggleRight(): void {
-  state.rightOpen = !state.rightOpen;
-  lsSet(RIGHT_KEY, state.rightOpen ? '1' : '0');
-  render();
-}
-
-/** サイドバーの境目（つかんで動かすと幅が変わる。ダブルクリックで標準に戻す）。動かしている間は、作り直さず、列幅の変数だけを書き換える。 */
-function sideResizer(side: 'left' | 'right'): HTMLElement {
-  const cfg = SIDE_W[side];
-  const cssVar = side === 'left' ? '--lw' : '--rw';
-  const key = side === 'left' ? LEFTW_KEY : RIGHTW_KEY;
-  const apply = (el: HTMLElement, w: number): void => {
-    state[side === 'left' ? 'leftW' : 'rightW'] = w;
-    el.closest<HTMLElement>('.app')?.style.setProperty(cssVar, `${w}px`);
-  };
-  const el = h('div', {
-    class: `resizer ${side === 'left' ? 'l' : 'r'}`,
-    title: ut().app.dragResizeTitle,
-    role: 'separator',
-    'aria-orientation': 'vertical',
-  });
-  el.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    el.setPointerCapture(e.pointerId);
-    el.classList.add('drag');
-    const body = el.parentElement!.getBoundingClientRect();
-    const move = (ev: PointerEvent): void => {
-      const raw = side === 'left' ? ev.clientX - body.left : body.right - ev.clientX;
-      apply(el, Math.round(Math.min(cfg.max, Math.max(cfg.min, raw))));
-    };
-    const up = (): void => {
-      el.classList.remove('drag');
-      el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
-      el.removeEventListener('pointercancel', up);
-      lsSet(key, String(state[side === 'left' ? 'leftW' : 'rightW']));
-    };
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
-  });
-  el.addEventListener('dblclick', () => {
-    apply(el, cfg.def);
-    lsSet(key, String(cfg.def));
-  });
-  return el;
 }
 
 /** 設定を開いたまま、ほかの画面へ移ろうとしたとき。未保存の変更があれば、移らず、設定の中で、保存するかを聞く。 */
@@ -1813,14 +1773,12 @@ function headerView(): HTMLElement {
   return h(
     'header',
     { class: 'topbar' },
-    iconButton('panel-left', m.toggleLeftTitle, state.leftOpen, toggleLeft),
     repoDisplay,
     baseChip(),
     h('span', { class: 'spacer' }),
     iconButton('chart', m.usageTitle, !!state.usage, () => void toggleUsage(), m.usageBtn),
     iconButton('report', m.reportTitle, !!state.report, () => void toggleReport(), m.reportBtn),
     iconButton('gear', m.settingsTitle, !!state.settings, toggleSettings, m.settingsBtn),
-    iconButton('panel-right', m.toggleRightTitle, state.rightOpen, toggleRight),
   );
 }
 
@@ -2221,33 +2179,6 @@ function noteBox(note: string): HTMLElement {
 }
 
 // ── 右: 履歴 ──────────────────────────────────────────────────────────────────
-let pendingScrollTarget: string | null = null;
-
-function scrollToReviewCard(id: string): void {
-  if (state.selected) {
-    state.selected = null;
-  }
-  if (!state.expandedRunLogs.has(id)) {
-    state.expandedRunLogs.add(id);
-  }
-  pendingScrollTarget = `review-${id}`;
-
-  if (!state.runLogReviewCache.has(id)) {
-    state.loadingRunLogs.add(id);
-    render();
-    void (async () => {
-      try {
-        const rev = await invoke<ReviewView | null>('get_review', { id });
-        if (rev) state.runLogReviewCache.set(id, rev);
-      } finally {
-        state.loadingRunLogs.delete(id);
-        render();
-      }
-    })();
-  } else {
-    render();
-  }
-}
 
 function rightPanel(): HTMLElement {
   const lang = getAppLang();
@@ -2265,8 +2196,7 @@ function rightPanel(): HTMLElement {
       state.preview?.repo ?? state.repo,
       emptyText,
       {
-        open: (id) => scrollToReviewCard(id),
-        detail: (id) => scrollToReviewCard(id),
+        open: (id) => void select(id),
         toggle: togglePick,
         toggleDay: (key) => {
           if (state.historyDays.has(key)) state.historyDays.delete(key);
@@ -2278,7 +2208,7 @@ function rightPanel(): HTMLElement {
         remove: () => void removePicked(),
       },
       state.historyDays,
-      state.historyCollapsed,
+      false,
       () => {
         state.historyCollapsed = !state.historyCollapsed;
         render();
@@ -3006,108 +2936,80 @@ function relatedSection(rel: Related | null): HTMLElement | null {
   );
 }
 
+/**
+ * ログの 1 行（レビュー 1 回ぶんの記録）。履歴と同じ書式の行。押すと、行の下に、実行の詳細・結果の内容・差分が開く。
+ * 「結果を開く」で、結果のページ（戻ると、ログ）。
+ */
 function runLogReviewCard(s: ReviewSummary, lang: Lang): HTMLElement {
   const m = msg(lang).mainUi;
-  const chip = (cls: string, label: string) => h('span', { class: `badge ${cls}` }, label);
   const isExpanded = state.expandedRunLogs.has(s.id);
-  const isLoading = state.loadingRunLogs.has(s.id);
-  const cachedReview = state.runLogReviewCache.get(s.id);
+  const cached = state.runLogReviewCache.get(s.id);
 
-  const handleToggle = (e?: Event) => {
-    if (e) e.stopPropagation();
+  const toggle = (): void => {
     if (state.expandedRunLogs.has(s.id)) {
       state.expandedRunLogs.delete(s.id);
       render();
-    } else {
-      state.expandedRunLogs.add(s.id);
-      const hasCache = state.runLogReviewCache.has(s.id);
-      if (!hasCache) {
-        state.loadingRunLogs.add(s.id);
+      return;
+    }
+    state.expandedRunLogs.add(s.id);
+    const hasCache = state.runLogReviewCache.has(s.id);
+    if (!hasCache) state.loadingRunLogs.add(s.id);
+    render();
+    if (hasCache) return;
+    void (async () => {
+      try {
+        const rev = await invoke<ReviewView | null>('get_review', { id: s.id });
+        if (rev) state.runLogReviewCache.set(s.id, rev);
+      } finally {
+        state.loadingRunLogs.delete(s.id);
         render();
       }
-      void (async () => {
-        try {
-          const rev = await invoke<ReviewView | null>('get_review', { id: s.id });
-          if (rev) state.runLogReviewCache.set(s.id, rev);
-        } finally {
-          if (!hasCache) state.loadingRunLogs.delete(s.id);
-          render();
-        }
-      })();
-    }
+    })();
   };
 
-  // 展開時の詳細コンテンツ（指摘一覧）
-  let expandedContent: HTMLElement | null = null;
+  let detail: HTMLElement | null = null;
   if (isExpanded) {
-    if (isLoading) {
-      expandedContent = h('div', { class: 'runlog-card-detail loading' }, h('span', { class: 'muted' }, '読み込み中…'));
-    } else if (cachedReview) {
-      const findingsList = cachedReview.findings.length
-        ? cachedReview.findings.map((f, i) =>
-            findingCard(
-              cachedReview.id,
-              f,
-              i,
-              cachedReview.triage[i] ?? 'new',
-              cachedReview.carries?.[i],
-              false,
-              cachedReview.finding_notes?.[i],
-              true,
-              cachedReview.agent_reports?.[i],
-            ),
-          )
-        : [h('p', { class: 'muted runlog-no-findings' }, '指摘はありませんでした')];
-
-      expandedContent = h(
-        'div',
-        { class: 'runlog-card-detail', onclick: (e: Event) => e.stopPropagation() },
-        h('div', { class: 'runlog-detail-findings findings' }, ...findingsList),
-      );
+    if (state.loadingRunLogs.has(s.id)) {
+      detail = h('div', { class: 'runlog-card-detail loading' }, h('span', { class: 'muted' }, m.runLogDetail.loading));
+    } else if (cached) {
+      detail = runLogDetail(cached, lang, () => void select(s.id));
     } else {
-      expandedContent = h(
-        'div',
-        { class: 'runlog-card-detail error', onclick: (e: Event) => e.stopPropagation() },
-        h('p', { class: 'muted runlog-load-error' }, 'レビュー詳細を取得できませんでした。'),
-      );
+      detail = h('div', { class: 'runlog-card-detail error', onclick: (e: Event) => e.stopPropagation() }, h('p', { class: 'muted' }, m.runLogDetail.loadFailed));
     }
   }
 
+  return reviewRow(s, lang, {
+    cls: isExpanded ? 'expanded' : '',
+    onOpen: toggle,
+    extra: detail,
+  });
+}
+
+/** 4 つのページの先頭に付ける、共通の見出し（タイトル・補足・右側の操作）。 */
+function pageHeader(title: string, opts: { note?: string; actions?: Node | null } = {}): HTMLElement {
   return h(
-    'div',
+    'header',
+    { class: 'page-head' },
+    h('h2', { class: 'page-title' }, title),
+    opts.note ? h('span', { class: 'muted page-note' }, opts.note) : null,
+    h('span', { class: 'spacer' }),
+    opts.actions ?? null,
+  );
+}
+
+function runLogRefreshButton(): HTMLElement {
+  const hm = msg(getAppLang()).hookUi;
+  return h(
+    'button',
     {
-      class: `runlog-card ${isExpanded ? 'expanded' : ''}`,
-      id: `review-${s.id}`,
-      onclick: () => handleToggle(),
+      class: 'small',
+      disabled: state.hook.busy,
+      onclick: () => {
+        void loadHook();
+        void refreshHistory();
+      },
     },
-    h(
-      'div',
-      { class: 'runlog-card-head' },
-      h(
-        'div',
-        { class: 'runlog-card-meta' },
-        h('span', { class: 'muted runlog-time' }, formatWhen(s.created_at, lang)),
-        h('strong', { class: 'runlog-title' }, reviewName(s.recipe_title, s.seq, lang)),
-        s.failed ? chip('bad', msg(lang).historyView.failedBadge) : chip('ok', '完了'),
-        h('span', { class: 'muted' }, s.provider_label),
-      ),
-      h(
-        'div',
-        { class: 'runlog-card-actions' },
-        h(
-          'span',
-          { class: `runlog-findings-badge ${s.findings > 0 ? 'has-findings' : ''}` },
-          msg(lang).historyView.findingsCount(s.findings),
-        ),
-        h(
-          'button',
-          { class: 'small primary', onclick: (e: Event) => handleToggle(e) },
-          isExpanded ? m.closeDetailBtn : m.viewDetailBtn,
-        ),
-      ),
-    ),
-    s.counts ? countsLine(s.counts, lang) : null,
-    expandedContent,
+    hm.refresh,
   );
 }
 
@@ -3119,25 +3021,6 @@ function runLogFeedView(): HTMLElement {
   const hookRuns = state.hook.status?.recent ?? [];
   const historyItems = state.history;
 
-  const head = h(
-    'div',
-    { class: 'runlog-head' },
-    h('h3', {}, hm.lastRunTitle),
-    h('span', { class: 'spacer' }),
-    h(
-      'button',
-      {
-        class: 'small',
-        disabled: state.hook.busy,
-        onclick: () => {
-          void loadHook();
-          void refreshHistory();
-        },
-      },
-      hm.refresh,
-    ),
-  );
-
   const unreadableNote = state.hook.status?.log_unreadable && state.hook.status.log_unreadable > 0
     ? h('p', { class: 'err hooklog-unreadable' }, hm.logUnreadable(state.hook.status.log_unreadable))
     : null;
@@ -3147,48 +3030,45 @@ function runLogFeedView(): HTMLElement {
     return h(
       'div',
       { class: 'result runlog-feed' },
-      head,
       unreadableNote,
       h('p', { class: 'muted' }, m.resultEmpty),
     );
   }
 
-  const hookCards = hookRuns.map((r) => runLogView(r, lang));
-
-  // 履歴レビューを日付ごとにグルーピング
-  const groups: { key: string; label: string; items: ReviewSummary[] }[] = [];
-  for (const s of historyItems) {
-    const key = dayKey(s.created_at);
+  // フックの実行と、レビューを、1 つの時系列（新しい順）に、日付ごとに並べる。どちらも、同じ書式の行
+  type Entry = { t: number; el: () => HTMLElement };
+  const entries: Entry[] = [
+    ...hookRuns.map((r): Entry => ({
+      t: r.started_at_ms,
+      el: () =>
+        hookRunRow(r, lang, {
+          expanded: state.expandedHookRuns.has(r.run),
+          onToggle: () => {
+            if (state.expandedHookRuns.has(r.run)) state.expandedHookRuns.delete(r.run);
+            else state.expandedHookRuns.add(r.run);
+            render();
+          },
+        }),
+    })),
+    ...historyItems.map((s): Entry => ({ t: s.created_at, el: () => runLogReviewCard(s, lang) })),
+  ].sort((a, b) => b.t - a.t);
+  const groups: { key: string; label: string; items: Entry[] }[] = [];
+  for (const en of entries) {
+    const key = dayKey(en.t);
     const last = groups[groups.length - 1];
-    if (last && last.key === key) {
-      last.items.push(s);
-    } else {
-      groups.push({ key, label: dayLabel(s.created_at, lang), items: [s] });
-    }
+    if (last && last.key === key) last.items.push(en);
+    else groups.push({ key, label: dayLabel(en.t, lang), items: [en] });
   }
-
-  const reviewGroupSections = groups.map((g) =>
+  const sections = groups.map((g) =>
     h(
       'div',
-      { class: 'runlog-day-group' },
-      h(
-        'div',
-        { class: 'runlog-day-header' },
-        h('span', { class: 'runlog-day-label' }, g.label),
-        h('span', { class: 'muted runlog-day-count' }, `(${g.items.length})`),
-      ),
-      h('div', { class: 'runlog-day-cards' }, ...g.items.map((s) => runLogReviewCard(s, lang))),
+      { class: 'hday' },
+      h('div', { class: 'hday-h static' }, `${g.label} (${g.items.length})`),
+      h('ul', { class: 'history' }, ...g.items.map((en) => en.el())),
     ),
   );
 
-  return h(
-    'div',
-    { class: 'result runlog-feed' },
-    head,
-    unreadableNote,
-    ...hookCards,
-    ...reviewGroupSections,
-  );
+  return h('div', { class: 'result runlog-feed' }, unreadableNote, ...sections);
 }
 
 /** 結果（指摘・差分・送った内容・応答・詳細）。 */
@@ -3197,7 +3077,8 @@ function resultView(): HTMLElement {
   const lang = getAppLang();
   const m = msg(lang).mainUi;
   if (!r) {
-    return runLogFeedView();
+    // 結果のページは、結果を開いているときだけ（render が、来たページへ戻す）。ここへは来ない
+    return h('div', { class: 'result empty' });
   }
   if (isRecordTab(state.tab)) state.recordSub = state.tab;
   const tabs: [Tab, string, boolean][] = [
@@ -3205,17 +3086,19 @@ function resultView(): HTMLElement {
     ['diff', m.tabDiff, state.tab === 'diff'],
     [state.recordSub, m.tabRecord, isRecordTab(state.tab)],
   ];
+  const backLabel = state.backTo === 'history' ? m.backToHistory : state.backTo === 'newreview' ? m.closeResult : m.backToLog;
   const backBtn = h(
     'button',
     {
       class: 'small linkish back-to-log-btn',
-      title: m.backToLog,
+      title: backLabel,
       onclick: () => {
         state.selected = null;
+        state.page = state.backTo;
         render();
       },
     },
-    m.backToLog,
+    backLabel,
   );
   const head = h(
     'div',
@@ -3249,6 +3132,30 @@ function resultView(): HTMLElement {
       )
     : null;
 
+  // 指摘のカード（対応済みは、下に置く。「対応済みにする」を押した直後に、下へ移る）
+  const findingCards = (): HTMLElement[] =>
+    findingOrder(r.findings.length, (i) => isDoneFinding(r.triage[i] ?? 'new', r.finding_notes?.[i], r.agent_reports?.[i]), (i) => r.findings[i].severity)
+      .filter((i) => shownByContinuity(continuityOf(r), state.continuity, i))
+      .map((i) => findingCard(r.id, r.findings[i], i, r.triage[i] ?? 'new', r.carries?.[i], false, r.finding_notes?.[i], true, r.agent_reports?.[i]));
+  const prevTitle = previousSeq(r) ? msg(getAppLang()).mainUi.continuity.panelTitle(reviewName(r.recipe.title, previousSeq(r))) : undefined;
+
+  // 履歴・ログから開いた結果: タイトルの下に指摘のカード、その下に「前回」（タブ・「すべて開く」「取り込む」の行・まとめて CLI に渡す欄は無い。差分・送った内容は、ログで見る）
+  if (state.backTo !== 'newreview') {
+    return h(
+      'div',
+      { class: 'result result-compact' },
+      head,
+      r.error ? h('p', { class: 'err' }, h('span', {}, m.execFailed(r.error))) : null,
+      ...(r.notes ?? []).map((n) => h('p', { class: 'note-line' }, n)),
+      r.parse_error ? h('p', { class: 'err' }, m.parseFailed(r.parse_error)) : null,
+      !r.error && !r.parse_error && !r.findings.length ? h('p', { class: 'summary' }, m.noFindings) : null,
+      ...findingCards(),
+      // 「前回」の帯と変化は、指摘のカードの下（説明が長いので、指摘を先に見せる）
+      continuityBand(r),
+      fatesPanel(filteredFates(r, continuityOf(r), state.continuity), prevTitle),
+    );
+  }
+
   let body: HTMLElement;
   if (state.tab === 'findings') {
     body = h(
@@ -3265,12 +3172,10 @@ function resultView(): HTMLElement {
       r.parse_error ? h('p', { class: 'err' }, m.parseFailed(r.parse_error)) : null,
       !r.error && !r.parse_error && !r.findings.length ? h('p', { class: 'summary' }, m.noFindings) : null,
       r.findings.length ? handoffBar(r, true) : null,
+      ...findingCards(),
+      // 「前回」の帯と変化は、指摘のカードの下（履歴・ログから開いた結果と同じ並び）
       continuityBand(r),
-      fatesPanel(filteredFates(r, continuityOf(r), state.continuity), previousSeq(r) ? msg(getAppLang()).mainUi.continuity.panelTitle(reviewName(r.recipe.title, previousSeq(r))) : undefined),
-      // 対応済みは、下に置く（「対応済みにする」を押した直後に、下へ移る）
-      ...findingOrder(r.findings.length, (i) => isDoneFinding(r.triage[i] ?? 'new', r.finding_notes?.[i], r.agent_reports?.[i]), (i) => r.findings[i].severity)
-        .filter((i) => shownByContinuity(continuityOf(r), state.continuity, i))
-        .map((i) => findingCard(r.id, r.findings[i], i, r.triage[i] ?? 'new', r.carries?.[i], false, r.finding_notes?.[i], true, r.agent_reports?.[i])),
+      fatesPanel(filteredFates(r, continuityOf(r), state.continuity), prevTitle),
       r.findings.length ? handoffPreview(handoffInfo(r), state.handoffUi, handoffActs(), state.agents) : null,
     );
   } else if (state.tab === 'diff') {
@@ -3367,62 +3272,73 @@ function detailView(): HTMLElement {
   if (state.usage) {
     return h('main', { class: 'detail' }, usagePanel(state.usage, { setPeriod: setUsagePeriod, close: () => ((state.usage = null), render()) }, lang));
   }
+  // 設定・レポート・使用量を開いていないときは、上部タブで選んだページ
+  const pm = msg(lang).mainUi;
+  if (state.page === 'repos') return h('main', { class: 'detail page page-aside' }, pageHeader(pm.pageTabRepos), leftPanel());
+  if (state.page === 'history') {
+    const n = state.history.length;
+    return h('main', { class: 'detail page page-aside' }, pageHeader(n ? `${pm.pageTabHistory} (${n})` : pm.pageTabHistory), rightPanel());
+  }
+  if (state.page === 'log') {
+    return h(
+      'main',
+      { class: 'detail page' },
+      pageHeader(pm.pageTabLog, { note: msg(lang).hookUi.lastRunTitle, actions: runLogRefreshButton() }),
+      runLogFeedView(),
+    );
+  }
+  if (state.page === 'result') return h('main', { class: 'detail page' }, pageHeader(state.backTo === 'history' ? pm.pageTabHistory : pm.pageTabLog), resultView());
   const r = currentRecipe();
   const tool = r ? r.kind === 'tool' : false;
-  // 実行バーと「送る内容」は、1 枚のカードにまとめる（指摘を、できるだけ上から始める）
+  // 実行バーと「送る内容」は、1 枚のカードにまとめる
   const bar = recipeBarSection();
   if (!bar.classList.contains('recipe-bar-folded')) {
     bar.append(h('div', { class: 'bar-foot' }, recipeInfoSection(), sendBox(tool)));
   }
-  return h('main', { class: 'detail' }, bar, resultView());
+  // 実行した直後の結果は、実行バーの下に出す（そこへスクロールする）。履歴・ログから開いた結果は、結果のページ
+  const below = state.selected && state.backTo === 'newreview' ? h('div', { class: 'result-anchor' }, resultView()) : null;
+  return h('main', { class: 'detail page' }, pageHeader(pm.pageTabNewReview), bar, below);
 }
+
+/** 前回の描画で開いていたページ。ページが変わったときは、スクロール位置を引き継がない。 */
+let lastRenderedPage: Page | null = null;
+/** 実行が終わったとき、次の描画で、実行バーの下の結果へスクロールする。 */
+let scrollToResultNext = false;
 
 function render(): void {
   const root = getRoot();
   if (!root) return;
-  const keep = ['.left', '.detail', '.right'].map((sel) => root.querySelector(sel)?.scrollTop ?? 0);
+  // 結果を閉じた（履歴から消した・リポジトリを替えた）ときは、来たページへ戻す
+  if (state.page === 'result' && !state.selected) state.page = state.backTo;
+  const pageChanged = lastRenderedPage !== state.page;
+  lastRenderedPage = state.page;
+  const keepTop = pageChanged ? 0 : (root.querySelector('.detail')?.scrollTop ?? 0);
+  const m = msg(getAppLang()).mainUi;
+  // 設定・レポート・使用量を開いているあいだは、どのタブも「いま」にしない
+  const inMode = !!(state.settings || state.report || state.usage);
   root.replaceChildren(
     h(
       'div',
-      { class: `app ${state.leftOpen ? '' : 'no-left'} ${state.rightOpen ? '' : 'no-right'}`, style: `--lw: ${state.leftW}px; --rw: ${state.rightW}px` },
-      h('div', { class: 'top' }, headerView(), baseForm()),
+      { class: 'app' },
       h(
         'div',
-        { class: 'body' },
-        state.leftOpen ? leftPanel() : null,
-        detailView(),
-        state.rightOpen ? rightPanel() : null,
-        state.leftOpen ? sideResizer('left') : null,
-        state.rightOpen ? sideResizer('right') : null,
+        { class: 'top' },
+        headerView(),
+        pageTabs(
+          inMode ? null : state.page === 'result' ? (state.backTo === 'newreview' ? null : state.backTo) : state.page,
+          { nav: m.pageTabsLabel, repos: m.pageTabRepos, history: m.pageTabHistory, log: m.pageTabLog, newreview: m.pageTabNewReview },
+          goPage,
+        ),
+        baseForm(),
       ),
+      h('div', { class: 'body' }, detailView()),
     ),
   );
-  ['.left', '.detail', '.right'].forEach((sel, i) => {
-    const el = root.querySelector(sel);
-    if (el) {
-      if (sel === '.detail' && pendingScrollTarget) {
-        // アンカー移動対象があるときは前回の位置に復元しない
-      } else {
-        el.scrollTop = keep[i] ?? 0;
-      }
-    }
-  });
-
-  if (pendingScrollTarget) {
-    const targetId = pendingScrollTarget;
-    requestAnimationFrame(() => {
-      const el = document.getElementById(targetId);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.remove('runlog-highlight');
-        void el.offsetWidth;
-        el.classList.add('runlog-highlight');
-        const reviewId = targetId.replace(/^review-/, '');
-        if (!state.loadingRunLogs.has(reviewId)) {
-          pendingScrollTarget = null;
-        }
-      }
-    });
+  const detailEl = root.querySelector('.detail');
+  if (detailEl) detailEl.scrollTop = keepTop;
+  if (scrollToResultNext) {
+    scrollToResultNext = false;
+    root.querySelector('.result-anchor')?.scrollIntoView({ block: 'start' });
   }
 }
 

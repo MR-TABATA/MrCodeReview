@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { runLogView, currentRecipes, currentSpecs, parseSpecLines, specsToText, enableBlock, groupedRecipes, groupOf, hookSection, newHookUi, selectableRecipes, type HookActions, type HookUiState } from './hookview';
+import { hookRunRow, currentRecipes, currentSpecs, parseSpecLines, specsToText, enableBlock, groupedRecipes, groupOf, hookSection, newHookUi, selectableRecipes, type HookActions, type HookUiState } from './hookview';
 import type { HookRun, HookStatus, Recipe } from './types';
 
 const recipe = (id: string, over: Partial<Recipe> = {}): Recipe => ({ id, title: `観点 ${id}`, source: 'builtin', prompt: '', kind: 'llm', ...over });
@@ -22,6 +22,7 @@ const status = (over: Partial<HookStatus> = {}): HookStatus => ({
 });
 const ui = (over: Partial<HookUiState> = {}): HookUiState => ({ ...newHookUi(), status: status(), ...over });
 const noop: HookActions = { toggle: () => {}, save: () => {}, pick: () => {}, refresh: () => {} };
+const rowOf = (r: HookRun, lang: 'ja' | 'en' = 'ja', expanded = true): HTMLElement => hookRunRow(r, lang, { expanded, onToggle: () => {} });
 const text = (el: HTMLElement): string => el.textContent ?? '';
 const buttons = (el: HTMLElement): HTMLButtonElement[] => [...el.querySelectorAll('button')];
 const btn = (el: HTMLElement, label: string): HTMLButtonElement => buttons(el).find((b) => b.textContent === label)!;
@@ -229,9 +230,9 @@ describe('hookSection', () => {
     expect(picked).toEqual([['bugs', 'errors']]);
   });
 
-  it('runLogView: コミット・状態・観点ごとの結果が出る', () => {
+  it('hookRunRow: コミット・状態・観点ごとの結果が出る', () => {
     const r = run({ commit: 'bbb2222', subject: '新しい' });
-    const t = text(runLogView(r, 'ja'));
+    const t = text(rowOf(r, 'ja'));
     expect(t).toContain('コミット bbb2222「新しい」');
     expect(t).toContain('[1/2]');
     expect(t).toContain('指摘 3 件');
@@ -347,15 +348,28 @@ const run = (over: Partial<HookRun> = {}): HookRun => ({
   ...over,
 });
 
-describe('runLogView', () => {
+describe('hookRunRow（ログの、フックの行）', () => {
   it('完了: コミット・状態・件数・全体の時間・各観点・終わりのメッセージ', () => {
-    const t = text(runLogView(run(), 'ja'));
+    const t = text(rowOf(run(), 'ja'));
     expect(t).toContain('コミット abc1234「件名」');
     expect(t).toContain('完了');
-    expect(t).toContain('指摘 3 件・11.6 秒');
+    expect(t).toContain('指摘 3 件');
+    expect(t).toContain('11.6 秒');
     expect(t).toContain('[1/2]');
     expect(t).toContain('bugs');
     expect(t).toContain('→ レビュー完了（指摘あり 3 件）');
+  });
+
+  it('閉じているときは、内訳を出さない。1 行は、履歴と同じ列（日時・フック＋コミット・指摘の件数・所要時間）。押すと onToggle', () => {
+    let toggled = 0;
+    const el = hookRunRow(run(), 'ja', { expanded: false, onToggle: () => toggled++ });
+    expect(el.querySelector('.hookstep')).toBeNull();
+    expect([...el.children].map((c) => c.className.split(' ')[0])).toEqual(['hlead', 'hwhen', 'h1', 'hfind', 'hcounts-empty']);
+    expect(el.querySelector('.h1 .badge')?.textContent).toBe('フック');
+    expect(el.querySelector('.hfind')?.textContent).toBe('指摘 3 件');
+    expect(el.querySelector('.hdur')?.textContent).toBe('11.6 秒');
+    el.click();
+    expect(toggled).toBe(1);
   });
 
   it('失敗した観点は、理由つきで赤く出る。失敗した実行は、失敗の印が付く', () => {
@@ -368,25 +382,27 @@ describe('runLogView', () => {
         { recipe: 'spec', index: 2, total: 2, ok: false, findings: 0, ms: 200, error: 'API キーがありません' },
       ],
     });
-    const el = runLogView(failed, 'ja');
+    const el = rowOf(failed, 'ja');
     expect(el.className).toContain('hookrun-failed');
+    expect(el.tagName).toBe('LI');
     expect(el.querySelector('.hookstep-failed')!.textContent).toContain('失敗: API キーがありません');
     expect(text(el)).toContain('失敗');
   });
 
   it('実行中: まだ終わっていない次の観点が「実行中…」と出る。件数や時間は、まだ出さない', () => {
     const running = run({ state: 'running', code: null, message: null, findings: null, ms: null, steps: [{ recipe: 'bugs', index: 1, total: 2, ok: true, findings: 3, ms: 7500, error: null }] });
-    const el = runLogView(running, 'ja');
+    const el = rowOf(running, 'ja');
     expect(text(el)).toContain('実行中');
     expect(el.querySelector('.hookstep-running')!.textContent).toContain('spec');
     expect(el.querySelector('.hookstep-running')!.textContent).toContain('実行中…');
-    expect(el.querySelector('.hookrun-head')!.textContent).not.toContain('秒');
+    expect(el.querySelector('.hdur')!.textContent).toBe('');
+    expect(el.querySelector('.hfind')!.textContent).toBe('');
   });
 
   it('コミットの記録が無い従来の 1 行も、出せる。中断も、そう出る。英語でも出る', () => {
-    expect(text(runLogView(run({ commit: null, subject: null, steps: [] }), 'ja'))).toContain('コミットの記録なし');
-    expect(text(runLogView(run({ state: 'aborted' }), 'ja'))).toContain('中断');
-    expect(text(runLogView(run(), 'en'))).toContain('Commit abc1234 "件名"');
+    expect(text(rowOf(run({ commit: null, subject: null, steps: [] }), 'ja'))).toContain('コミットの記録なし');
+    expect(text(rowOf(run({ state: 'aborted' }), 'ja'))).toContain('中断');
+    expect(text(rowOf(run(), 'en'))).toContain('Commit abc1234 "件名"');
   });
 
   it('設定画面（hookSection）: 最近の実行ログがあっても実行ログ欄は表示されない', () => {

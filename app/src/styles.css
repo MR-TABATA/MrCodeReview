@@ -254,10 +254,8 @@ button.run.save { width: auto; padding: 6px 22px; }
 .hookruns-head { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
 .hookruns-head h4 { margin: 0; }
 .hookruns { display: grid; gap: 8px; margin-top: 8px; }
-.hookrun { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--panel); }
-.hookrun-failed { border-color: var(--bad-line); background: var(--bad-soft); }
-.hookrun-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
-.hookrun-commit { overflow-wrap: anywhere; }
+/* フックの実行の行は、履歴と同じ書式（.history li）。ここは、中身だけ */
+.hookrun-commit { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hookrun-state { padding: 0 8px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
 .hookrun-state-running { color: var(--accent); background: var(--accent-bg); }
 .hookrun-state-done { color: var(--ok); background: var(--ok-bg); }
@@ -322,17 +320,29 @@ button.small.run { width: auto; padding: 3px 10px; font-size: 12px; }
 @media (max-width: 899px) { .ibtn.lbl { width: 34px; padding: 0; } .ibtn .ilabel { display: none; } }
 .spacer { flex: 1; }
 
-/* 本体: 左 / メイン / 右 */
-.app { --lw: 220px; --rw: 200px; }
-.body { position: relative; display: grid; grid-template-columns: var(--lw) minmax(0, 1fr) var(--rw); min-height: 0; }
-.app.no-left .body { grid-template-columns: minmax(0, 1fr) var(--rw); }
-.app.no-right .body { grid-template-columns: var(--lw) minmax(0, 1fr); }
-.app.no-left.no-right .body { grid-template-columns: minmax(0, 1fr); }
-/* サイドバーの境目（ドラッグで幅を変える） */
-.resizer { position: absolute; top: 0; bottom: 0; width: 9px; cursor: col-resize; z-index: 5; touch-action: none; }
-.resizer.l { left: calc(var(--lw) - 4px); }
-.resizer.r { right: calc(var(--rw) - 4px); }
-.resizer:hover, .resizer.drag { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px 6px, transparent 6px); }
+/* 上部タブ（1 ページ） */
+.pagetabs { display: flex; gap: 2px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.pagetab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); padding: 8px 14px; font-size: 13px; font-weight: 600; width: auto; }
+.pagetab:hover { color: var(--text); }
+.pagetab.on { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* 本体: 1 ページ */
+.body { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+/* リポジトリ・履歴のページは、これまでの左右のパネルの部品を、そのまま置く（幅は、広げすぎない） */
+/* 4 つのページは、同じ幅の枠にそろえる（ページを切り替えても、中身の左右が動かない）。スクロールバーは、窓の端のまま */
+.detail.page { padding-inline: max(24px, calc((100% - 960px) / 2)); }
+/* ページの見出し（4 ページ共通） */
+.page-head { display: flex; align-items: baseline; gap: 12px; padding-bottom: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.page-title { margin: 0; font-size: 16px; font-weight: 600; }
+.page-note { font-size: 12px; }
+/* リポジトリ・履歴のパネルの中の見出しは、ページの見出しと重なるので、文字だけ隠す（追加ボタン・全選択は残す） */
+.page-aside .repo-sidebar-header h2, .page-aside .hhead .hhead-title.clickable, .page-aside .scope-line { display: none; }
+/* 履歴のページは、ログと同じ幅・同じ左端（パネルの枠・余白は付けない） */
+.page-aside > .right { border: 0; background: transparent; }
+.page-aside > .right .history-section { padding: 0; border: 0; }
+.page-aside > .left { border: 1px solid var(--line); border-radius: 10px; overflow: visible; }
+.page-aside > .right { overflow: visible; }
+.review-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .left, .right { background: var(--panel); overflow: auto; min-height: 0; }
 .left { border-right: 1px solid var(--line); }
 .right { border-left: 1px solid var(--line); }
@@ -1443,87 +1453,8 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 20px;
-  max-width: 900px;
-  margin: 0 auto;
-}
-.runlog-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line);
-}
-.runlog-head h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-.runlog-card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px 16px;
-  background: var(--panel);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
-  cursor: pointer;
-}
-.runlog-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-.runlog-card.runlog-highlight {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-bg), 0 4px 16px rgba(56, 139, 253, 0.25);
-  animation: runlog-pulse 2s ease-out;
-}
-@keyframes runlog-pulse {
-  0% { transform: scale(1.01); background-color: var(--accent-bg); }
-  50% { background-color: var(--accent-bg); }
-  100% { transform: scale(1); background-color: var(--panel); }
-}
-.runlog-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.runlog-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-.runlog-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.runlog-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-.runlog-card-body {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.runlog-findings-badge {
-  font-size: 12px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--subtle);
-}
-.runlog-findings-badge.has-findings {
-  background: var(--warn-bg);
-  color: var(--warn);
+  /* 幅と余白は、ページの枠（.detail.page）が持つ */
+  padding: 0;
 }
 .back-to-log-btn {
   display: inline-flex;
@@ -1537,63 +1468,44 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 }
 
 /* ── 日付ごとのグルーピング ── */
-.runlog-day-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-}
-.runlog-day-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  padding: 4px 0;
-  border-bottom: 1px dashed var(--line);
-}
-.runlog-day-count {
-  font-size: 11.5px;
-}
-.runlog-day-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 
-/* ── インライン展開の詳細 ── */
-.runlog-card.expanded {
-  border-color: var(--accent);
-}
-.runlog-card-detail {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.runlog-card-detail.loading {
-  padding: 12px 0;
-  text-align: center;
-}
-.runlog-detail-findings {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 4px;
-}
-.runlog-detail-findings .finding.fc {
-  background: var(--bg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  margin-bottom: 0;
-}
-.runlog-detail-findings .finding.fc:hover {
-  border-color: var(--accent);
-}
-.runlog-no-findings {
-  padding: 8px 0;
-  font-size: 13px;
-  text-align: center;
-}
+/* ── ログの 1 行を開いたときの、実行の詳細（実行・入力） ── */
+.runlog-card-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.runlog-card-detail.loading { padding: 12px 0; text-align: center; }
+.rld { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+.rld-group h4 { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+.rld-row { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 8px; padding: 2px 0; font-size: 13px; }
+.rld-value { overflow-wrap: anywhere; }
+.rld-foot { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+@media (max-width: 899px) { .rld { grid-template-columns: minmax(0, 1fr); } }
+.rld-wide { grid-column: 1 / -1; }
+.rld-finding { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--bg); }
+.rld-finding-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.rld-detail { margin: 6px 0; font-size: 13px; white-space: pre-wrap; }
+.rld-quote { margin: 6px 0; }
+.rld-pre { margin: 4px 0 0; padding: 8px 10px; background: var(--code-bg); border-radius: 6px; font-size: 12px; overflow: auto; white-space: pre; }
+.rld-diff summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 600; }
+.rld-diff-pre { max-height: 360px; }
+
+/* 履歴の行: 1 行・交互の色・罫線 */
+.history { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.history li { align-items: center; border-radius: 0; border: 0; border-bottom: 1px solid var(--line); padding: 7px 10px; background: var(--panel); }
+.history li:last-child { border-bottom: 0; }
+.history li:nth-child(even):not(.on):not(.picked):not(.expanded) { background: color-mix(in srgb, var(--text) 7%, var(--panel)); }
+.history li:hover:not(.on):not(.picked):not(.expanded) { background: var(--accent-bg); }
+.history .hwhen { flex: 0 0 13em; color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.history .h1 { flex: 1 1 0; min-width: 0; }
+.history .hfind { flex: 0 0 5.5em; color: var(--muted); font-size: 12px; white-space: nowrap; text-align: right; }
+.history li .hcounts-empty { flex: 0 0 15em; }
+.history li .hcounts { flex: 0 0 15em; margin-top: 0; flex-wrap: nowrap; justify-content: flex-end; }
+
+/* ログの行: 履歴と同じ書式。開いたときの詳細は、行の下に、全幅で出す */
+.history li { flex-wrap: wrap; }
+.history li .hlead { flex: 0 0 18px; display: flex; align-items: center; }
+.history li .hlead .pick { margin: 0; }
+.history li .runlog-card-detail { flex: 1 1 100%; cursor: default; }
+.history li.expanded { background: var(--accent-bg); }
+.hday-h.static { cursor: default; }
+.hday-h.static:hover { color: var(--muted); }
+.history .hdur { text-align: right; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.history li.hookrun-failed .hookrun-commit { color: var(--bad); }

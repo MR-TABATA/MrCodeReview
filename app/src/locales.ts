@@ -181,6 +181,7 @@ export interface Messages {
     logUnreadable: (n: number) => string;
     runCommit: (commit: string, subject: string) => string;
     runNoCommit: string;
+    runKind: string;
     runState: (state: string) => string;
     runSummary: (findings: number | null, secs: string | null) => string;
     stepOk: (findings: number) => string;
@@ -392,14 +393,17 @@ export interface Messages {
     baseFormHint: string;
     baseFormSetBtn: string;
     baseFormCancelBtn: string;
-    toggleLeftTitle: string;
+    pageTabsLabel: string;
+    pageTabRepos: string;
+    pageTabHistory: string;
+    pageTabLog: string;
+    pageTabNewReview: string;
     usageTitle: string;
     usageBtn: string;
     reportTitle: string;
     reportBtn: string;
     settingsTitle: string;
     settingsBtn: string;
-    toggleRightTitle: string;
     llmHeading: string;
     llmSubtitle: string;
     byokKeyPlaceholder: string;
@@ -502,6 +506,41 @@ export interface Messages {
     reportThisReviewTitle: string;
     reportThisReviewBtn: string;
     backToLog: string;
+    backToHistory: string;
+    closeResult: string;
+    runLogDetail: {
+      groupRun: string;
+      groupInput: string;
+      recipe: string;
+      provider: string;
+      duration: string;
+      tokens: string;
+      tokensValue: (input: number | null, output: number | null) => string;
+      cost: string;
+      failure: string;
+      base: string;
+      baseWorking: string;
+      baseCommit: (spec: string, subject: string) => string;
+      diff: string;
+      diffValue: (files: number, bytes: number) => string;
+      specs: string;
+      none: string;
+      related: string;
+      relatedValue: (snippets: number) => string;
+      prompt: string;
+      promptValue: (chars: number) => string;
+      openResult: string;
+      loading: string;
+      loadFailed: string;
+      groupResult: string;
+      noFindings: string;
+      target: string;
+      quote: string;
+      handling: string;
+      handlingNone: string;
+      diffSummary: string;
+      diffMissing: string;
+    };
     viewDetailBtn: string;
     closeDetailBtn: string;
     recordSubDetail: string;
@@ -727,6 +766,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       logUnreadable: (n) => `実行ログに、読めない行が ${n} 行あります（ほかのリポジトリの分を含みます）。`,
       runCommit: (commit, subject) => `コミット ${commit}「${subject}」`,
       runNoCommit: '（コミットの記録なし）',
+      runKind: 'フック',
       runState: (state) => (state === 'running' ? '実行中' : state === 'done' ? '完了' : state === 'failed' ? '失敗' : '中断'),
       runSummary: (findings, secs) => [findings === null ? '' : `指摘 ${findings} 件`, secs ?? ''].filter(Boolean).join('・'),
       stepOk: (findings) => `指摘 ${findings} 件`,
@@ -936,14 +976,17 @@ export const MESSAGES: Record<Lang, Messages> = {
       baseFormHint: 'ここから、いまの状態までの変更を見ます',
       baseFormSetBtn: '決める',
       baseFormCancelBtn: 'やめる',
-      toggleLeftTitle: '左のパネルを開閉',
+      pageTabsLabel: 'ページ',
+      pageTabRepos: 'リポジトリ',
+      pageTabHistory: '履歴',
+      pageTabLog: 'ログ',
+      pageTabNewReview: '新規レビュー',
       usageTitle: 'トークン使用量',
       usageBtn: '使用量',
       reportTitle: 'レポート（成果物にできるレビューの記録）',
       reportBtn: 'レポート',
       settingsTitle: '設定（⌘,）',
       settingsBtn: '設定',
-      toggleRightTitle: '右のパネル（履歴）を開閉',
       llmHeading: 'LLM プロバイダ（BYOK / ローカル設定）',
       llmSubtitle: 'レビュー実行時に使用する LLM モデル・CLI プロバイダを指定します。',
       byokKeyPlaceholder: 'sk-ant-…（Anthropic API キー）',
@@ -1055,6 +1098,41 @@ export const MESSAGES: Record<Lang, Messages> = {
       reportThisReviewTitle: 'このレビューだけを、レポートにします',
       reportThisReviewBtn: 'このレビューをレポートに',
       backToLog: '← 実行ログ一覧',
+      backToHistory: '← 履歴',
+      closeResult: '✕ 結果を閉じる',
+      runLogDetail: {
+        groupRun: '実行',
+        groupInput: '入力',
+        recipe: '観点',
+        provider: 'プロバイダ・モデル',
+        duration: '所要時間',
+        tokens: 'トークン',
+        tokensValue: (i, o) => `入力 ${i === null ? '報告なし' : i.toLocaleString()} / 出力 ${o === null ? '報告なし' : o.toLocaleString()}`,
+        cost: '費用（提供元の報告）',
+        failure: '失敗の理由',
+        base: '比較元',
+        baseWorking: '未コミットの変更（HEAD との差）',
+        baseCommit: (spec, subject) => (subject ? `${spec}（${subject}）から、いまの状態まで` : `${spec} から、いまの状態まで`),
+        diff: '差分',
+        diffValue: (files, bytes) => `${files.toLocaleString()} ファイル・${bytes.toLocaleString()} バイト`,
+        specs: '設計書',
+        none: 'なし',
+        related: '関連コード',
+        relatedValue: (n) => `${n.toLocaleString()} 件の断片を送りました`,
+        prompt: 'プロンプト',
+        promptValue: (chars) => `${chars.toLocaleString()} 文字`,
+        openResult: '結果を開く',
+        loading: '読み込み中…',
+        loadFailed: 'レビューの詳細を取得できませんでした。',
+        groupResult: '結果の内容',
+        noFindings: '指摘はありませんでした。',
+        target: '対象ファイル',
+        quote: '引用',
+        handling: '対応内容',
+        handlingNone: '（記入なし）',
+        diffSummary: 'レビューに送った差分',
+        diffMissing: '差分を、記録から取り出せませんでした。',
+      },
       viewDetailBtn: '詳細を開く',
       closeDetailBtn: '詳細を閉じる',
       recordSubDetail: '詳細',
@@ -1384,6 +1462,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       logUnreadable: (n) => `The run log has ${n} unreadable line(s) (including other repositories').`,
       runCommit: (commit, subject) => `Commit ${commit} "${subject}"`,
       runNoCommit: '(no commit recorded)',
+      runKind: 'Hook',
       runState: (state) => (state === 'running' ? 'Running' : state === 'done' ? 'Done' : state === 'failed' ? 'Failed' : 'Aborted'),
       runSummary: (findings, secs) => [findings === null ? '' : `${findings} findings`, secs ?? ''].filter(Boolean).join(' · '),
       stepOk: (findings) => `${findings} findings`,
@@ -1653,14 +1732,17 @@ export const MESSAGES: Record<Lang, Messages> = {
       baseFormHint: 'Shows changes from here to the working tree',
       baseFormSetBtn: 'Set',
       baseFormCancelBtn: 'Cancel',
-      toggleLeftTitle: 'Toggle left panel',
+      pageTabsLabel: 'Pages',
+      pageTabRepos: 'Repositories',
+      pageTabHistory: 'History',
+      pageTabLog: 'Log',
+      pageTabNewReview: 'New review',
       usageTitle: 'Token usage',
       usageBtn: 'Usage',
       reportTitle: 'Review report',
       reportBtn: 'Report',
       settingsTitle: 'Settings (⌘,)',
       settingsBtn: 'Settings',
-      toggleRightTitle: 'Toggle history panel',
       llmHeading: 'LLM Provider (BYOK / Local Settings)',
       llmSubtitle: 'Select the LLM model or CLI provider used for reviews.',
       byokKeyPlaceholder: 'sk-ant-… (Anthropic API Key)',
@@ -1773,6 +1855,41 @@ export const MESSAGES: Record<Lang, Messages> = {
       reportThisReviewTitle: 'Create report for this review',
       reportThisReviewBtn: 'Report this review',
       backToLog: '← Run log',
+      backToHistory: '← History',
+      closeResult: '✕ Close the result',
+      runLogDetail: {
+        groupRun: 'Run',
+        groupInput: 'Input',
+        recipe: 'Recipe',
+        provider: 'Provider / model',
+        duration: 'Duration',
+        tokens: 'Tokens',
+        tokensValue: (i, o) => `in ${i === null ? 'not reported' : i.toLocaleString()} / out ${o === null ? 'not reported' : o.toLocaleString()}`,
+        cost: 'Cost (as reported)',
+        failure: 'Why it failed',
+        base: 'Compared from',
+        baseWorking: 'Uncommitted changes (against HEAD)',
+        baseCommit: (spec, subject) => (subject ? `${spec} (${subject}) to the current state` : `${spec} to the current state`),
+        diff: 'Diff',
+        diffValue: (files, bytes) => `${files.toLocaleString()} files · ${bytes.toLocaleString()} bytes`,
+        specs: 'Design docs',
+        none: 'None',
+        related: 'Related code',
+        relatedValue: (n) => `${n.toLocaleString()} snippets sent`,
+        prompt: 'Prompt',
+        promptValue: (chars) => `${chars.toLocaleString()} chars`,
+        openResult: 'Open the result',
+        loading: 'Loading…',
+        loadFailed: 'Could not load the review details.',
+        groupResult: 'Result details',
+        noFindings: 'No findings.',
+        target: 'File',
+        quote: 'Quote',
+        handling: 'How it was handled',
+        handlingNone: '(nothing written)',
+        diffSummary: 'The diff sent for review',
+        diffMissing: 'The diff could not be read from the record.',
+      },
       viewDetailBtn: 'View details',
       closeDetailBtn: 'Close details',
       recordSubDetail: 'Detail',

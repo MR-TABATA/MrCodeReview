@@ -10,7 +10,6 @@ export interface HistoryActions {
   /** 行を押した（結果を開く） */
   open(id: string): void;
   /** 「詳細」を押した（結果を開いて、「詳細」タブを出す） */
-  detail(id: string): void;
   /** チェックを付ける／外す */
   toggle(id: string): void;
   /** 日付のグループを、開く／閉じる（`dayKey` の値） */
@@ -106,6 +105,35 @@ export function countsLine(c: TriageCounts, lang: Lang = getAppLang()): HTMLElem
   );
 }
 
+/**
+ * レビュー 1 回ぶんの 1 行。履歴と、ログで、同じ書式にする。
+ * 左から: 先頭の欄（履歴はチェック、ログは空。幅は同じ）・日時・観点（と失敗）・指摘の件数・仕分けの件数。
+ */
+export function reviewRow(
+  s: ReviewSummary,
+  lang: Lang,
+  o: { cls?: string; lead?: Node | null; onOpen: () => void; extra?: Node | null },
+): HTMLElement {
+  const m = msg(lang).historyView;
+  return h(
+    'li',
+    { class: (o.cls ?? '').trim(), onclick: o.onOpen },
+    h('span', { class: 'hlead' }, o.lead ?? null),
+    // 1 行: 日時 ・ 観点（と失敗） ・ 指摘の件数 ・ 仕分けの件数。行を押すと、開く
+    h('span', { class: 'hwhen' }, when(s.created_at, lang)),
+    h(
+      'span',
+      { class: 'h1' },
+      h('span', { class: 'ht' }, reviewName(s.recipe_title, s.seq, lang)),
+      s.failed ? h('span', { class: 'badge bad' }, m.failedBadge) : null,
+    ),
+    h('span', { class: 'hfind' }, m.findingsCount(s.findings)),
+    // 指摘のあるレビューだけ（0 件・失敗には、出さない）。読み取りに失敗したとき（null）も、出さない（0 件に見せない）
+    s.counts && s.findings > 0 ? countsLine(s.counts, lang) : h('span', { class: 'hcounts-empty' }),
+    o.extra ?? null,
+  );
+}
+
 export function historyPanel(
   items: ReviewSummary[],
   openId: string | null,
@@ -122,10 +150,10 @@ export function historyPanel(
   const m = msg(lang).historyView;
   const all = items.length > 0 && items.every((s) => picked.has(s.id));
   const row = (s: ReviewSummary): HTMLElement =>
-    h(
-      'li',
-      { class: `${openId === s.id ? 'on' : ''} ${picked.has(s.id) ? 'picked' : ''}`, onclick: () => act.open(s.id) },
-      h('input', {
+    reviewRow(s, lang, {
+      cls: `${openId === s.id ? 'on' : ''} ${picked.has(s.id) ? 'picked' : ''}`,
+      onOpen: () => act.open(s.id),
+      lead: h('input', {
         class: 'pick',
         type: 'checkbox',
         'aria-label': m.selectForReportAria,
@@ -134,33 +162,7 @@ export function historyPanel(
         onclick: (e) => e.stopPropagation(),
         onchange: () => act.toggle(s.id),
       }),
-      h(
-        'div',
-        { class: 'hbody' },
-        h(
-          'div',
-          { class: 'h1' },
-          h('span', { class: 'ht' }, reviewName(s.recipe_title, s.seq, lang)),
-          s.failed ? h('span', { class: 'badge bad' }, m.failedBadge) : null,
-          h(
-            'button',
-            {
-              class: 'small linkish hdetail',
-              title: m.detailTitle,
-              // 行を押したことには、しない（「詳細」タブを出すため、別に開く）
-              onclick: (e) => {
-                e.stopPropagation();
-                act.detail(s.id);
-              },
-            },
-            m.detailBtn,
-          ),
-        ),
-        h('div', { class: 'h2' }, `${when(s.created_at, lang)} · ${m.findingsCount(s.findings)}`),
-        // 指摘のあるレビューだけ（0 件・失敗には、出さない）。読み取りに失敗したとき（null）も、出さない（0 件に見せない）
-        s.counts && s.findings > 0 ? countsLine(s.counts, lang) : null,
-      ),
-    );
+    });
   const { shown, groups } = splitHistory(items, lang);
   // 日付のグループ: 閉じておく。結果を開いているレビューが入っているグループは、開く（行が、見えなくならないように）
   const groupEls = groups.map((g) => {

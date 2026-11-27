@@ -5,7 +5,7 @@ import type { ReviewSummary } from './types';
 
 const S = (id: string, over: Partial<ReviewSummary> = {}): ReviewSummary => ({ id, created_at: 1_793_000_000_000, repo: '/Users/me/Git/MrkDown', recipe_title: '潜在バグ', provider_label: 'Claude', findings: 3, verified: 2, total_tokens: 1820, failed: false, counts: { open: 1, done: 1, wait: 0, dismiss: 1 }, ...over });
 const ITEMS = [S('a'), S('b', { failed: true, total_tokens: null }), S('c')];
-const acts = () => ({ open: vi.fn(), detail: vi.fn(), toggle: vi.fn(), toggleDay: vi.fn(), toggleAll: vi.fn(), report: vi.fn(), remove: vi.fn() });
+const acts = () => ({ open: vi.fn(), toggle: vi.fn(), toggleDay: vi.fn(), toggleAll: vi.fn(), report: vi.fn(), remove: vi.fn() });
 const render = (picked: string[], a = acts(), openId: string | null = null, items = ITEMS, openDays: string[] = []) => ({ el: historyPanel(items, openId, new Set(picked), 'Git/MrkDown', '/Users/me/Git/MrkDown', 'まだありません', a, new Set(openDays)), a });
 
 describe('reviewName and circleNumber', () => {
@@ -51,8 +51,8 @@ describe('historyPanel', () => {
     const { el } = render([]);
     const row = el.querySelector('li') as HTMLElement;
     expect(row.querySelector('.ht')?.textContent).toBe('潜在バグ');
-    expect(row.querySelectorAll('.h2:not(.hcounts)'), '日時と指摘の件数の行は、1 行').toHaveLength(1);
-    expect(row.querySelector('.h2')?.textContent).toMatch(/^2026\/\d+\/\d+ .* · 指摘 3 件$/);
+    expect(row.querySelector('.hwhen')?.textContent).toMatch(/^2026\/\d+\/\d+ /);
+    expect(row.querySelector('.hfind')?.textContent).toBe('指摘 3 件');
     for (const w of ['トークン', '根拠あり', 'MrkDown', 'Git/']) expect(row.textContent, w).not.toContain(w);
     // 失敗の行でも、トークンの有無は出さない
     expect(render([]).el.querySelectorAll('li')[1]?.textContent).not.toContain('トークン');
@@ -62,7 +62,7 @@ describe('historyPanel', () => {
     const { el } = render([]);
     const row = el.querySelector('li') as HTMLElement;
     expect([...row.querySelectorAll('.hcounts .hc')].map((c) => c.textContent)).toEqual(['未 1 件', '済み 1 件', '待ち 0 件', '無視 1 件']);
-    expect(row.querySelectorAll('.h2'), '日時の行と、件数の行').toHaveLength(2);
+    expect(row.querySelectorAll('.hcounts'), '仕分けの件数は、同じ 1 行の中').toHaveLength(1);
   });
 
   it('0 件の項目は薄くする。指摘が 0 件のレビュー・失敗したレビューには、件数の行を出さない', () => {
@@ -79,15 +79,14 @@ describe('historyPanel', () => {
     expect(el.querySelector('li')?.textContent).toContain('指摘 3 件');
   });
 
-  it('「詳細」を押すと detail を呼ぶ。行は開かない（open は呼ばない）', () => {
-    const { el, a } = render([]);
-    const rows = [...el.querySelectorAll('li')];
-    const link = rows[1]!.querySelector('.hdetail') as HTMLElement;
-    expect(link.textContent).toBe('詳細');
-    link.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(a.detail).toHaveBeenCalledExactlyOnceWith('b');
-    expect(a.open).not.toHaveBeenCalled();
-    expect(rows.every((r) => r.querySelector('.hdetail'))).toBe(true);
+  it('1 行: 日時・観点・指摘の件数・仕分けの件数が、1 つの行に並ぶ。「詳細」のボタンは無い（行を押すと開く）', () => {
+    const { el } = render([]);
+    const row = el.querySelector('li') as HTMLElement;
+    expect([...row.children].map((c) => c.className.split(' ').pop())).toEqual(['hlead', 'hwhen', 'h1', 'hfind', 'hcounts']);
+    expect(row.querySelector('.hdetail')).toBeNull();
+    expect(row.querySelector('.hbody')).toBeNull();
+    expect(row.querySelector('.ht')?.textContent).toBe('潜在バグ');
+    expect(row.querySelector('.hfind')?.textContent).toBe('指摘 3 件');
   });
 
   it('チェックを押すと toggle を呼び、行を開かない。行を押すと open を呼ぶ', () => {
@@ -97,7 +96,7 @@ describe('historyPanel', () => {
     expect(a.open).not.toHaveBeenCalled();
     (first.querySelector('.pick') as HTMLInputElement).dispatchEvent(new Event('change'));
     expect(a.toggle).toHaveBeenCalledExactlyOnceWith('a');
-    first.querySelector('.hbody')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    first.querySelector('.ht')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(a.open).toHaveBeenCalledExactlyOnceWith('a');
   });
 
@@ -226,13 +225,11 @@ describe('historyPanel の日付のグループ', () => {
     expect(auto.querySelectorAll('.hday-h')[0]?.textContent, '関係のないグループは、閉じたまま').toBe('▸ 2026年10月26日（2 件）');
   });
 
-  it('グループの中の行も、同じ操作ができる（開く・詳細・チェック）', () => {
+  it('グループの中の行も、同じ操作ができる（開く）', () => {
     const { el, a } = render([], acts(), null, many(), ['2026-10-26']);
     const row = el.querySelector('.hday li') as HTMLElement;
-    row.querySelector('.hbody')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    row.querySelector('.ht')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(a.open).toHaveBeenCalledExactlyOnceWith('d1a');
-    (row.querySelector('.hdetail') as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(a.detail).toHaveBeenCalledExactlyOnceWith('d1a');
   });
 
   it('古くても、未が残っているものは、グループに入れず、上に出す', () => {
