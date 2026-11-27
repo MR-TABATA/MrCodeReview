@@ -532,6 +532,7 @@ export interface Messages {
       openResult: string;
       loading: string;
       loadFailed: string;
+      notFound: string;
       groupResult: string;
       noFindings: string;
       target: string;
@@ -1124,6 +1125,7 @@ export const MESSAGES: Record<Lang, Messages> = {
         openResult: '結果を開く',
         loading: '読み込み中…',
         loadFailed: 'レビューの詳細を取得できませんでした。',
+        notFound: 'レビューの記録が見つかりません。',
         groupResult: '結果の内容',
         noFindings: '指摘はありませんでした。',
         target: '対象ファイル',
@@ -1881,6 +1883,7 @@ export const MESSAGES: Record<Lang, Messages> = {
         openResult: 'Open the result',
         loading: 'Loading…',
         loadFailed: 'Could not load the review details.',
+        notFound: 'The review record was not found.',
         groupResult: 'Result details',
         noFindings: 'No findings.',
         target: 'File',

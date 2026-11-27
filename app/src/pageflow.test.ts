@@ -7,7 +7,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeM
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ confirm: vi.fn(), message: vi.fn(), open: vi.fn(), save: vi.fn() }));
 
-import { render, state } from './main';
+import { render, select, state } from './main';
 import { newHookUi } from './hookview';
 import type { ReviewView } from './types';
 
@@ -59,6 +59,12 @@ describe('上部タブでページを切り替える', () => {
     state.hook = newHookUi();
     state.page = 'newreview';
     state.backTo = 'log';
+    state.history = [];
+    state.runLogReviewCache.clear();
+    state.expandedRunLogs.clear();
+    state.loadingRunLogs.clear();
+    state.runLogLoadErrors.clear();
+    state.openRunLogDiffs.clear();
   });
 
   it('新規レビューのページ: 実行する場所だけ。結果も、実行ログも、ここには出ない', () => {
@@ -267,5 +273,125 @@ describe('上部タブでページを切り替える', () => {
     expect(state.page).toBe('log');
     expect(state.selected).toBeNull();
   });
-});
 
+  describe('結果を開いたときの、戻り先', () => {
+    const setup = () =>
+      invokeMock.mockImplementation(async (cmd: string, args: { id?: string }) => {
+        if (cmd === 'get_review') return fakeReview(args.id ?? 'x');
+        if (cmd === 'build_handoff') return '';
+        return null;
+      });
+
+    it('リポジトリのページ（履歴でもログでもない所）から開くと、戻り先はログ。結果のページになる', async () => {
+      setup();
+      state.page = 'repos';
+      state.backTo = 'history';
+      await select('a');
+      expect(state.page).toBe('result');
+      expect(state.backTo).toBe('log');
+    });
+
+    it('履歴・ログから開くと、そのページが戻り先になる', async () => {
+      setup();
+      state.page = 'history';
+      await select('a');
+      expect([state.page, state.backTo]).toEqual(['result', 'history']);
+      state.page = 'log';
+      await select('b');
+      expect([state.page, state.backTo]).toEqual(['result', 'log']);
+    });
+
+    it('結果のページの中で、別のレビュー（「前回」など）へ移っても、戻り先は変わらない', async () => {
+      setup();
+      state.page = 'result';
+      state.backTo = 'history';
+      await select('prev');
+      expect([state.page, state.backTo]).toEqual(['result', 'history']);
+    });
+
+    it('新規レビューの下の結果から、別のレビューへ移っても、新規レビューのまま（結果のページに移らない）', async () => {
+      setup();
+      state.page = 'newreview';
+      state.backTo = 'newreview';
+      await select('prev');
+      expect([state.page, state.backTo]).toEqual(['newreview', 'newreview']);
+    });
+  });
+
+  it('結果のページで仕分け・メモを変えて、ログへ戻っても、ログの詳細は、変えた状態で出る（古いキャッシュを使わない）', async () => {
+    const withFinding = (id: string): ReviewView => ({
+      ...fakeReview(id),
+      findings: [{ severity: 'medium', title: '指摘', file: 'a.ts', line: 1, detail: '本文', evidence: 'x', verified: true, rule: null }],
+      triage: ['new'],
+      finding_notes: [{ memo: '', memo_at: null, done_at: null, done_head: null, triage_at: null, triage_head: null, triage_source: null }],
+    }) as unknown as ReviewView;
+    invokeMock.mockImplementation(async (cmd: string, args: { id?: string }) => (cmd === 'get_review' ? withFinding(args.id ?? 'a') : cmd === 'build_handoff' ? '' : null));
+    state.history = [{ id: 'a', created_at: 1_795_775_717_000, repo: '/r', recipe_title: 'バグ', provider_label: 'Mock', findings: 1, verified: 1, total_tokens: null, failed: false, counts: null }] as never;
+    // ログの行を開く（記録が、キャッシュに入る）
+    state.page = 'log';
+    render();
+    document.querySelector<HTMLElement>('.runlog-feed ul.history > li')!.click();
+    await flush();
+    expect(document.querySelector('.rld-finding')?.textContent).toContain('（記入なし）');
+    // 「結果を開く」で、結果のページへ。そこで、仕分けとメモを変える（開いている記録を、直接書き換える）
+    document.querySelector<HTMLElement>('.rld-foot button')!.click();
+    await flush();
+    expect(state.page).toBe('result');
+    state.selected!.triage[0] = 'fix';
+    state.selected!.finding_notes[0].memo = '直しました';
+    // ログへ戻る
+    document.querySelector<HTMLElement>('.back-to-log-btn')!.click();
+    expect(state.page).toBe('log');
+    const f = document.querySelector('.rld-finding')!;
+    expect(f.textContent).toContain('直しました');
+    expect(f.textContent).not.toContain('（記入なし）');
+  });
+
+  describe('ログの行を開いたとき、詳細を読み込めない', () => {
+    const openFirstRow = async () => {
+      state.history = [{ id: 'a', created_at: 1_795_775_717_000, repo: '/r', recipe_title: 'バグ', provider_label: 'Mock', findings: 0, verified: 0, total_tokens: null, failed: false, counts: null }] as never;
+      state.page = 'log';
+      render();
+      document.querySelector<HTMLElement>('.runlog-feed ul.history > li')!.click();
+      await flush();
+    };
+
+    it('記録が無い（null）とき: 取得できなかった旨と理由が出て、読み込み中の表示は消える', async () => {
+      invokeMock.mockImplementation(async () => null);
+      await openFirstRow();
+      const d = document.querySelector('.runlog-card-detail')!;
+      expect(d.classList.contains('loading')).toBe(false);
+      expect(d.textContent).toContain('レビューの詳細を取得できませんでした。');
+      expect(d.textContent).toContain('レビューの記録が見つかりません');
+      expect(state.loadingRunLogs.size).toBe(0);
+    });
+
+    it('例外が出たとき: 読み込み中の状態が解除され、理由が画面に出る（握りつぶさない）', async () => {
+      invokeMock.mockImplementation(async () => {
+        throw new Error('記録が壊れています');
+      });
+      await openFirstRow();
+      const d = document.querySelector('.runlog-card-detail')!;
+      expect(d.classList.contains('loading')).toBe(false);
+      expect(d.textContent).toContain('記録が壊れています');
+      expect(state.loadingRunLogs.size).toBe(0);
+    });
+
+    it('閉じて、開き直すと、もう一度読み込む（前の失敗を引きずらない）', async () => {
+      let n = 0;
+      invokeMock.mockImplementation(async (cmd: string, args: { id?: string }) => {
+        if (cmd !== 'get_review') return null;
+        n++;
+        if (n === 1) throw new Error('一時的な失敗');
+        return fakeReview(args.id ?? 'x');
+      });
+      await openFirstRow();
+      expect(document.querySelector('.runlog-card-detail')?.textContent).toContain('一時的な失敗');
+      document.querySelector<HTMLElement>('.runlog-feed ul.history > li')!.click(); // 閉じる
+      document.querySelector<HTMLElement>('.runlog-feed ul.history > li')!.click(); // 開き直す
+      await flush();
+      expect(document.querySelector('.runlog-card-detail.rld')).not.toBeNull();
+      expect(state.runLogLoadErrors.size).toBe(0);
+    });
+  });
+});

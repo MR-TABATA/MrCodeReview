@@ -9,7 +9,13 @@ import type { ReviewView } from './types';
  * 「結果の内容」: 指摘の本文・引用・対応内容・対象ファイル（読むだけ。仕分けやメモの編集は、結果のページ）。
  * 「レビューに送った差分」: 記録（プロンプト）の中の差分。
  */
-export function runLogDetail(r: ReviewView, lang: Lang, onOpenResult: () => void): HTMLElement {
+export function runLogDetail(
+  r: ReviewView,
+  lang: Lang,
+  onOpenResult: () => void,
+  /** 差分の欄の開閉。開いているとき（と、開いたとき）にだけ、差分を取り出す */
+  diff: { open?: boolean; onToggle?: (open: boolean) => void } = {},
+): HTMLElement {
   const t = msg(lang).mainUi.runLogDetail;
   const hm = msg(lang).hookUi;
   const mu = msg(lang).mainUi;
@@ -48,7 +54,7 @@ export function runLogDetail(r: ReviewView, lang: Lang, onOpenResult: () => void
       row(t.prompt, t.promptValue(r.prompt.length)),
     ),
     h('div', { class: 'rld-group rld-wide' }, h('h4', {}, t.groupResult), ...resultItems(r, t, stateLabel)),
-    diffBlock(r, t),
+    diffBlock(r, t, diff.open ?? false, diff.onToggle),
     h('div', { class: 'rld-foot' }, h('button', { class: 'small primary', onclick: onOpenResult }, t.openResult)),
   );
 }
@@ -83,13 +89,24 @@ function resultItems(r: ReviewView, t: Dict, stateLabel: Map<string, string>): H
   });
 }
 
-/** レビューに送った差分。記録のプロンプトから取り出す（開いたときだけ描く）。 */
-function diffBlock(r: ReviewView, t: Dict): HTMLElement {
-  const diff = extractDiff(r.prompt);
-  return h(
-    'details',
-    { class: 'rld-wide rld-diff' },
-    h('summary', {}, t.diffSummary),
-    diff === null ? h('p', { class: 'muted' }, t.diffMissing) : h('pre', { class: 'rld-pre rld-diff-pre' }, diff),
-  );
+/**
+ * レビューに送った差分。記録のプロンプトから取り出す。
+ * 閉じているあいだは、取り出さない（差分が大きいと、行を開閉するたびに、開いている全部の行で、作り直すことになるため）。
+ */
+function diffBlock(r: ReviewView, t: Dict, open: boolean, onToggle?: (open: boolean) => void): HTMLElement {
+  const det = h('details', { class: 'rld-wide rld-diff' }, h('summary', {}, t.diffSummary)) as HTMLDetailsElement;
+  const fill = (): void => {
+    if (det.querySelector('.rld-diff-body')) return;
+    const diff = extractDiff(r.prompt);
+    det.append(h('div', { class: 'rld-diff-body' }, diff === null ? h('p', { class: 'muted' }, t.diffMissing) : h('pre', { class: 'rld-pre rld-diff-pre' }, diff)));
+  };
+  if (open) {
+    det.open = true;
+    fill();
+  }
+  det.addEventListener('toggle', () => {
+    onToggle?.(det.open);
+    if (det.open) fill();
+  });
+  return det;
 }

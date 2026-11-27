@@ -84,11 +84,33 @@ describe('ログの、実行の詳細', () => {
     expect(runLogDetail(review({ findings: [], triage: [], finding_notes: [], error: '失敗しました' }), 'ja', vi.fn()).querySelector('.rld-nofindings')?.textContent).toBe('失敗しました');
   });
 
-  it('差分: プロンプトの差分ブロックを取り出して出す。取り出せなければ、その旨', () => {
+  it('差分: 閉じているあいだは、取り出さない（中身を作らない）。開くと、プロンプトの差分ブロックを取り出して出す', () => {
     const withDiff = review({ prompt: '前置き\n\n## 差分\n\n```diff\n+追加した行\n-消した行\n```\n' });
-    const el = runLogDetail(withDiff, 'ja', vi.fn());
+    const toggled: boolean[] = [];
+    const el = runLogDetail(withDiff, 'ja', vi.fn(), { onToggle: (o) => toggled.push(o) });
+    expect(el.querySelector('.rld-diff-pre'), '閉じているときは、作らない').toBeNull();
+    expect(el.querySelector('.rld-diff-body')).toBeNull();
+    const det = el.querySelector('details') as HTMLDetailsElement;
+    det.open = true;
+    det.dispatchEvent(new Event('toggle'));
     expect(el.querySelector('.rld-diff-pre')?.textContent).toContain('+追加した行');
-    expect(runLogDetail(review(), 'ja', vi.fn()).querySelector('.rld-diff')?.textContent).toContain('取り出せませんでした');
+    expect(toggled).toEqual([true]);
+    // 閉じて、開き直しても、作り直さない
+    det.open = false;
+    det.dispatchEvent(new Event('toggle'));
+    det.open = true;
+    det.dispatchEvent(new Event('toggle'));
+    expect(el.querySelectorAll('.rld-diff-body').length).toBe(1);
+    expect(toggled).toEqual([true, false, true]);
+  });
+
+  it('差分: 開いたままの行（open: true）は、描き直しても、すぐ出る。取り出せなければ、その旨', () => {
+    const withDiff = review({ prompt: '前置き\n\n## 差分\n\n```diff\n+x\n```\n' });
+    const el = runLogDetail(withDiff, 'ja', vi.fn(), { open: true });
+    expect((el.querySelector('details') as HTMLDetailsElement).open).toBe(true);
+    expect(el.querySelector('.rld-diff-pre')?.textContent).toContain('+x');
+    const none = runLogDetail(review(), 'ja', vi.fn(), { open: true });
+    expect(none.querySelector('.rld-diff')?.textContent).toContain('取り出せませんでした');
   });
 
   it('「結果を開く」で、コールバックが呼ばれる', () => {

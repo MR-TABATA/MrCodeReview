@@ -154,6 +154,10 @@ const state = {
   repoIcons: {} as Record<string, string | null>,
   /** 実行ログ内でインライン展開されている指摘の識別子（"reviewId:findingIndex"） */
   expandedFindings: new Set<string>(),
+  /** ログで、差分の欄を開いているレビューの ID */
+  openRunLogDiffs: new Set<string>(),
+  /** ログの、実行の詳細を読み込めなかった理由（レビューの ID ごと） */
+  runLogLoadErrors: new Map<string, string>(),
   /** ログで、内訳を開いているフックの実行の ID */
   expandedHookRuns: new Set<string>(),
   /** ログで、実行の詳細を開いているレビューの ID */
@@ -2952,6 +2956,7 @@ function runLogReviewCard(s: ReviewSummary, lang: Lang): HTMLElement {
       return;
     }
     state.expandedRunLogs.add(s.id);
+    state.runLogLoadErrors.delete(s.id); // 開き直したら、もう一度読み込む
     const hasCache = state.runLogReviewCache.has(s.id);
     if (!hasCache) state.loadingRunLogs.add(s.id);
     render();
@@ -2960,6 +2965,9 @@ function runLogReviewCard(s: ReviewSummary, lang: Lang): HTMLElement {
       try {
         const rev = await invoke<ReviewView | null>('get_review', { id: s.id });
         if (rev) state.runLogReviewCache.set(s.id, rev);
+        else state.runLogLoadErrors.set(s.id, m.runLogDetail.notFound);
+      } catch (e) {
+        state.runLogLoadErrors.set(s.id, String(e));
       } finally {
         state.loadingRunLogs.delete(s.id);
         render();
@@ -2972,9 +2980,16 @@ function runLogReviewCard(s: ReviewSummary, lang: Lang): HTMLElement {
     if (state.loadingRunLogs.has(s.id)) {
       detail = h('div', { class: 'runlog-card-detail loading' }, h('span', { class: 'muted' }, m.runLogDetail.loading));
     } else if (cached) {
-      detail = runLogDetail(cached, lang, () => void select(s.id));
+      detail = runLogDetail(cached, lang, () => void select(s.id), {
+        open: state.openRunLogDiffs.has(s.id),
+        onToggle: (open) => {
+          if (open) state.openRunLogDiffs.add(s.id);
+          else state.openRunLogDiffs.delete(s.id);
+        },
+      });
     } else {
-      detail = h('div', { class: 'runlog-card-detail error', onclick: (e: Event) => e.stopPropagation() }, h('p', { class: 'muted' }, m.runLogDetail.loadFailed));
+      const why = state.runLogLoadErrors.get(s.id);
+      detail = h('div', { class: 'runlog-card-detail error', onclick: (e: Event) => e.stopPropagation() }, h('p', { class: 'muted' }, why ? `${m.runLogDetail.loadFailed} ${why}` : m.runLogDetail.loadFailed));
     }
   }
 
@@ -3310,6 +3325,9 @@ function render(): void {
   if (!root) return;
   // 結果を閉じた（履歴から消した・リポジトリを替えた）ときは、来たページへ戻す
   if (state.page === 'result' && !state.selected) state.page = state.backTo;
+  // いま結果のページ（または新規レビューの下）で開いている記録を、ログの行のキャッシュとして共有する。
+  // 仕分け・メモは、開いている記録を直接書き換えるので、ログに戻っても、古い状態が出ない。
+  if (state.selected) state.runLogReviewCache.set(state.selected.id, state.selected);
   const pageChanged = lastRenderedPage !== state.page;
   lastRenderedPage = state.page;
   const keepTop = pageChanged ? 0 : (root.querySelector('.detail')?.scrollTop ?? 0);
@@ -3506,4 +3524,4 @@ if (import.meta.env?.MODE !== 'test') {
   void boot();
 }
 
-export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings, changeRepo };
+export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings, changeRepo, select };
