@@ -869,6 +869,15 @@ fn carry_over(
     (carries, fates, inherited, previous)
 }
 
+/// ツール実行型（LLM を使わない観点）は、実行器が、いまは無い。黙って LLM に回さず（意図しない送信とトークン消費になる）、理由を言って止める。
+/// 実行できるものを足すときは、ここを、実行器の有無で分ける。
+fn refuse_tool_recipe(recipe: &Recipe) -> Result<(), String> {
+    if recipe.kind == recipe::Kind::Tool {
+        return Err(format!("{} は、LLM を使わない観点ですが、この版には実行できるものがありません", recipe.title));
+    }
+    Ok(())
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 fn run_review_blocking(
     data_dir: &Path,
@@ -951,9 +960,7 @@ fn run_review_with_specs(
 
     // ツール実行型（LLM を使わない観点）の型と画面の枠は残してあるが、実行器は、いまは無い（リンターは外した）。
     // 実行できるものを足すときは、ここに実行器を入れる。それまでは、黙って LLM に回さず、理由を言って止める。
-    if recipe.kind == recipe::Kind::Tool {
-        return Err(format!("{} は、LLM を使わない観点ですが、この版には実行できるものがありません", recipe.title));
-    }
+    refuse_tool_recipe(&recipe)?;
     let provider_info: ProviderInfo;
     let mut related: Option<related::Related> = None;
     let started = Instant::now();
@@ -2165,6 +2172,47 @@ mod tests {
         std::fs::write(dir.join("db.js"), "export function find(id) {\n  return db.query(\"SELECT * FROM u WHERE id=\" + id);\n}\n").unwrap();
         std::fs::write(dir.join("new.js"), "untracked\n").unwrap();
         dir
+    }
+
+    #[test]
+    fn a_tool_recipe_is_refused_with_the_reason_and_never_falls_through_to_an_llm() {
+        // リンターを外したので、tool 型の観点を作る経路は無い。ガードの関数に、tool 型の観点を直接渡して確かめる
+        let tool = Recipe { id: "t".into(), title: "外部の検査".into(), source: "builtin".into(), prompt: String::new(), kind: recipe::Kind::Tool, needs_related: false, needs_spec: false };
+        let e = refuse_tool_recipe(&tool).unwrap_err();
+        assert!(e.contains("外部の検査") && e.contains("LLM を使わない観点ですが、この版には実行できるものがありません"), "{e}");
+        let llm = Recipe { kind: recipe::Kind::Llm, ..tool.clone() };
+        assert!(refuse_tool_recipe(&llm).is_ok(), "LLM の観点は、止めない");
+        // 組み込みの観点は、すべて LLM 型（止められる観点が、紛れ込んでいない）
+        assert!(recipe::list_with_lang(None, "ja").iter().all(|r| r.kind == recipe::Kind::Llm));
+    }
+
+    #[test]
+    fn the_recipe_list_comes_back_with_the_right_recipes_and_warnings_for_every_input() {
+        let data = std::env::temp_dir().join(format!("mrcr-e2e-recipelist-data-{}", std::process::id()));
+        let builtin = recipe::list_with_lang(None, "ja");
+        assert!(!builtin.is_empty());
+
+        // 1. リポジトリ未選択
+        let none = recipe_list_with_lang(&data, None, "ja");
+        assert_eq!(none.recipes.len(), builtin.len(), "組み込みの観点だけ");
+        assert!(none.warnings.is_empty(), "{:?}", none.warnings);
+
+        // 2. リポジトリあり
+        let repo = demo_repo("recipelist");
+        let with_repo = recipe_list_with_lang(&data, repo.to_str(), "ja");
+        assert!(with_repo.recipes.len() >= builtin.len());
+        assert!(with_repo.recipes.iter().all(|r| r.kind == recipe::Kind::Llm), "LLM を使わない観点は、一覧に出ない");
+        assert!(with_repo.warnings.is_empty(), "{:?}", with_repo.warnings);
+
+        // 3. 言語の指定が不正: 警告を 1 件出して、日本語の一覧に戻る
+        let bad = recipe_list_with_lang(&data, None, "zz");
+        assert_eq!(bad.warnings.len(), 1, "{:?}", bad.warnings);
+        assert_eq!(bad.recipes.len(), builtin.len());
+
+        // 4. 画面へ返す JSON に、linter の欄は無い（リンターを外した）
+        let json = serde_json::to_value(&none).unwrap();
+        assert!(json.get("lint").is_none(), "{json}");
+        let _ = std::fs::remove_dir_all(&repo);
     }
 
     #[test]
