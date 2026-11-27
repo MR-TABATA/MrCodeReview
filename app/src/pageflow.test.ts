@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 // 上部タブでページを切り替える流れ（タブを押す → state.page → 描画）を、画面の DOM で確かめる。
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ confirm: vi.fn(), message: vi.fn(), open: vi.fn(), save: vi.fn() }));
 
-import { render, select, state } from './main';
+import { loadHook, render, select, state, wantsHook } from './main';
 import { newHookUi } from './hookview';
 import type { ReviewView } from './types';
 
@@ -227,6 +227,97 @@ describe('上部タブでページを切り替える', () => {
       await flush();
       expect(calls()).toBe(2);
       state.page = 'newreview'; // ポーリングを止める
+    });
+  });
+
+  describe('フックの状態を読むタイミング', () => {
+    const hookCalls = () => invokeMock.mock.calls.filter((c) => c[0] === 'hook_status').length;
+    const okImpl = async (cmd: string) => (cmd === 'hook_status' ? { recent: [hookRun()], log_unreadable: 0 } : cmd === 'list_reviews' ? [] : null);
+
+    afterEach(() => {
+      vi.useRealTimers();
+      state.page = 'newreview'; // ポーリングを止める
+      state.settings = null;
+      state.usage = null;
+      state.report = null;
+    });
+
+    it('設定を開いているか、「履歴・ログ」のページを開いている（レポート・使用量のモードではない）ときだけ、読む', () => {
+      state.page = 'newreview';
+      expect(wantsHook(), '新規レビューを開いているだけでは、読まない').toBe(false);
+      state.page = 'history';
+      expect(wantsHook()).toBe(true);
+      state.report = {} as never;
+      expect(wantsHook(), 'レポートを開いているあいだは、読まない').toBe(false);
+      state.report = null;
+      state.usage = {} as never;
+      expect(wantsHook(), '使用量を開いているあいだは、読まない').toBe(false);
+      state.usage = null;
+      state.page = 'newreview';
+      state.settings = { view: {}, draft: {} } as never;
+      expect(wantsHook(), '設定を開いているときは、どのページでも、読む').toBe(true);
+    });
+
+    it('レポート・使用量を開いているときと、新規レビューのページでは、loadHook を呼んでも、hook_status を呼ばない。履歴・ログのページ、設定を開いているときは、呼ぶ', async () => {
+      invokeMock.mockImplementation(okImpl);
+      state.page = 'history';
+      state.report = {} as never;
+      await loadHook();
+      state.report = null;
+      state.usage = {} as never;
+      await loadHook();
+      state.usage = null;
+      state.page = 'newreview';
+      await loadHook();
+      expect(hookCalls()).toBe(0);
+      state.page = 'history';
+      await loadHook();
+      expect(hookCalls()).toBe(1);
+      state.page = 'newreview';
+      state.settings = { view: {}, draft: {} } as never;
+      await loadHook();
+      expect(hookCalls()).toBe(2);
+    });
+
+    it('定期の読み直しは、別のページへ移ると、止まる（時間を進めても、hook_status を呼ばない）', async () => {
+      vi.useFakeTimers();
+      invokeMock.mockImplementation(okImpl);
+      state.page = 'newreview';
+      render();
+      tab('history').click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(hookCalls()).toBe(1);
+      // 履歴・ログに居るあいだは、一定時間ごとに、読み直す（実行中でなければ 8 秒）
+      await vi.advanceTimersByTimeAsync(8_000);
+      expect(hookCalls()).toBe(2);
+      // 別のページへ移ると、止まる
+      tab('newreview').click();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(hookCalls(), '移ったあとは、時間が経っても、増えない').toBe(2);
+    });
+
+    it('読み取りに失敗したら、「実行なし」と見分けがつくように、フックの欄に理由が出る。次に読めたら、消える', async () => {
+      let fail = true;
+      invokeMock.mockImplementation(async (cmd: string) => {
+        if (cmd === 'hook_status') {
+          if (fail) throw new Error('記録を読めません');
+          return { recent: [], log_unreadable: 0 };
+        }
+        return cmd === 'list_reviews' ? [] : null;
+      });
+      state.page = 'newreview';
+      render();
+      tab('history').click();
+      await flush();
+      const err = document.querySelector('.hookruns-section .hooklog-load-error');
+      expect(err?.textContent).toContain('記録を読めません');
+      expect(document.querySelector('.hookruns-section li'), '実行の行は、まだ無い').toBeNull();
+      // 読めるようになったら、消える（実行が 0 件なら、フックの欄ごと消える）
+      fail = false;
+      [...document.querySelectorAll<HTMLElement>('.page-head button')].find((b) => b.textContent === '更新')!.click();
+      await flush();
+      expect(document.querySelector('.hooklog-load-error')).toBeNull();
+      expect(document.querySelector('.hookruns-section')).toBeNull();
     });
   });
 

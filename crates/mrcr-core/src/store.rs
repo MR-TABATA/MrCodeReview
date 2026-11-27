@@ -491,13 +491,55 @@ pub fn summaries(dir: &Path, limit: usize) -> Vec<ReviewSummary> {
     summaries_in(dir, None, limit)
 }
 
+/// 一覧に出す、レビューしたときの HEAD のコミット（記録の `snapshot.head`）。
+/// 記録の本文（プロンプトや差分を含む大きな JSON）を、一覧のたびに読むと遅い（1000 件・合計 140MB で、約 0.28 秒）ので、
+/// 派生の表 `review_head` に、初めて見たときに 1 回だけ取り出して、控える。記録は書き換わらないので、控えは古くならない。
+/// 控えは、派生物で、版は上げない（古い版のアプリは、この表を知らないだけ。足りない分は、次に一覧を作るときに、取り出し直す）。
+/// 記録の全文が壊れている・コミットが無い・空のときは None（一覧は、そのまま出る）。控えを作れなくても、取り出した値は返す。
+fn heads_for(conn: &Connection, ids: &[&str]) -> std::collections::HashMap<String, Option<String>> {
+    let mut out: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
+    let _ = conn.execute("CREATE TABLE IF NOT EXISTS review_head (id TEXT PRIMARY KEY, head TEXT NOT NULL)", []);
+    if let Ok(mut stmt) = conn.prepare("SELECT id, head FROM review_head") {
+        if let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+            for (id, head) in rows.flatten() {
+                out.insert(id, Some(head).filter(|h| !h.is_empty()));
+            }
+        }
+    }
+    let missing: Vec<&str> = ids.iter().copied().filter(|id| !out.contains_key(*id)).collect();
+    if missing.is_empty() {
+        return out;
+    }
+    let mut found: Vec<(&str, String)> = Vec::new();
+    for id in &missing {
+        let head: Option<String> = conn
+            .query_row(
+                "SELECT CASE WHEN json_valid(record) THEN json_extract(record, '$.snapshot.head') END FROM reviews WHERE id = ?1",
+                [id],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .ok()
+            .flatten();
+        found.push((id, head.unwrap_or_default()));
+    }
+    if let Ok(tx) = conn.unchecked_transaction() {
+        for (id, head) in &found {
+            let _ = tx.execute("INSERT OR IGNORE INTO review_head (id, head) VALUES (?1, ?2)", rusqlite::params![id, head]);
+        }
+        let _ = tx.commit();
+    }
+    for (id, head) in found {
+        out.insert(id.to_string(), Some(head).filter(|h| !h.is_empty()));
+    }
+    out
+}
+
 /// `repo` を渡すと、そのリポジトリ（記録に残っている根のパスと一致するもの）の履歴だけ。`limit` は、絞ったあとの件数。
 pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewSummary> {
     let Ok(conn) = db::open(dir) else { return Vec::new() };
     let Ok(mut stmt) = conn.prepare(
         "SELECT id, created_at, repo, recipe_title, provider_label, findings_count, verified_count, \
-         input_tokens, output_tokens, ok, seq, \
-         CASE WHEN json_valid(record) THEN json_extract(record, '$.snapshot.head') END \
+         input_tokens, output_tokens, ok, seq \
          FROM reviews WHERE (?2 IS NULL OR repo = ?2) \
          ORDER BY created_at DESC, rowid DESC LIMIT ?1",
     ) else {
@@ -518,13 +560,16 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
             failed: !r.get::<_, bool>(9)?,
             seq: r.get::<_, Option<i64>>(10)?.and_then(|n| u32::try_from(n).ok()),
             counts: None,
-            // 記録の全文が壊れていても、一覧は出す（コミットだけ、空になる）
-            head: r.get::<_, Option<String>>(11).ok().flatten().filter(|h| !h.is_empty()),
+            head: None, // 下で、控えから入れる
         })
     }) else {
         return Vec::new();
     };
     let mut out: Vec<ReviewSummary> = rows.flatten().collect();
+    let mut heads = heads_for(&conn, &out.iter().map(|s| s.id.as_str()).collect::<Vec<_>>());
+    for s in &mut out {
+        s.head = heads.remove(&s.id).flatten();
+    }
     // 仕分けの件数。読み取りに失敗したら、None のまま（0 件に見せない）
     if let Ok(by_review) = triage_counts(&conn, repo) {
         for s in &mut out {
@@ -1003,6 +1048,50 @@ mod tests {
         let by = |id: &str| s.iter().find(|x| x.id == id).unwrap().head.clone();
         assert_eq!(by("a").as_deref(), Some("abc1234def5678"));
         assert_eq!(by("b"), None, "壊れた記録の分は、コミットだけ空");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_commit_in_the_summary_is_none_when_it_is_empty_or_missing_in_a_valid_record() {
+        let dir = scratch("summ-head-empty");
+        let mut empty = rec("empty", 1);
+        empty.snapshot.head = String::new();
+        append(&dir, &empty).unwrap();
+        append(&dir, &rec("missing", 2)).unwrap();
+        append(&dir, &rec("normal", 3)).unwrap();
+        let conn = db::open(&dir).unwrap();
+        // 記録は、正しい JSON のまま、snapshot から head を取り除く（古い記録・知らない形）
+        conn.execute("UPDATE reviews SET record = json_remove(record, '$.snapshot.head') WHERE id = 'missing'", []).unwrap();
+        assert!(conn.query_row("SELECT json_valid(record) FROM reviews WHERE id = 'missing'", [], |r| r.get::<_, bool>(0)).unwrap());
+        let s = summaries(&dir, 10);
+        let by = |id: &str| s.iter().find(|x| x.id == id).unwrap().head.clone();
+        assert_eq!(by("empty"), None, "空文字は、「あり」にしない");
+        assert_eq!(by("missing"), None, "head が無い記録は、None");
+        assert_eq!(by("normal").as_deref(), Some(rec("normal", 3).snapshot.head.as_str()).filter(|h| !h.is_empty()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_commit_is_read_from_the_record_once_then_kept_in_a_derived_table_without_changing_the_schema_version() {
+        let dir = scratch("summ-head-cache");
+        let mut a = rec("a", 1);
+        a.snapshot.head = "aaaa111".into();
+        append(&dir, &a).unwrap();
+        let version = |dir: &Path| db::open(dir).unwrap().query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap();
+        let v0 = version(&dir);
+        assert_eq!(summaries(&dir, 10)[0].head.as_deref(), Some("aaaa111"));
+        assert_eq!(version(&dir), v0, "古い版のアプリが、同じデータを開けなくならない（版は上げない）");
+        // 控えがあるので、記録の本文を読まなくても、同じ値が出る（本文を壊しても、変わらない）
+        db::open(&dir).unwrap().execute("UPDATE reviews SET record = '{broken' WHERE id = 'a'", []).unwrap();
+        assert_eq!(summaries(&dir, 10)[0].head.as_deref(), Some("aaaa111"), "控えから出る");
+        // あとから増えた記録は、次の一覧で、取り出されて、控えられる
+        let mut b = rec("b", 2);
+        b.snapshot.head = "bbbb222".into();
+        append(&dir, &b).unwrap();
+        let s = summaries(&dir, 10);
+        assert_eq!(s.iter().find(|x| x.id == "b").unwrap().head.as_deref(), Some("bbbb222"));
+        db::open(&dir).unwrap().execute("UPDATE reviews SET record = '{broken' WHERE id = 'b'", []).unwrap();
+        assert_eq!(summaries(&dir, 10).iter().find(|x| x.id == "b").unwrap().head.as_deref(), Some("bbbb222"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

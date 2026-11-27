@@ -2975,11 +2975,14 @@ function hookRunsSection(): HTMLElement | null {
   const hm = msg(lang).hookUi;
   const runs = state.hook.status?.recent ?? [];
   const unreadable = state.hook.status?.log_unreadable ?? 0;
-  if (!runs.length && unreadable <= 0) return null;
+  // 読み取りに失敗したとき（記録の読み取りエラーなど）。「実行なし」と見分けがつくように、欄を出して、理由を見せる
+  const loadError = state.hook.loadError;
+  if (!runs.length && unreadable <= 0 && !loadError) return null;
   return h(
     'div',
     { class: 'hday hookruns-section' },
     h('div', { class: 'hday-h static' }, `${m.hookRunsHeading} (${runs.length})`),
+    loadError ? h('p', { class: 'err hooklog-load-error' }, hm.refreshFailed(loadError)) : null,
     unreadable > 0 ? h('p', { class: 'err hooklog-unreadable' }, hm.logUnreadable(unreadable)) : null,
     runs.length
       ? h(
@@ -3450,4 +3453,4 @@ if (import.meta.env?.MODE !== 'test') {
   void boot();
 }
 
-export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings, changeRepo, select };
+export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings, changeRepo, select, wantsHook, loadHook };
