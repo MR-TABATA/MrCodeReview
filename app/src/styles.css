@@ -1607,3 +1607,8 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 .aspect-bar .ab-open { background: #8ea6ee; }
 .aspect-hist { justify-self: end; }
 @media (max-width: 900px) { .aspect-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* 新規レビューのページの先頭: 見る範囲 */
+.run-target { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; }
+.run-target-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.run-target .baseform { border-bottom: 0; background: transparent; }

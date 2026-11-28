@@ -436,6 +436,7 @@ export interface Messages {
     hookRunsHeading: string;
     repoSwitchFailed: (err: string) => string;
     repoBranchesFailed: (err: string) => string;
+    historyLoadFailed: (err: string) => string;
     repoHooksFailed: (err: string) => string;
     branchTitle: string;
     historySearchPlaceholder: string;
@@ -1059,6 +1060,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       },
       hookRunsHeading: 'フックの実行',
       repoSwitchFailed: (err) => `リポジトリを切り替えられませんでした（ページは、そのままです）: ${err}`,
+      historyLoadFailed: (err) => `履歴を読めませんでした（「履歴が無い」のではありません）: ${err}`,
       repoBranchesFailed: (err) => `ブランチ名を読めませんでした（前の表示のままです）: ${err}`,
       repoHooksFailed: (err) => `Git フックの状態を読めませんでした（前の表示のままです）: ${err}`,
       branchTitle: 'いま、チェックアウトしているブランチ',
@@ -1856,6 +1858,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       },
       hookRunsHeading: 'Hook runs',
       repoSwitchFailed: (err) => `Could not switch the repository (the page stays as it is): ${err}`,
+      historyLoadFailed: (err) => `Could not read the history (this is not "no history"): ${err}`,
       repoBranchesFailed: (err) => `Could not read the branch names (showing the previous values): ${err}`,
       repoHooksFailed: (err) => `Could not read the Git hook status (showing the previous values): ${err}`,
       branchTitle: 'The branch checked out now',

@@ -827,6 +827,42 @@ describe('上部タブでページを切り替える', () => {
       expect(calls('repo_branches')).toBe(0);
     });
 
+    it('切り替えが続いたとき、遅れて返った前のリポジトリの失敗は、いまのリポジトリの表示（ブランチ・エラー）を変えない', async () => {
+      state.registeredRepos = [{ path: '/r' }, { path: '/s' }] as never;
+      state.repoAuxErrors = [];
+      let failR: (e: Error) => void = () => {};
+      withBase((cmd, args) => {
+        if (cmd === 'repo_branches' && args.paths?.[0] === '/r') return new Promise((_, rej) => (failR = rej)) as never;
+        if (cmd === 'repo_branches') return { '/s': 'main' };
+        return undefined;
+      });
+      const first = changeRepo('/r');
+      await changeRepo('/s');
+      await first;
+      await flush();
+      expect(state.repoBranches['/s']).toBe('main');
+      failR(new Error('/r の遅い失敗'));
+      await flush();
+      expect(state.repo).toBe('/s');
+      expect(state.repoBranches['/s']).toBe('main');
+      expect(state.repoAuxErrors.join('')).not.toContain('/r の遅い失敗');
+    });
+
+    it('履歴を読めなかったときは、空の履歴と区別できるよう、理由を画面に出す。読めたら消える', async () => {
+      state.registeredRepos = [{ path: '/s' }] as never;
+      state.page = 'history';
+      withBase((cmd) => (cmd === 'list_reviews' ? new Error('DB が開けません') : undefined));
+      await expect(changeRepo('/s')).rejects.toBeTruthy();
+      await flush();
+      expect(document.querySelector('.history-load-error')?.textContent).toContain('DB が開けません');
+      expect(document.querySelector('.history-load-error')?.textContent).toContain('履歴が無い');
+      withBase(() => undefined);
+      await changeRepo('/s');
+      await flush();
+      expect(document.querySelector('.history-load-error')).toBeNull();
+      expect(state.historyError).toBe('');
+    });
+
     it('リポジトリを切り替えたら、そのリポジトリのブランチ名を、すぐ読む（ページ変更・窓復帰を待たない）', async () => {
       state.registeredRepos = [{ path: '/r' }, { path: '/s' }] as never;
       state.page = 'newreview';
@@ -835,6 +871,38 @@ describe('上部タブでページを切り替える', () => {
       await changeRepo('/s');
       await flush();
       expect(state.repoBranches['/s']).toBe('feature/x');
+    });
+  });
+
+  describe('見る範囲（比較元）の置き場所', () => {
+    const rangeChips = () => document.querySelectorAll('.combo').length;
+
+    it('新規レビューのページの先頭にだけ出る。ヘッダーにも、ほかのページにも、出ない', () => {
+      state.page = 'newreview';
+      render();
+      expect(document.querySelectorAll('.run-target .combo').length).toBe(1);
+      expect(document.querySelectorAll('.topbar .combo').length).toBe(0);
+      const first = document.querySelector('.detail.page')!.children;
+      expect([...first].findIndex((el) => el.classList.contains('run-target'))).toBeLessThan([...first].findIndex((el) => el.classList.contains('recipe-bar-top')));
+      for (const p of ['repos', 'aspects', 'history'] as const) {
+        state.page = p;
+        render();
+        expect(document.querySelector('.run-target'), p).toBeNull();
+        expect(document.querySelectorAll('.topbar .combo').length, p).toBe(0);
+      }
+      void rangeChips;
+    });
+
+    it('名前で入力する欄（baseForm）は、新規レビューのページの中に出て、タブの下には出ない', () => {
+      state.page = 'newreview';
+      state.baseCustom = true;
+      render();
+      expect(document.querySelector('.run-target .baseform')).not.toBeNull();
+      expect(document.querySelector('.top > .baseform')).toBeNull();
+      state.page = 'history';
+      render();
+      expect(document.querySelector('.baseform')).toBeNull();
+      state.baseCustom = false;
     });
   });
 

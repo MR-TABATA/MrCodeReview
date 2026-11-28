@@ -660,6 +660,10 @@ mod tests {
         assert_eq!(circle_number(20), "⑳");
         assert_eq!(circle_number(21), "㉑");
         assert_eq!(circle_number(36), "㊱");
+        // 範囲の切れ目（①〜⑳／㉑〜㉟／㊱〜㊿）。画面の `circleNumber` と同じ
+        assert_eq!(circle_number(35), "㉟");
+        assert_eq!(circle_number(50), "㊿");
+        assert_eq!(circle_number(0), "(0)");
         assert_eq!(circle_number(51), "(51)");
         assert_eq!(review_name("潜在バグ", Some(9)), "潜在バグ ⑨");
         assert_eq!(review_name("潜在バグ", None), "潜在バグ", "連番が無い古い記録は、観点名だけ");

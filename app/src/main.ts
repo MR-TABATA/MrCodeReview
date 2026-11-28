@@ -159,6 +159,8 @@ const state = {
   expandedFindings: new Set<string>(),
   /** 「履歴・ログ」の絞り込みの入力（スペース区切りの複数語。保存しない） */
   historyQuery: '',
+  /** 履歴を読めなかった理由。読めたら空。空の履歴と「読めなかった」を、区別するため */
+  historyError: '',
   /** 絞り込み中に、一度に出す行の数（「さらに表示」で増やす。入力を変えたら、戻す） */
   historyLimit: 100,
   /** 履歴・ログのページで、内訳を開いているフックの実行の ID */
@@ -465,7 +467,15 @@ async function continueFromPrevious(): Promise<void> {
 
 async function refreshHistory(): Promise<void> {
   // 選んでいるリポジトリの履歴だけ。選んでいなければ、すべて
-  state.history = await invoke<ReviewSummary[]>('list_reviews', { repo: state.repo || null });
+  try {
+    state.history = await invoke<ReviewSummary[]>('list_reviews', { repo: state.repo || null });
+    state.historyError = '';
+  } catch (e) {
+    // 空の履歴と区別できるよう、理由を残して、画面に出す（呼び出し元にも、そのまま投げる）
+    state.historyError = msg(getAppLang()).mainUi.historyLoadFailed(String(e));
+    render();
+    throw e;
+  }
   state.picked = prunePicks(state.picked, state.history);
   render();
   void refreshRepoCounts(); // 左の一覧の「未」の件数も、履歴と同じ頃に読み直す
@@ -1213,7 +1223,8 @@ async function loadBranchOf(repo: string): Promise<void> {
     state.repoBranches = { ...state.repoBranches, ...b };
     render();
   } catch (e) {
-    state.repoAuxErrors = [msg(getAppLang()).mainUi.repoBranchesFailed(String(e))];
+    // 切り替えが続いて、もう別のリポジトリを見ているときの失敗は、いまの表示に出さない
+    if (state.repo === repo) state.repoAuxErrors = [msg(getAppLang()).mainUi.repoBranchesFailed(String(e))];
     render();
   }
 }
@@ -1866,6 +1877,13 @@ function baseForm(): HTMLElement | null {
   );
 }
 
+/** 新規レビューのページの先頭: 見る範囲（比較元）。レビューを走らせるときだけ効く設定なので、ヘッダーではなく、ここに置く。 */
+function runTargetSection(): HTMLElement | null {
+  const chip = baseChip();
+  if (!chip) return null;
+  return h('section', { class: 'run-target' }, h('div', { class: 'run-target-row' }, chip), baseForm());
+}
+
 function headerView(): HTMLElement {
   const active = state.registeredRepos.find((r) => r.path === state.repo);
   const activeName = active ? repoDisplayName(active) : (state.repo ? repoDisplayName({ path: state.repo }) : '');
@@ -1896,7 +1914,6 @@ function headerView(): HTMLElement {
     'header',
     { class: 'topbar' },
     repoDisplay,
-    baseChip(),
     h('span', { class: 'spacer' }),
     iconButton('chart', m.usageTitle, !!state.usage, () => void toggleUsage(), m.usageBtn),
     iconButton('report', m.reportTitle, !!state.report, () => void toggleReport(), m.reportBtn),
@@ -3416,6 +3433,7 @@ function detailView(): HTMLElement {
       'main',
       { class: 'detail page page-aside' },
       pageHeader(pm.pageTabAspects),
+      state.historyError ? h('p', { class: 'err history-load-error' }, state.historyError) : null,
       aspectsPanel(aspectStats(), state.history.length, lang, tools, openHistoryOfAspect),
     );
   }
@@ -3425,6 +3443,7 @@ function detailView(): HTMLElement {
       'main',
       { class: 'detail page page-aside' },
       pageHeader(n ? `${pm.pageTabHistory} (${n})` : pm.pageTabHistory, { actions: runLogRefreshButton() }),
+      state.historyError ? h('p', { class: 'err history-load-error' }, state.historyError) : null,
       historySearchBox(),
       hookRunsSection(),
       rightPanel(),
@@ -3440,7 +3459,7 @@ function detailView(): HTMLElement {
   }
   // 実行した直後の結果は、実行バーの下に出す（そこへスクロールする）。履歴・ログから開いた結果は、結果のページ
   const below = state.selected && state.backTo === 'newreview' ? h('div', { class: 'result-anchor' }, resultView()) : null;
-  return h('main', { class: 'detail page' }, pageHeader(pm.pageTabNewReview), bar, below);
+  return h('main', { class: 'detail page' }, pageHeader(pm.pageTabNewReview), runTargetSection(), bar, below);
 }
 
 /** 前回の描画で開いていたページ。ページが変わったときは、スクロール位置を引き継がない。 */
@@ -3479,7 +3498,6 @@ function render(): void {
           { nav: m.pageTabsLabel, repos: m.pageTabRepos, aspects: m.pageTabAspects, history: m.pageTabHistory, newreview: m.pageTabNewReview },
           goPage,
         ),
-        baseForm(),
       ),
       h('div', { class: 'body' }, detailView()),
     ),
