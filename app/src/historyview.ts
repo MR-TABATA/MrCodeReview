@@ -3,6 +3,7 @@
 // 各行にチェックの欄があり、選んだレビューだけを、レポートに出せる。
 
 import { h } from './dom';
+import { icon, type IconName } from './icons';
 import { getAppLang, msg, type Lang } from './i18n';
 import type { ReviewSummary, TriageCounts } from './types';
 
@@ -48,7 +49,7 @@ const when = formatWhen;
 export const RECENT_KEEP = 5;
 
 /** まだ、終わっていない作業がある（未が 1 件以上）。件数が読めなかったとき（null）も、隠さず出す。指摘が 0 件のものは、対象外 */
-export const needsAttention = (s: ReviewSummary): boolean => s.findings > 0 && (s.counts === null || s.counts.open > 0);
+export const needsAttention = (s: ReviewSummary): boolean => s.findings > 0 && (s.counts === null || s.counts.open > 0 || (s.counts.pending ?? 0) > 0);
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 /** 日付のグループの識別（手元の時刻の、年-月-日） */
@@ -91,7 +92,7 @@ export function prunePicks(picked: Set<string>, items: ReviewSummary[]): Set<str
   return new Set([...picked].filter((id) => ids.has(id)));
 }
 
-/** 仕分けの件数の 1 行: 未・済み・待ち・無視（4 つを足すと、指摘の数）。0 件のものは、薄くする。 */
+/** 仕分けの件数の 1 行: 未・（判断待ち）・済み・待ち・無視（足すと、指摘の数）。0 件のものは、薄くする。 */
 export function countsLine(c: TriageCounts, lang: Lang = getAppLang()): HTMLElement {
   const m = msg(lang).historyView;
   const chip = (cls: string, label: string, n: number) => h('span', { class: `hc hc-${cls}${n === 0 ? ' zero' : ''}` }, m.countUnit(label, n));
@@ -99,6 +100,8 @@ export function countsLine(c: TriageCounts, lang: Lang = getAppLang()): HTMLElem
     'div',
     { class: 'h2 hcounts', title: m.countsTitle },
     chip('open', m.countOpen, c.open),
+    // 判断待ちは、あるときだけ（ふだんは 0 で、行を広げない）
+    ...((c.pending ?? 0) > 0 ? [chip('pending', m.countPending, c.pending ?? 0)] : []),
     chip('done', m.countDone, c.done),
     chip('wait', m.countWait, c.wait),
     chip('dismiss', m.countDismiss, c.dismiss),
@@ -120,7 +123,7 @@ export function reviewRow(
 ): HTMLElement {
   const m = msg(lang).historyView;
   // 左の色の帯と、文字の濃さに使う状態。失敗＝赤、未が残る＝琥珀、すべて仕分け済み＝薄く（モックの指摘一覧と同じ色味）
-  const st = s.failed ? 'st-failed' : s.findings > 0 && s.counts ? (s.counts.open > 0 ? 'st-open' : 'st-done') : '';
+  const st = s.failed ? 'st-failed' : s.findings > 0 && s.counts ? (s.counts.open > 0 || (s.counts.pending ?? 0) > 0 ? 'st-open' : 'st-done') : '';
   return h(
     'li',
     { class: `${o.cls ?? ''} ${st}`.trim(), onclick: o.onOpen },
@@ -133,13 +136,17 @@ export function reviewRow(
       h('span', { class: 'ht' }, reviewName(s.recipe_title, s.seq, lang)),
       s.failed ? h('span', { class: 'badge bad' }, m.failedBadge) : null,
     ),
-    h('span', { class: 'hbranch', title: s.branch ?? '' }, s.branch ?? ''),
     h('span', { class: 'hcommit', title: s.head ?? '' }, shortCommit(s.head)),
     h('span', { class: 'hfind' }, m.findingsCount(s.findings)),
     // 指摘のあるレビューだけ（0 件・失敗には、出さない）。読み取りに失敗したとき（null）も、出さない（0 件に見せない）
     s.counts && s.findings > 0 ? countsLine(s.counts, lang) : h('span', { class: 'hcounts-empty' }),
     o.extra ?? null,
   );
+}
+
+/** 丸いボタン（左に丸いアイコン）。「更新」「すべて選ぶ」と同じ見た目（`.hbtn`）。 */
+function pill(ic: IconName, label: string, onclick: () => void, cls = ''): HTMLElement {
+  return h('button', { class: `hbtn ${cls}`.trim(), type: 'button', onclick }, h('span', { class: 'hbtn-ic' }, icon(ic, 12)), label);
 }
 
 export function historyPanel(
@@ -158,6 +165,8 @@ export function historyPanel(
   flat = false,
   /** 絞り込み中に、まだ出していない行が残っているとき（件数と、押したときの動き）。「さらに表示」のボタンを出す */
   more?: { count: number; onMore: () => void },
+  /** 開いている行（`openId`）の下に出す詳細（アコーディオン）。行を押すと、開閉する */
+  detail?: (id: string) => Node | null,
 ): HTMLElement {
   const m = msg(lang).historyView;
   const all = items.length > 0 && items.every((s) => picked.has(s.id));
@@ -165,6 +174,7 @@ export function historyPanel(
     reviewRow(s, lang, {
       cls: `${openId === s.id ? 'on' : ''} ${picked.has(s.id) ? 'picked' : ''}`,
       onOpen: () => act.open(s.id),
+      extra: openId === s.id && detail ? h('div', { class: 'hdetail', onclick: (e: Event) => e.stopPropagation() }, detail(s.id)) : null,
       lead: h('input', {
         class: 'pick',
         type: 'checkbox',
@@ -224,12 +234,12 @@ export function historyPanel(
           'div',
           { class: 'pickbar' },
           h('span', {}, m.selectedCount(n)),
-          h('button', { class: 'run small', onclick: () => act.report() }, m.exportReportBtn),
-          h('button', { class: 'small danger', onclick: () => act.remove() }, m.deleteBtn),
+          pill('report', m.exportReportBtn, () => act.report(), 'primary export-report-btn'),
+          pill('trash', m.deleteBtn, () => act.remove(), 'danger delete-picked-btn'),
         )
       : null,
     items.length ? h('ul', { class: 'history' }, ...shown.map(row)) : h('p', { class: 'muted' }, emptyText),
-    more ? h('button', { class: 'hmore', type: 'button', onclick: more.onMore }, m.showMore(more.count)) : null,
+    more ? pill('chevron', m.showMore(more.count), more.onMore, 'hmore') : null,
     ...groupEls,
   );
 }

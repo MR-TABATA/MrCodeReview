@@ -22,11 +22,6 @@ describe('上部タブ', () => {
     expect(on[0].classList.contains('on')).toBe(true);
   });
 
-  it('current が「結果」のときも、どのタブも選ばれない（結果は、タブではない）', () => {
-    const el = pageTabs('result', labels, vi.fn());
-    expect(el.querySelectorAll('[aria-selected="true"]').length).toBe(0);
-  });
-
   it('current が null（設定・レポート・使用量を開いているとき）なら、どれも選ばれない', () => {
     const el = pageTabs(null, labels, vi.fn());
     expect(el.querySelectorAll('[aria-selected="true"]').length).toBe(0);

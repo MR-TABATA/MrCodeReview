@@ -11,6 +11,7 @@
 // 画面の上に貼り付く（スティッキー）部品や、入れ子のスクロールは、作らない（スクロールの違和感と、指摘の欄が狭くなる原因だった）。
 
 import { h } from './dom';
+import { icon } from './icons';
 import { getAppLang, msg } from './i18n';
 import { ut } from './uitext';
 import type { AgentDef, HandoffFile } from './types';
@@ -69,7 +70,8 @@ export function handoffSendButton(index: number, ui: HandoffUi, act: HandoffActi
   const mine = ui.target === index;
   return h(
     'button',
-    { class: 'send', disabled: ui.busy, title: m.sendToCliTitle, onclick: () => act.send(index) },
+    { class: 'hbtn primary send', type: 'button', disabled: ui.busy, title: m.sendToCliTitle, onclick: () => act.send(index) },
+    h('span', { class: 'hbtn-ic' }, icon('send', 12)),
     ui.busy && mine ? m.writingCliBtn : m.sendToCliBtn,
   );
 }

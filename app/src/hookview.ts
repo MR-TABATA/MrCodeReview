@@ -127,7 +127,6 @@ export function hookRunRow(r: HookRun, lang: Lang = getAppLang(), o: { expanded:
       h('span', { class: 'badge' }, m.runKind),
       h('span', { class: 'ht hookrun-commit', title: subject }, subject),
     ),
-    h('span', { class: 'hbranch' }), // フックの実行の記録には、ブランチ名が無い（列の位置を、そろえるための空欄）
     h('span', { class: 'hcommit', title: r.commit ?? '' }, shortCommit(r.commit)),
     h('span', { class: 'hfind' }, r.findings === null ? '' : msg(lang).historyView.findingsCount(r.findings)),
     // 右端の欄: 状態の印（幅をそろえる）と、所要時間。レビューの行の、仕分けの件数と、同じ幅

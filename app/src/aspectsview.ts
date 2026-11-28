@@ -12,12 +12,12 @@ function card(label: string, value: string): HTMLElement {
 /** 判断の内訳の横棒。幅は、その観点の仕分けの合計に対する割合。合計が 0 なら、空の棒。 */
 function breakdownBar(r: AspectRow, lang: Lang): HTMLElement {
   const m = msg(lang).mainUi.aspects;
-  const total = r.open + r.done + r.wait + r.dismiss;
+  const total = r.open + r.pending + r.done + r.wait + r.dismiss;
   const seg = (cls: string, n: number) => (n > 0 ? h('i', { class: `ab-${cls}`, style: `width:${(n / total) * 100}%` }) : null);
   return h(
     'div',
-    { class: 'aspect-bar', title: m.breakdownTitle(r.open, r.done, r.wait, r.dismiss), role: 'img', 'aria-label': m.breakdownTitle(r.open, r.done, r.wait, r.dismiss) },
-    ...(total === 0 ? [] : [seg('done', r.done), seg('wait', r.wait), seg('dismiss', r.dismiss), seg('open', r.open)]),
+    { class: 'aspect-bar', title: m.breakdownTitle(r.open, r.pending, r.done, r.wait, r.dismiss), role: 'img', 'aria-label': m.breakdownTitle(r.open, r.pending, r.done, r.wait, r.dismiss) },
+    ...(total === 0 ? [] : [seg('done', r.done), seg('wait', r.wait), seg('dismiss', r.dismiss), seg('pending', r.pending), seg('open', r.open)]),
   );
 }
 

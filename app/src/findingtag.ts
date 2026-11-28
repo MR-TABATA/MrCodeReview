@@ -20,7 +20,7 @@ export function findingNo(index: number, tag: string): HTMLElement {
 /** 開いたカードの先頭の、識別子の全文と「コピー」。報告と照合したり、貼り付けたりできる。 */
 export function tagLine(tag: string, copy: (text: string) => Promise<boolean>): HTMLElement {
   const m = msg(getAppLang()).mainUi;
-  const btn = h('button', { class: 'small fc-tag-copy', type: 'button' }, m.copyBtn);
+  const btn = h('button', { class: 'hbtn noic fc-tag-copy', type: 'button' }, m.copyBtn);
   btn.addEventListener('click', () => {
     void copy(tag).then((ok) => {
       const mNow = msg(getAppLang()).mainUi;

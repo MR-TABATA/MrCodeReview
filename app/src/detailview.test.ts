@@ -84,7 +84,7 @@ describe('detailPanel（詳細タブ）', () => {
     expect(c['根拠あり／根拠不一致']).toBe('2 件／1 件');
     expect(c['仕分け']).toBe('対応 1 ・待ち 0 ・無視 1 ・未仕分け 1');
     expect(c['対応済み（あなたの操作）']).toBe('1 件');
-    expect(c['エージェントの申告']).toContain('対応した 1 件 ・対応しなかった 0 件');
+    expect(c['エージェントの申告']).toContain('対応した 1 件 ・確認して対応しなかった 0 件');
     expect(c['エージェントの申告']).toContain('どれも、エージェントの申告・判断で、MCR が確かめたものではありません');
     expect(c['エージェントの申告'], '保存元が「s」（ログの名前）なので、会話の記録から取り込み').toContain('会話の記録から取り込み 1 件');
     expect(cells(detailPanel(review({ agent_reports: [null, null, null] }), FMT))['エージェントの申告']).toBe('（申告はありません）');
@@ -95,7 +95,7 @@ describe('detailPanel（詳細タブ）', () => {
     const c = cells(
       detailPanel(review({ agent_reports: [rep('cli:claude-code'), rep('cli:claude-code', 'skipped'), rep('mcp:x'), rep('sess1')] }), FMT),
     )['エージェントの申告'];
-    expect(c).toContain('対応した 3 件 ・対応しなかった 1 件');
+    expect(c).toContain('対応した 3 件 ・確認して対応しなかった 1 件');
     expect(c).toContain('mrcr handoff report で保存 2 件');
     expect(c).toContain('MCP で保存 1 件');
     expect(c).toContain('会話の記録から取り込み 1 件');

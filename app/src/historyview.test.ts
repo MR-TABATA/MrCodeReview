@@ -82,7 +82,7 @@ describe('historyPanel', () => {
   it('1 行: 日時・観点・指摘の件数・仕分けの件数が、1 つの行に並ぶ。「詳細」のボタンは無い（行を押すと開く）', () => {
     const { el } = render([]);
     const row = el.querySelector('li') as HTMLElement;
-    expect([...row.children].map((c) => c.className.split(' ').pop())).toEqual(['hlead', 'hwhen', 'h1', 'hbranch', 'hcommit', 'hfind', 'hcounts']);
+    expect([...row.children].map((c) => c.className.split(' ').pop())).toEqual(['hlead', 'hwhen', 'h1', 'hcommit', 'hfind', 'hcounts']);
     expect(row.querySelector('.hdetail')).toBeNull();
     expect(row.querySelector('.hbody')).toBeNull();
     expect(row.querySelector('.ht')?.textContent).toBe('潜在バグ');
@@ -98,12 +98,10 @@ describe('historyPanel', () => {
     expect(cls(S('e', { counts: null }))).not.toMatch(/st-/);
   });
 
-  it('ブランチ: レビューしたときのブランチ名を、コミットの前の列に出す（全文は title）。無いときは、空', () => {
-    const items = [S('a', { branch: 'feature/long-branch-name' }), S('b'), S('c', { branch: null })];
-    const { el } = render([], acts(), null, items);
-    const cells = [...el.querySelectorAll('li .hbranch')] as HTMLElement[];
-    expect(cells.map((c) => c.textContent)).toEqual(['feature/long-branch-name', '', '']);
-    expect(cells[0].title).toBe('feature/long-branch-name');
+  it('ブランチ名は、一覧の行には出さない（絞り込みの語と、結果ページの「実行の記録」には残る）', () => {
+    const { el } = render([], acts(), null, [S('a', { branch: 'feature/long-branch-name' })]);
+    expect(el.querySelector('li .hbranch')).toBeNull();
+    expect(el.textContent).not.toContain('feature/long-branch-name');
   });
 
   it('コミット: レビューしたときの HEAD を、7 文字で出す（全文は title）。記録に無いときは、空', () => {
@@ -282,5 +280,16 @@ describe('formatWhen（日時の表示は、言語に従う）', () => {
     expect(ja).toMatch(/^2026\/\d+\/\d+/); // 年/月/日（日付は、タイムゾーンで 1 日ずれうる）
     expect(en).toMatch(/AM|PM/); // 12 時間表記
     expect(ja).not.toBe(en);
+  });
+
+  it('判断待ち（エージェントが確認して対応しなかった指摘）は、あるときだけ、件数の行に出る。0 なら出さない。要対応の行として扱う', () => {
+    const none = countsLine({ open: 1, done: 0, wait: 0, dismiss: 1 });
+    expect(none.querySelector('.hc-pending')).toBeNull();
+    const some = countsLine({ open: 1, pending: 2, done: 0, wait: 0, dismiss: 1 });
+    expect(some.querySelector('.hc-pending')?.textContent).toBe('判断待ち 2 件');
+    expect([...some.querySelectorAll('.hc')].map((c) => c.textContent?.split(' ')[0])).toEqual(['未', '判断待ち', '済み', '待ち', '無視']);
+    const mk = (counts: { open: number; pending?: number; done: number; wait: number; dismiss: number }) => ({ id: 'x', created_at: 1, repo: '/r', recipe_title: 'a', provider_label: 'p', findings: 2, verified: 0, total_tokens: null, failed: false, counts });
+    expect(needsAttention(mk({ open: 0, pending: 1, done: 1, wait: 0, dismiss: 0 }) as never)).toBe(true);
+    expect(needsAttention(mk({ open: 0, done: 2, wait: 0, dismiss: 0 }) as never)).toBe(false);
   });
 });

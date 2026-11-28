@@ -110,7 +110,7 @@ describe('agentBox（カードの中の「エージェントの申告」）', ()
   it('「対応しなかった」の報告は、別の見た目の印で、理由を出す', () => {
     const el = agentBox({ ...REPORT, verdict: 'skipped', text: '既に直っていた' }, when)!;
     expect(el.className).toBe('agentrep skipped');
-    expect(el.querySelector('.badge')?.textContent).toBe('対応しなかった');
+    expect(el.querySelector('.badge')?.textContent).toBe('確認して対応しなかった');
     expect(el.querySelector('.agenttext')?.textContent).toBe('既に直っていた');
   });
   it('「対応しなかった」には、「直ったか」とは言わない（直していないので）。判断が正しいかを確かめていない、と言い、あなたが決めると言う', () => {
@@ -228,7 +228,7 @@ describe('agentStatusBar（状態と、取り込みのボタン。ボタンは�
   });
   it('**全部に申告があっても、「対応しなかった」があれば、あなたの判断が残っていると言う**（完了したように見せない）。ボタンは、出さない', () => {
     const el = agentStatusBar({ total: 4, reported: 4, missing: 0, skipped: 1 }, ui(), acts())!;
-    expect(el.querySelector('.agentstate')!.textContent).toBe('対応内容: 保存済み（4/4）・対応しなかった 1 件（理由を読んで、仕分けるか、対応済みにしてください）');
+    expect(el.querySelector('.agentstate')!.textContent).toBe('対応内容: 保存済み（4/4）・確認して対応しなかった 1 件（理由を読んで、仕分けるか、対応済みにしてください）');
     // 「無視」「待ち」だけでなく、「対応済みにする」も選べると分かる（誤検知で、中身はすでに満たされているとき、「対応済み」が、実態に合う）
     expect(el.querySelector('.agentstate')!.textContent).toContain('対応済みにしてください');
     expect(el.querySelector('.agentstate')!.className).toContain('decide');
@@ -237,7 +237,7 @@ describe('agentStatusBar（状態と、取り込みのボタン。ボタンは�
   });
   it('一部だけで、「対応しなかった」もあるときは、両方を言って、取り込みのボタンも出す', () => {
     const el = agentStatusBar({ total: 5, reported: 3, missing: 2, skipped: 1 }, ui(), acts())!;
-    expect(el.querySelector('.agentstate')!.textContent).toBe('対応内容: 保存済み 3/5 ・未報告 2 件・対応しなかった 1 件（理由を読んで、仕分けるか、対応済みにしてください）');
+    expect(el.querySelector('.agentstate')!.textContent).toBe('対応内容: 保存済み 3/5 ・未報告 2 件・確認して対応しなかった 1 件（理由を読んで、仕分けるか、対応済みにしてください）');
     expect(btn(el, '対応内容を取り込む')).toBeDefined();
   });
   it('「対応しなかった」が無ければ、判断の手がかりは、添えない', () => {

@@ -42,7 +42,13 @@ function reviewText(s: ReviewSummary, lang: Lang): string {
   const words: string[] = ['レビュー review'];
   if (s.failed) words.push('失敗 failed');
   else if (s.findings === 0) words.push('完了 done', '指摘なし clean');
-  else if (s.counts) words.push('完了 done', s.counts.open > 0 ? '未対応 open' : '済み handled');
+  else if (s.counts) {
+    words.push('完了 done');
+    const pending = s.counts.pending ?? 0;
+    if (s.counts.open > 0) words.push('未対応 open');
+    if (pending > 0) words.push('判断待ち pending');
+    if (s.counts.open === 0 && pending === 0) words.push('済み handled');
+  }
   return [
     formatWhen(s.created_at, lang),
     ymd(new Date(s.created_at)),

@@ -224,4 +224,16 @@ describe('使い回し（入力のたびに、全行を作り直さない）', (
       }
     }
   });
+
+  it('状態の語「判断待ち」「未対応」: 判断待ちのある行は「判断待ち」、未のある行は「未対応」に当てはまる。両方なければ「済み」', () => {
+    const rows = [
+      S('a', { counts: { open: 1, pending: 0, done: 1, wait: 0, dismiss: 0 } }),
+      S('b', { counts: { open: 0, pending: 2, done: 0, wait: 0, dismiss: 0 } }),
+      S('c', { counts: { open: 0, pending: 0, done: 2, wait: 0, dismiss: 0 } }),
+    ];
+    const ids = (q: string) => filterReviews(rows, parseTerms(q), 'ja', NOW).map((x) => x.id);
+    expect(ids('判断待ち')).toEqual(['b']);
+    expect(ids('未対応')).toEqual(['a']);
+    expect(ids('済み')).toEqual(['c']);
+  });
 });

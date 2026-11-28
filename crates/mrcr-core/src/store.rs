@@ -140,13 +140,16 @@ impl ReviewRecord {
     }
 }
 
-/// 履歴に出す、仕分けの件数。**4 つを足すと、指摘の数になる**（どれにも入らない指摘は、ない）。
-/// - `open`（未）: まだ、終わっていないもの。未仕分けと、「対応」にしたが、まだ済んでいないもの
+/// 履歴に出す、仕分けの件数。**5 つを足すと、指摘の数になる**（どれにも入らない指摘は、ない）。
+/// - `open`（未）: まだ、終わっていないもの。未仕分けと、「対応」にしたが、まだ済んでいないもの（`pending` を除く）
+/// - `pending`（判断待ち）: 「対応」にしたが、エージェントが「確認して対応しなかった」と申告していて、あなたの判断が残っているもの
+///   （対応済みの印があれば、済み）
 /// - `done`（済み）: 「対応」で、対応済みの印がある、またはエージェントが「対応した」と申告したもの
 /// - `wait`（待ち）・`dismiss`（無視）
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub struct TriageCounts {
     pub open: usize,
+    pub pending: usize,
     pub done: usize,
     pub wait: usize,
     pub dismiss: usize,
@@ -200,10 +203,11 @@ impl From<&ReviewRecord> for ReviewSummary {
     }
 }
 
-/// レビューごとの (待ち, 無視, 済み) の件数。指摘の範囲の外の番号は、数えない（`triage::get` と同じ）。
+/// レビューごとの (待ち, 無視, 済み, 判断待ち) の件数。指摘の範囲の外の番号は、数えない（`triage::get` と同じ）。
 /// `repo` を渡すと、そのリポジトリのレビューだけを集計する（リポジトリごとに数えるとき、全部を集計し直さない）。
 /// 「済み」＝「対応」の指摘のうち、対応済みの印がある、または、エージェントが「対応した」と申告したもの。
-fn triage_counts(conn: &Connection, repo: Option<&str>) -> Result<std::collections::HashMap<String, (usize, usize, usize)>, rusqlite::Error> {
+/// 「判断待ち」＝「対応」の指摘のうち、エージェントが「対応しなかった」と申告していて、対応済みの印が無いもの。
+fn triage_counts(conn: &Connection, repo: Option<&str>) -> Result<std::collections::HashMap<String, (usize, usize, usize, usize)>, rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT t.review_id, \
            SUM(CASE WHEN t.state = 'wait' THEN 1 ELSE 0 END), \
@@ -211,12 +215,16 @@ fn triage_counts(conn: &Connection, repo: Option<&str>) -> Result<std::collectio
            SUM(CASE WHEN t.state = 'fix' AND ( \
                  EXISTS (SELECT 1 FROM finding_note n WHERE n.review_id = t.review_id AND n.idx = t.idx AND n.done_at IS NOT NULL) \
               OR EXISTS (SELECT 1 FROM agent_report a WHERE a.review_id = t.review_id AND a.idx = t.idx AND a.verdict = 'did') \
-               ) THEN 1 ELSE 0 END) \
+               ) THEN 1 ELSE 0 END), \
+           SUM(CASE WHEN t.state = 'fix' \
+              AND EXISTS (SELECT 1 FROM agent_report a WHERE a.review_id = t.review_id AND a.idx = t.idx AND a.verdict = 'skipped') \
+              AND NOT EXISTS (SELECT 1 FROM finding_note n WHERE n.review_id = t.review_id AND n.idx = t.idx AND n.done_at IS NOT NULL) \
+              THEN 1 ELSE 0 END) \
          FROM triage t JOIN reviews r ON r.id = t.review_id AND t.idx >= 0 AND t.idx < r.findings_count \
          WHERE (?1 IS NULL OR r.repo = ?1) \
          GROUP BY t.review_id",
     )?;
-    let rows = stmt.query_map([repo], |r| Ok((r.get::<_, String>(0)?, (r.get::<_, i64>(1)? as usize, r.get::<_, i64>(2)? as usize, r.get::<_, i64>(3)? as usize))))?;
+    let rows = stmt.query_map([repo], |r| Ok((r.get::<_, String>(0)?, (r.get::<_, i64>(1)? as usize, r.get::<_, i64>(2)? as usize, r.get::<_, i64>(3)? as usize, r.get::<_, i64>(4)? as usize))))?;
     rows.collect()
 }
 
@@ -632,8 +640,8 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
     // 仕分けの件数。読み取りに失敗したら、None のまま（0 件に見せない）
     if let Ok(by_review) = triage_counts(&conn, repo) {
         for s in &mut out {
-            let (wait, dismiss, done) = by_review.get(&s.id).copied().unwrap_or((0, 0, 0));
-            s.counts = Some(TriageCounts { open: s.findings.saturating_sub(wait + dismiss + done), done, wait, dismiss });
+            let (wait, dismiss, done, pending) = by_review.get(&s.id).copied().unwrap_or((0, 0, 0, 0));
+            s.counts = Some(TriageCounts { open: s.findings.saturating_sub(wait + dismiss + done + pending), pending, done, wait, dismiss });
         }
     }
     out
@@ -664,7 +672,8 @@ pub fn open_counts(conn: &Connection, repos: &[String]) -> Result<std::collectio
         .map_err(|e| format!("履歴を読めません: {e}"))?;
     for row in rows {
         let (id, repo, findings) = row.map_err(|e| format!("履歴を読めません: {e}"))?;
-        let (wait, dismiss, done) = by_review.get(&id).copied().unwrap_or((0, 0, 0));
+        // リポジトリの「未」の数字は、「手が付いていない」＋「判断待ち」（どちらも、あなたの手が要る）
+        let (wait, dismiss, done, _pending) = by_review.get(&id).copied().unwrap_or((0, 0, 0, 0));
         *out.entry(repo).or_insert(0) += findings.saturating_sub(wait + dismiss + done);
     }
     Ok(out)
@@ -915,8 +924,8 @@ mod tests {
         let counts = |id: &str| summaries_in(&d, None, 10).into_iter().find(|s| s.id == id).unwrap().counts;
 
         // 何も仕分けていない: 全部、未
-        assert_eq!(counts("r1"), Some(TriageCounts { open: 6, done: 0, wait: 0, dismiss: 0 }));
-        assert_eq!(counts("r2"), Some(TriageCounts { open: 0, done: 0, wait: 0, dismiss: 0 }), "指摘が 0 件なら、全部 0");
+        assert_eq!(counts("r1"), Some(TriageCounts { open: 6, pending: 0, done: 0, wait: 0, dismiss: 0 }));
+        assert_eq!(counts("r2"), Some(TriageCounts { open: 0, pending: 0, done: 0, wait: 0, dismiss: 0 }), "指摘が 0 件なら、全部 0");
 
         // 0: 対応（まだ済んでいない）→ 未／1: 対応＋対応済みの印 → 済み／2: 対応＋エージェントが「対応した」→ 済み
         // 3: 待ち／4: 無視／5: 仕分けなし → 未
@@ -926,13 +935,19 @@ mod tests {
         crate::notes::set_done(&d, "r1", 1, 6, true, 200, None).unwrap();
         crate::agent_report::save(&d, "r1", &[(2, crate::agent_report::AgentReport { verdict: "did".into(), text: "x".into(), reported_at: 1, source: "s".into() })]).unwrap();
         let c = counts("r1").unwrap();
-        assert_eq!(c, TriageCounts { open: 2, done: 2, wait: 1, dismiss: 1 });
-        assert_eq!(c.open + c.done + c.wait + c.dismiss, 6, "4 つを足すと、指摘の数になる");
+        assert_eq!(c, TriageCounts { open: 2, pending: 0, done: 2, wait: 1, dismiss: 1 });
+        assert_eq!(c.open + c.pending + c.done + c.wait + c.dismiss, 6, "4 つを足すと、指摘の数になる");
 
         // 「対応しなかった」の申告は、済みにしない。仕分けを「待ち」に変えたら、済みの印があっても、済みに数えない
         crate::agent_report::save(&d, "r1", &[(0, crate::agent_report::AgentReport { verdict: "skipped".into(), text: "x".into(), reported_at: 1, source: "s".into() })]).unwrap();
         crate::triage::set_with(&d, "r1", 1, "wait", 6, 300, None).unwrap();
-        assert_eq!(counts("r1"), Some(TriageCounts { open: 2, done: 1, wait: 2, dismiss: 1 }));
+        // 0 は「対応」のまま「対応しなかった」の申告 → 判断待ち（未から外れる）。1 を「待ち」に変えたので、済みは 1
+        assert_eq!(counts("r1"), Some(TriageCounts { open: 1, pending: 1, done: 1, wait: 2, dismiss: 1 }));
+        // 判断待ちでも、あなたが対応済みの印を付ければ、済み
+        crate::notes::set_done(&d, "r1", 0, 6, true, 400, None).unwrap();
+        let c = counts("r1").unwrap();
+        assert_eq!((c.pending, c.done), (0, 2));
+        assert_eq!(c.open + c.pending + c.done + c.wait + c.dismiss, 6, "5 つを足すと、指摘の数になる");
 
         // 指摘の範囲の外の番号（古い仕分けの残り）は、数えない
         db::open(&d).unwrap().execute("INSERT INTO triage (review_id, idx, state) VALUES ('r1', 99, 'dismiss')", []).unwrap();

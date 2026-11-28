@@ -12,6 +12,8 @@ export interface AspectRow {
   findings: number;
   /** 仕分けの内訳（読めた記録だけ） */
   open: number;
+  /** 判断待ち（エージェントが「確認して対応しなかった」と申告し、あなたの判断が残っているもの） */
+  pending: number;
   done: number;
   wait: number;
   dismiss: number;
@@ -43,7 +45,7 @@ export function aggregateAspects(history: readonly ReviewSummary[]): AspectStats
   for (const s of history) {
     let r = by.get(s.recipe_title);
     if (!r) {
-      r = { title: s.recipe_title, runs: 0, failed: 0, findings: 0, open: 0, done: 0, wait: 0, dismiss: 0, ignorePct: null };
+      r = { title: s.recipe_title, runs: 0, failed: 0, findings: 0, open: 0, pending: 0, done: 0, wait: 0, dismiss: 0, ignorePct: null };
       by.set(s.recipe_title, r);
     }
     r.runs += 1;
@@ -51,6 +53,7 @@ export function aggregateAspects(history: readonly ReviewSummary[]): AspectStats
     r.findings += s.findings;
     if (s.counts) {
       r.open += s.counts.open;
+      r.pending += s.counts.pending ?? 0;
       r.done += s.counts.done;
       r.wait += s.counts.wait;
       r.dismiss += s.counts.dismiss;

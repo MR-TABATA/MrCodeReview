@@ -6,7 +6,8 @@ import { h } from './dom';
  *  */
 /** 上部タブに並ぶページ。 */
 export type TabPage = 'repos' | 'aspects' | 'history' | 'newreview';
-export type Page = TabPage | 'result';
+/** ページは、タブで切り替える 4 つだけ（履歴の結果は、行の下に開くアコーディオンで、ページではない）。 */
+export type Page = TabPage;
 
 /** タブの並び。「結果」は、タブではなく、履歴・ログ・実行直後から掘り下げて開くページ（戻るボタンで、来たページへ戻る）。 */
 export const PAGES: readonly TabPage[] = ['repos', 'aspects', 'history', 'newreview'];

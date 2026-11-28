@@ -62,4 +62,12 @@ describe('観点ごとの集計', () => {
     const s = aggregateAspects([rev('B', 0, c(0, 0, 0, 0)), rev('A', 0, c(0, 0, 0, 0)), rev('C', 0, c(0, 0, 0, 0)), rev('C', 0, c(0, 0, 0, 0))]);
     expect(s.rows.map((r) => r.title)).toEqual(['C', 'A', 'B']);
   });
+
+  it('判断待ち（pending）は、観点ごとに別に数える。無視の割合の分母には、入れない', () => {
+    const s = aggregateAspects([rev('A', 4, { open: 1, pending: 2, done: 1, wait: 0, dismiss: 0 } as TriageCounts)]);
+    const a = s.rows[0];
+    expect([a.open, a.pending, a.done]).toEqual([1, 2, 1]);
+    expect(a.ignorePct).toBe(0); // 判断済みは 1 件（済み）で、無視は 0
+    expect(a.open + a.pending + a.done + a.wait + a.dismiss).toBe(a.findings);
+  });
 });

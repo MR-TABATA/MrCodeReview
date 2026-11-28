@@ -1483,7 +1483,8 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 .history .hfind { flex: 0 0 5.5em; color: var(--muted); font-size: 12px; white-space: nowrap; text-align: right; }
 .history li .hcommit { flex: 0 0 6em; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; }
 /* 右端の欄: レビューは仕分けの件数、フックは所要時間。幅を決めて、行ごとに、列の位置をそろえる */
-.history li .hcounts-empty, .history li .hcounts { flex: 0 0 300px; margin-top: 0; flex-wrap: nowrap; justify-content: flex-end; }
+/* 件数の欄は、5 つのチップ（未・判断待ち・済み・待ち・無視）が入る幅の、固定。中身に押されて広がると、コミットの列が、行ごとにずれる */
+.history li .hcounts-empty, .history li .hcounts { flex: 0 0 360px; min-width: 0; margin-top: 0; flex-wrap: nowrap; justify-content: flex-end; }
 
 /* 行の下に、全幅で出す詳細（フックの内訳） */
 .history li { flex-wrap: wrap; }
@@ -1519,7 +1520,7 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 .hselectall::before { content: '✓'; }
 .hselectall.on::before { content: '✕'; }
 .hbtn-ic svg { transition: transform .35s; }
-.hbtn:hover:not(:disabled) svg { transform: rotate(180deg); }
+.hbtn.spin:hover:not(:disabled) svg { transform: rotate(180deg); }
 .hbtn:hover:not(:disabled), .hselectall:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 1px 6px color-mix(in srgb, var(--accent) 22%, transparent); }
 .hbtn:hover:not(:disabled) .hbtn-ic, .hselectall:hover::before { background: var(--accent); color: var(--on-accent); }
 .hbtn:disabled { opacity: .55; cursor: default; }
@@ -1536,7 +1537,6 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 .hsearch-count { flex: 0 0 auto; font-size: 12px; white-space: nowrap; }
 
 /* ブランチ名: 履歴・ログの行の列、ヘッダーのリポジトリの横、リポジトリの一覧 */
-.history .hbranch { flex: 0 0 9em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .repo-branch { flex: 0 1 auto; min-width: 0; padding: 1px 9px; border-radius: 999px; background: var(--code-bg); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 500; white-space: nowrap; max-width: 16em; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 .repo-item-branch { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hmore { display: block; margin: 12px auto 4px; padding: 7px 20px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -1624,3 +1624,59 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 .actbar-info .err { margin: 0; padding: 2px 6px; }
 .actbar-buttons { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; margin-left: auto; }
 .actbar-buttons button.main-run-btn, .actbar-buttons button.continue-run-btn { width: auto; }
+
+/* 丸いボタンを、カードの操作にも使う（「更新」「すべて選ぶ」と同じ見た目） */
+.hbtn.noic { padding: 6px 16px; }
+.hbtn.on { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
+.hbtn.on .hbtn-ic { background: var(--ok); color: var(--on-accent); }
+.handling .done-row { gap: 10px; flex-wrap: wrap; }
+
+/* 仕分け・「CLI に渡す」も、丸いボタンにそろえる */
+.triage .hbtn { }
+.triage .hbtn.t-fix.on { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
+.triage .hbtn.t-fix.on .hbtn-ic { background: var(--ok); color: var(--on-accent); }
+.triage .hbtn.t-wait.on { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }
+.triage .hbtn.t-wait.on .hbtn-ic { background: var(--warn); color: var(--on-accent); }
+.triage .hbtn.t-dismiss.on { border-color: var(--muted); color: var(--muted); background: var(--code-bg); }
+.triage .hbtn.t-dismiss.on .hbtn-ic { background: var(--muted); color: var(--on-accent); }
+.hbtn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.hbtn.primary .hbtn-ic { background: color-mix(in srgb, var(--on-accent) 22%, transparent); color: var(--on-accent); }
+.hbtn.primary:hover:not(:disabled) { color: var(--on-accent); filter: brightness(1.08); }
+.hbtn.primary:hover:not(:disabled) .hbtn-ic { background: color-mix(in srgb, var(--on-accent) 32%, transparent); color: var(--on-accent); }
+.triage .hbtn.send { margin-left: auto; }
+
+/* カードの中のボタンは、小さめ（ページの見出しの「更新」より、ひと回り小さい） */
+.triage .hbtn, .handling .hbtn, .fc-tag .hbtn { gap: 6px; padding: 2px 11px 2px 3px; font-size: 12px; font-weight: 600; }
+.triage .hbtn .hbtn-ic, .handling .hbtn .hbtn-ic { width: 17px; height: 17px; }
+.triage .hbtn .hbtn-ic svg, .handling .hbtn .hbtn-ic svg { width: 10px; height: 10px; }
+.triage .hbtn.noic, .handling .hbtn.noic, .fc-tag .hbtn.noic { padding: 2px 11px; }
+.triage, .handling .done-row { gap: 6px; }
+
+/* 指摘のカードの見出し（タイトル）は、大きめに。畳んだ行も、同じ */
+.fc-title, .foldrow strong { font-size: 17px; line-height: 1.4; }
+
+/* 結果のページ上部の「← 履歴・ログ」「このレビューをレポートに」: 見出しの「更新」より、ひと回り小さく（カードの中のボタンよりは、大きい） */
+.dhead-row .hbtn { gap: 6px; padding: 3px 13px 3px 4px; font-size: 12.5px; }
+.dhead-row .hbtn .hbtn-ic { width: 18px; height: 18px; }
+.dhead-row .hbtn .hbtn-ic svg { width: 11px; height: 11px; }
+
+/* 判断待ち（エージェントが確認して対応しなかった指摘）: 未と同じ色の系統で、破線の枠 */
+.hcounts .hc-pending { background: transparent; color: var(--warn); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 55%, transparent); font-weight: 600; }
+.aspect-bar .ab-pending { background: repeating-linear-gradient(135deg, #8ea6ee 0 4px, #bccaf5 4px 8px); }
+
+/* 履歴・ログの行の下に開く、結果（アコーディオン） */
+.history li .hdetail { flex: 1 1 100%; min-width: 0; cursor: default; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.history li .hdetail .result { padding: 0; }
+.history li .hdetail .d-head { margin: 0 0 8px; }
+
+/* 丸いボタンの、危険な操作（削除）。選んだ履歴の操作バーの、ボタンも丸くする */
+.hbtn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+.hbtn.danger .hbtn-ic { background: var(--bad-bg); color: var(--bad); }
+.hbtn.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); box-shadow: 0 1px 6px color-mix(in srgb, var(--bad) 22%, transparent); }
+.hbtn.danger:hover:not(:disabled) .hbtn-ic { background: var(--bad); color: var(--on-accent); }
+.pickbar .hbtn, .hmore.hbtn { gap: 6px; padding: 3px 13px 3px 4px; font-size: 12.5px; }
+.pickbar .hbtn .hbtn-ic, .hmore.hbtn .hbtn-ic { width: 18px; height: 18px; }
+.pickbar .hbtn .hbtn-ic svg, .hmore.hbtn .hbtn-ic svg { width: 11px; height: 11px; }
+.hmore.hbtn { display: flex; width: fit-content; margin: 12px auto 4px; }
+.pickbar .hbtn { margin-left: auto; }
+.pickbar .hbtn + .hbtn { margin-left: 8px; }

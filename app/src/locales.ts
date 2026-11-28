@@ -287,6 +287,7 @@ export interface Messages {
     countUnit: (label: string, n: number) => string;
     countsTitle: string;
     countOpen: string;
+    countPending: string;
     countDone: string;
     countWait: string;
     countDismiss: string;
@@ -434,7 +435,7 @@ export interface Messages {
       failedNote: (n: number) => string;
       toolBadge: string;
       ignoreTitle: string;
-      breakdownTitle: (open: number, done: number, wait: number, dismiss: number) => string;
+      breakdownTitle: (open: number, pending: number, done: number, wait: number, dismiss: number) => string;
     };
     hookRunsHeading: string;
     repoSwitchFailed: (err: string) => string;
@@ -556,7 +557,6 @@ export interface Messages {
     tabRecord: string;
     reportThisReviewTitle: string;
     reportThisReviewBtn: string;
-    backToHistory: string;
     closeResult: string;
     runLogDetail: {
       groupRun: string;
@@ -604,6 +604,9 @@ export interface Messages {
     noQuote: string;
     memoPlaceholder: string;
     markDoneBtn: string;
+    falsePositiveBtn: string;
+    falsePositiveTitle: string;
+    falsePositiveMemo: string;
     doneRevertBtn: string;
     triageNoTimestamp: string;
     triageCarrySource: string;
@@ -828,7 +831,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       renameTitle: '表示名を変更',
       setNameTitle: '表示名をつける',
       unlinkTitle: '登録を解除',
-      openCountTitle: (n) => `未対応の指摘 ${n} 件（未仕分けと、対応中。待ち・無視・済みは含みません）`,
+      openCountTitle: (n) => `未対応・判断待ちの指摘 ${n} 件（未仕分けと、対応中と、エージェントが対応しなかった指摘。待ち・無視・済みは含みません）`,
       branchTitle: 'いま、チェックアウトしているブランチ',
       colRepo: 'リポジトリ',
       colBranch: 'ブランチ',
@@ -907,8 +910,9 @@ export const MESSAGES: Record<Lang, Messages> = {
     historyView: {
       formatDay: (d) => `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`,
       countUnit: (label, n) => `${label} ${n} 件`,
-      countsTitle: '未＝未仕分けと、対応中（まだ済んでいない）／済み＝対応済み、またはエージェントが「対応した」と申告',
+      countsTitle: '未＝未仕分けと、対応中（まだ済んでいない）／判断待ち＝エージェントが「確認して対応しなかった」と申告し、あなたの判断が残っているもの／済み＝対応済み、またはエージェントが「対応した」と申告',
       countOpen: '未',
+      countPending: '判断待ち',
       countDone: '済み',
       countWait: '待ち',
       countDismiss: '無視',
@@ -1062,7 +1066,7 @@ export const MESSAGES: Record<Lang, Messages> = {
         failedNote: (n) => `失敗 ${n}`,
         toolBadge: 'Tool',
         ignoreTitle: '無視 ÷（済み＋待ち＋無視）。「未」は、まだ判断していないので、入れません。',
-        breakdownTitle: (o, d, w, i) => `未 ${o}・済み ${d}・待ち ${w}・無視 ${i}`,
+        breakdownTitle: (o, p, d, w, i) => `未 ${o}${p ? `・判断待ち ${p}` : ''}・済み ${d}・待ち ${w}・無視 ${i}`,
       },
       hookRunsHeading: 'フックの実行',
       repoSwitchFailed: (err) => `リポジトリを切り替えられませんでした（ページは、そのままです）: ${err}`,
@@ -1136,7 +1140,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       specQuoteLabel: '設計書の要求（原文引用）',
       specQuoteSource: (name) => `出典: ${name}`,
       chipAgentDid: '対応した',
-      chipAgentSkipped: '対応しなかった',
+      chipAgentSkipped: '確認して対応しなかった',
       chipAgentTitle: 'エージェントの申告・判断です。MCR が、コードを確かめたものではありません',
       chipMemo: '📝 メモ',
       chipCarried: '↺ 引き継ぎ',
@@ -1193,7 +1197,6 @@ export const MESSAGES: Record<Lang, Messages> = {
       tabRecord: '記録',
       reportThisReviewTitle: 'このレビューだけを、レポートにします',
       reportThisReviewBtn: 'このレビューをレポートに',
-      backToHistory: '← 履歴・ログ',
       closeResult: '✕ 結果を閉じる',
       runLogDetail: {
         groupRun: '実行',
@@ -1241,6 +1244,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       noQuote: '(引用なし)',
       memoPlaceholder: '対応メモ（何をしたか・なぜ無視か。レポートに載ります）',
       markDoneBtn: '対応済みにする',
+      falsePositiveBtn: '誤検知',
+      falsePositiveTitle: 'この指摘は、誤検知です。仕分けを「無視」にして、メモに「誤検知」と残します',
+      falsePositiveMemo: '誤検知',
       doneRevertBtn: '✓ 対応済み（押すと戻す）',
       triageNoTimestamp: '仕分けた時刻: 記録なし（この機能より前の記録）',
       triageCarrySource: '前回のレビューから引き継ぎ',
@@ -1263,7 +1269,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       agentStateAll: (reported, total) => `対応内容: 保存済み（${reported}/${total}）`,
       agentStatePartial: (reported, total, missing) => `対応内容: 保存済み ${reported}/${total} ・未報告 ${missing} 件`,
       agentStateNone: (missing) => `対応内容: 未報告 ${missing} 件`,
-      agentStateDecide: (skipped) => `対応しなかった ${skipped} 件（理由を読んで、仕分けるか、対応済みにしてください）`,
+      agentStateDecide: (skipped) => `確認して対応しなかった ${skipped} 件（理由を読んで、仕分けるか、対応済みにしてください）`,
     },
   },
 
@@ -1569,7 +1575,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       renameTitle: 'Rename',
       setNameTitle: 'Set display name',
       unlinkTitle: 'Unlink registration',
-      openCountTitle: (n) => `${n} open finding(s) (untriaged or in progress; not counting Wait, Ignore or Done)`,
+      openCountTitle: (n) => `${n} open finding(s) (untriaged, in progress, or checked by the agent and awaiting your decision; not counting Wait, Ignore or Done)`,
       branchTitle: 'The branch checked out now',
       colRepo: 'Repository',
       colBranch: 'Branch',
@@ -1707,8 +1713,9 @@ export const MESSAGES: Record<Lang, Messages> = {
     historyView: {
       formatDay: (d) => d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
       countUnit: (label, n) => `${label} ${n}`,
-      countsTitle: 'Open = Untriaged / Fix, Done = Fixed / Agent reported done, Wait = Waiting, Dismiss = Dismissed',
+      countsTitle: 'Open = Untriaged / Fix, To decide = the agent checked and did not change it, your decision is pending, Done = Fixed / Agent reported done, Wait = Waiting, Dismiss = Dismissed',
       countOpen: 'Open',
+      countPending: 'To decide',
       countDone: 'Done',
       countWait: 'Wait',
       countDismiss: 'Dismiss',
@@ -1863,7 +1870,7 @@ export const MESSAGES: Record<Lang, Messages> = {
         failedNote: (n) => `${n} failed`,
         toolBadge: 'Tool',
         ignoreTitle: 'Dismissed ÷ (done + waiting + dismissed). "Open" is left out: not decided yet.',
-        breakdownTitle: (o, d, w, i) => `open ${o} · done ${d} · waiting ${w} · dismissed ${i}`,
+        breakdownTitle: (o, p, d, w, i) => `open ${o}${p ? ` · to decide ${p}` : ''} · done ${d} · waiting ${w} · dismissed ${i}`,
       },
       hookRunsHeading: 'Hook runs',
       repoSwitchFailed: (err) => `Could not switch the repository (the page stays as it is): ${err}`,
@@ -1937,7 +1944,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       specQuoteLabel: '📋 Specification Quote',
       specQuoteSource: (name) => `Source: ${name}`,
       chipAgentDid: 'Agent: Did',
-      chipAgentSkipped: 'Agent: Skipped',
+      chipAgentSkipped: 'Agent: checked, not changed',
       chipAgentTitle: 'Reported by coding agent',
       chipMemo: '📝 Memo',
       chipCarried: '↺ Carried',
@@ -1995,7 +2002,6 @@ export const MESSAGES: Record<Lang, Messages> = {
       tabRecord: 'Record',
       reportThisReviewTitle: 'Create report for this review',
       reportThisReviewBtn: 'Report this review',
-      backToHistory: '← History & log',
       closeResult: '✕ Close the result',
       runLogDetail: {
         groupRun: 'Run',
@@ -2043,6 +2049,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       noQuote: '(no quote)',
       memoPlaceholder: 'Note (what you fixed or why ignored — included in reports)',
       markDoneBtn: 'Mark as done',
+      falsePositiveBtn: 'False positive',
+      falsePositiveTitle: 'This finding is a false positive. Sets the triage to "Ignore" and leaves "False positive" in the memo',
+      falsePositiveMemo: 'False positive',
       doneRevertBtn: '✓ Done (click to undo)',
       triageNoTimestamp: 'Triaged at: Not recorded (created before this feature)',
       triageCarrySource: 'carried from previous review',

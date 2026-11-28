@@ -349,8 +349,10 @@ export interface AgentFetch {
 
 /** 履歴に出す、仕分けの件数。4 つを足すと、指摘の数になる（`store.rs` の `TriageCounts`） */
 export interface TriageCounts {
-  /** 未: 未仕分けと、「対応」にしたが、まだ済んでいないもの */
+  /** 未: 未仕分けと、「対応」にしたが、まだ済んでいないもの（判断待ちを除く） */
   open: number;
+  /** 判断待ち: 「対応」にしたが、エージェントが「確認して対応しなかった」と申告していて、あなたの判断が残っているもの。古いデータには無い */
+  pending?: number;
   /** 済み: 「対応」で、対応済みの印がある、またはエージェントが「対応した」と申告したもの */
   done: number;
   wait: number;

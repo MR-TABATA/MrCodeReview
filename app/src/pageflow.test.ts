@@ -60,7 +60,6 @@ describe('上部タブでページを切り替える', () => {
     state.selected = null;
     state.hook = newHookUi();
     state.page = 'newreview';
-    state.backTo = 'history';
     state.history = [];
     state.repoBranches = {};
     state.historyQuery = '';
@@ -303,7 +302,6 @@ describe('上部タブでページを切り替える', () => {
 
   it('実行した直後の結果は、新規レビューの実行バーの下に出る。「結果を閉じる」で、新規レビューのまま、結果だけが消える', () => {
     state.selected = fakeReview('run1');
-    state.backTo = 'newreview';
     state.page = 'newreview';
     render();
     expect(selected()).toEqual(['newreview']);
@@ -311,7 +309,8 @@ describe('上部タブでページを切り替える', () => {
     expect(document.querySelector('.result-anchor .d-head')).not.toBeNull();
     expect(document.querySelector('.result-anchor nav.tabs')).not.toBeNull(); // 実行直後は、これまでどおり、タブがある
     const close = document.querySelector<HTMLElement>('.back-to-log-btn')!;
-    expect(close.textContent).toBe('✕ 結果を閉じる');
+    expect(close.textContent).toBe('結果を閉じる'); // 先頭の「✕」は、アイコン
+    expect(close.title).toBe('✕ 結果を閉じる');
     close.click();
     expect(state.page).toBe('newreview');
     expect(state.selected).toBeNull();
@@ -319,12 +318,16 @@ describe('上部タブでページを切り替える', () => {
     expect(document.querySelector('.run-form, .recipe-bar-top')).not.toBeNull();
   });
 
-  it('履歴から開いた結果は、新規レビューのタブには出ない（実行する場所に、過去の結果を混ぜない）', () => {
+  it('ページを変えたら、開いている結果は閉じる。新規レビューのタブに、履歴で開いた結果は出ない', () => {
+    state.history = [summary('old1')] as never;
     state.selected = fakeReview('old1');
-    state.backTo = 'history';
-    state.page = 'newreview';
+    state.page = 'history';
     render();
+    expect(document.querySelector('.hdetail')).not.toBeNull();
+    tab('newreview').click();
+    expect(state.selected).toBeNull();
     expect(document.querySelector('.result-anchor')).toBeNull();
+    expect(document.querySelector('.hdetail')).toBeNull();
     expect(document.querySelector('.run-form, .recipe-bar-top')).not.toBeNull();
   });
 
@@ -340,7 +343,7 @@ describe('上部タブでページを切り替える', () => {
       expect(hookRow.querySelector('.badge')?.textContent).toBe('フック');
       // 列の並びは同じ。右端の欄だけ、中身が違う（レビューは仕分けの件数、フックは所要時間）
       expect(cols(hookRow).slice(0, -1)).toEqual(cols(reviewRow).slice(0, -1));
-      expect(cols(hookRow).slice(0, -1)).toEqual(['hlead', 'hwhen', 'h1', 'hbranch', 'hcommit', 'hfind']);
+      expect(cols(hookRow).slice(0, -1)).toEqual(['hlead', 'hwhen', 'h1', 'hcommit', 'hfind']);
       expect(reviewRow.lastElementChild?.classList.contains('hcounts')).toBe(true);
       expect(hookRow.lastElementChild?.classList.contains('hdur')).toBe(true);
       expect(hookRow.querySelector('.hcommit')?.textContent).toBe('abc1234');
@@ -642,40 +645,62 @@ describe('上部タブでページを切り替える', () => {
     });
   });
 
-  describe('履歴から開いた結果（掘り下げのページ）', () => {
-    it('見出しは「履歴・ログ」で、そのタブが選ばれたまま。タブ（指摘・差分・記録）も、「すべて開く」「取り込む」の行も、まとめて渡す欄も無い', () => {
-      state.selected = fakeReview('x');
-      state.backTo = 'history';
-      state.page = 'result';
+  describe('履歴から開いた結果（行の下に開くアコーディオン）', () => {
+    const open = (id: string, over: Partial<ReviewView> = {}) => {
+      state.history = [summary(id)] as never;
+      state.selected = { ...fakeReview(id), ...over } as ReviewView;
+      state.page = 'history';
       render();
+    };
+
+    it('押した行の下に開く。ページは、「履歴・ログ」のまま。タブ（指摘・差分・記録）も、「すべて開く」「取り込む」の行も、まとめて渡す欄も、戻るボタンも無い', () => {
+      open('x');
       expect(selected()).toEqual(['history']);
       expect(document.querySelectorAll('.pagetabs button').length).toBe(4);
-      expect(document.querySelector('.page-title')?.textContent).toBe('履歴・ログ');
+      expect(document.querySelector('.page-title')?.textContent).toContain('履歴・ログ'); // 件数つき「履歴・ログ (1)」
       expect(document.querySelector('.run-form, .recipe-bar-top')).toBeNull();
-      expect(document.querySelector('.result-compact')).not.toBeNull();
+      expect(document.querySelector('li .hdetail .result-compact')).not.toBeNull(); // 行（li）の中、行の下
       expect(document.querySelector('.result nav.tabs')).toBeNull();
       expect(document.querySelector('.result')?.textContent).not.toContain('すべて開く');
       expect(document.querySelector('.result')?.textContent).not.toContain('まとめて CLI に渡す');
-      expect(document.querySelector('.back-to-log-btn')?.textContent).toBe('← 履歴・ログ');
+      expect(document.querySelector('.back-to-log-btn')).toBeNull(); // 行を押せば、閉じる
+      expect(document.querySelector('.hdetail .d-head h2')).toBeNull(); // 名前は、行に出ている
+      expect(document.querySelector('.hdetail .report-this-btn')).not.toBeNull();
     });
 
-    it('結果が無くなれば（履歴から消した・リポジトリを替えた）、履歴・ログへ戻る', () => {
-      state.selected = fakeReview('x');
-      state.backTo = 'history';
-      state.page = 'result';
+    it('同時に開くのは 1 件だけ。開いている行をもう一度押すと閉じる。別の行を押すと、前の行は閉じる', async () => {
+      invokeMock.mockImplementation(async (cmd: string, args: { id?: string }) => (cmd === 'get_review' ? fakeReview(args.id ?? 'x') : cmd === 'build_handoff' ? '' : null));
+      state.history = [summary('a'), summary('b', { created_at: 1_795_775_717_000 - 1000 })] as never;
+      state.page = 'history';
       render();
-      state.selected = null;
-      render();
-      expect(state.page).toBe('history');
-      expect(selected()).toEqual(['history']);
+      const rows = () => [...document.querySelectorAll<HTMLElement>('.right ul.history li')];
+      rows()[0].querySelector<HTMLElement>('.ht')!.click();
+      await flush();
+      expect(state.page).toBe('history'); // ページは、変わらない
+      expect(state.selected?.id).toBe('a');
+      expect(document.querySelectorAll('.hdetail').length).toBe(1);
+      expect(rows()[0].querySelector('.hdetail')).not.toBeNull();
+      rows()[1].querySelector<HTMLElement>('.ht')!.click(); // 別の行
+      await flush();
+      expect(state.selected?.id).toBe('b');
+      expect(document.querySelectorAll('.hdetail').length).toBe(1);
+      expect(rows()[1].querySelector('.hdetail')).not.toBeNull();
+      expect(rows()[0].querySelector('.hdetail')).toBeNull();
+      rows()[1].querySelector<HTMLElement>('.ht')!.click(); // 同じ行: 閉じる
+      await flush();
+      expect(state.selected).toBeNull();
+      expect(document.querySelector('.hdetail')).toBeNull();
+    });
+
+    it('開いた詳細の中を押しても、行は閉じない（カード・ボタンの操作で、閉じてしまわない）', () => {
+      open('x');
+      (document.querySelector('.hdetail') as HTMLElement).click();
+      expect(state.selected?.id).toBe('x');
+      expect(document.querySelector('.hdetail')).not.toBeNull();
     });
 
     it('下に、折りたたみの「実行の記録」。開いたときにだけ、中身（実行・入力・差分）を作る。差分も、その欄を開いたときにだけ', () => {
-      const r = { ...fakeReview('x'), prompt: '前置き\n\n## 差分\n\n```diff\n+追加した行\n```\n' } as ReviewView;
-      state.selected = r;
-      state.backTo = 'history';
-      state.page = 'result';
-      render();
+      open('x', { prompt: '前置き\n\n## 差分\n\n```diff\n+追加した行\n```\n' } as Partial<ReviewView>);
       const det = document.querySelector('details.rld-record') as HTMLDetailsElement;
       expect(det.querySelector('.rld')).toBeNull(); // 閉じているあいだは、作らない
       det.open = true;
@@ -689,8 +714,18 @@ describe('上部タブでページを切り替える', () => {
       diff.open = true;
       diff.dispatchEvent(new Event('toggle'));
       expect(det.querySelector('.rld-diff-pre')?.textContent).toContain('+追加した行');
-      // 指摘（結果）は、ここには出ない（結果のページ本体にある）
       expect(det.querySelector('.rld-finding')).toBeNull();
+    });
+
+    it('「前回」へ移ったとき、その行が、折りたたまれた日付の中にあっても、開く（日付を開く）', async () => {
+      const old = { created_at: new Date(2026, 9, 1, 10, 0, 0).getTime() };
+      invokeMock.mockImplementation(async (cmd: string, args: { id?: string }) => (cmd === 'get_review' ? fakeReview(args.id ?? 'x') : cmd === 'build_handoff' ? '' : null));
+      state.history = [summary('new1'), ...Array.from({ length: 8 }, (_, i) => summary(`o${i}`, old))] as never;
+      state.page = 'history';
+      state.historyDays = new Set();
+      await select('o3');
+      expect(state.historyDays.size).toBe(1);
+      expect(document.querySelectorAll('.hdetail').length).toBe(1);
     });
   });
 
@@ -706,22 +741,6 @@ describe('上部タブでページを切り替える', () => {
     expect(state.settings).toBeNull();
     expect(state.page).toBe('history');
     expect(selected()).toEqual(['history']);
-  });
-
-  it('履歴の行を押すと、結果のページが開き、戻るで、履歴・ログへ戻る', async () => {
-    invokeMock.mockImplementation(async (cmd: string, args: { id?: string }) => (cmd === 'get_review' ? fakeReview(args.id ?? 'x') : cmd === 'build_handoff' ? '' : null));
-    state.history = [summary('a')] as never;
-    state.page = 'history';
-    render();
-    document.querySelector<HTMLElement>('.right ul.history li .ht')!.click();
-    await flush();
-    expect(state.page).toBe('result');
-    expect(state.selected?.id).toBe('a');
-    const back = document.querySelector<HTMLElement>('.back-to-log-btn')!;
-    expect(back.textContent).toBe('← 履歴・ログ');
-    back.click();
-    expect(state.page).toBe('history');
-    expect(state.selected).toBeNull();
   });
 
   describe('観点のページ', () => {
@@ -979,7 +998,6 @@ describe('上部タブでページを切り替える', () => {
       const base: Record<string, unknown> = { repo_status: [], repo_data: [], repo_branches: {}, repo_hooks: {}, list_reviews: [], list_recipes: { recipes: [], warnings: [] }, list_bases: [] };
       invokeMock.mockImplementation(async (cmd: string) => (cmd === 'get_agent_reports' ? reported : (base[cmd] ?? null)));
       state.page = 'history';
-      state.backTo = 'history';
       state.selected = open;
       await refreshHistory();
       await flush();
@@ -1006,7 +1024,69 @@ describe('上部タブでページを切り替える', () => {
     });
   });
 
-  describe('結果を開いたときの、戻り先', () => {
+  describe('「誤検知」ボタン', () => {
+    const f = { file: 'a.rs', line: 1, severity: 'medium', title: '見出し', detail: '詳細', evidence: 'x', verified: true };
+    const show = (status: string, agent: unknown, memo = '') => {
+      state.selected = { ...fakeReview('fp'), findings: [f], triage: [status], finding_notes: [{ memo, done_at: null, done_head: null }], agent_reports: [agent] } as unknown as ReviewView;
+      state.history = [summary('fp')] as never;
+      state.page = 'history';
+      state.openCards = new Set([0]);
+      state.expandedFindings = new Set(['fp:0']); // カードを開いておく
+      render();
+    };
+    const skipped = { verdict: 'skipped', text: '誤検知です', reported_at: 1, source: 'cli:agent' };
+
+    it('エージェントが「対応しなかった」と申告した、「対応」の指摘にだけ出る', () => {
+      show('fix', skipped);
+      expect(document.querySelectorAll('.false-positive').length).toBe(1);
+      expect(document.querySelector('.false-positive')?.textContent).toBe('誤検知');
+      show('fix', null);
+      expect(document.querySelector('.false-positive')).toBeNull(); // 報告なし
+      show('fix', { ...skipped, verdict: 'did' });
+      expect(document.querySelector('.false-positive')).toBeNull(); // 対応した
+      show('dismiss', skipped);
+      expect(document.querySelector('.false-positive')).toBeNull(); // もう「対応」ではない
+      show('wait', skipped);
+      expect(document.querySelector('.false-positive')).toBeNull();
+    });
+
+    it('「確認して対応しなかった」と申告された指摘には、「未対応」の印を出さない（申告の印だけ）。直す対象と読めないように', () => {
+      show('fix', skipped);
+      const chips = [...document.querySelectorAll('.finding .chip')].map((c) => c.textContent);
+      expect(chips).toContain('🤖 確認して対応しなかった');
+      expect(chips).not.toContain('未対応');
+      // 申告が無ければ、これまでどおり「未対応」
+      show('fix', null);
+      expect([...document.querySelectorAll('.finding .chip')].map((c) => c.textContent)).toContain('未対応');
+    });
+
+    it('押すと、仕分けを「無視」にして、メモに「誤検知」と残す。すでにあるメモは、消さずにあとに足す', async () => {
+      const done = (triage: string[], memo: string) => ({ triage, notes: [{ memo, done_at: null, done_head: null }] });
+      invokeMock.mockImplementation(async (cmd: string, args: { memo?: string }) => {
+        if (cmd === 'set_triage') return done(['dismiss'], '');
+        if (cmd === 'set_memo') return done(['dismiss'], args.memo ?? '');
+        return null;
+      });
+      show('fix', skipped);
+      (document.querySelector('.false-positive') as HTMLElement).click();
+      await flush();
+      const calls = invokeMock.mock.calls.filter((c) => c[0] === 'set_triage' || c[0] === 'set_memo');
+      expect(calls.map((c) => [c[0], (c[1] as { status?: string }).status, (c[1] as { memo?: string }).memo])).toEqual([
+        ['set_triage', 'dismiss', undefined],
+        ['set_memo', undefined, '誤検知'],
+      ]);
+      expect(state.selected!.triage).toEqual(['dismiss']);
+
+      invokeMock.mockClear();
+      show('fix', skipped, '前に書いたメモ');
+      (document.querySelector('.false-positive') as HTMLElement).click();
+      await flush();
+      const memoCall = invokeMock.mock.calls.find((c) => c[0] === 'set_memo');
+      expect((memoCall![1] as { memo: string }).memo).toBe('前に書いたメモ ／ 誤検知');
+    });
+  });
+
+  describe('結果を開いたときの、ページ', () => {
     const setup = () =>
       invokeMock.mockImplementation(async (cmd: string, args: { id?: string }) => {
         if (cmd === 'get_review') return fakeReview(args.id ?? 'x');
@@ -1014,35 +1094,16 @@ describe('上部タブでページを切り替える', () => {
         return null;
       });
 
-    it('リポジトリのページ（履歴でも新規レビューでもない所）から開くと、結果のページになり、戻り先は履歴・ログ', async () => {
-      setup();
-      state.page = 'repos';
-      state.backTo = 'newreview';
-      await select('a');
-      expect([state.page, state.backTo]).toEqual(['result', 'history']);
-    });
-
-    it('履歴・ログから開くと、結果のページになり、戻り先は履歴・ログ', async () => {
-      setup();
-      state.page = 'history';
-      await select('a');
-      expect([state.page, state.backTo]).toEqual(['result', 'history']);
-    });
-
-    it('結果のページの中で、別のレビュー（「前回」など）へ移っても、戻り先は変わらない', async () => {
-      setup();
-      state.page = 'result';
-      state.backTo = 'history';
-      await select('prev');
-      expect([state.page, state.backTo]).toEqual(['result', 'history']);
-    });
-
-    it('新規レビューの下の結果から、別のレビューへ移っても、新規レビューのまま（結果のページに移らない）', async () => {
-      setup();
-      state.page = 'newreview';
-      state.backTo = 'newreview';
-      await select('prev');
-      expect([state.page, state.backTo]).toEqual(['newreview', 'newreview']);
-    });
+    for (const page of ['history', 'newreview'] as const) {
+      it(`${page}: 結果を開いても、ページは変わらない（別のレビュー〈「前回」など〉へ移っても）`, async () => {
+        setup();
+        state.page = page;
+        await select('a');
+        expect(state.page).toBe(page);
+        await select('prev');
+        expect(state.page).toBe(page);
+        expect(state.selected?.id).toBe('prev');
+      });
+    }
   });
 });
