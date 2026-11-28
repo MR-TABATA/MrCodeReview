@@ -93,10 +93,10 @@ fn match_known(known: &HashSet<String>, key: String) -> String {
 }
 
 /// 同時に走らせる git の数（根の解決）。
-const GIT_PARALLEL: usize = 8;
+pub const GIT_PARALLEL: usize = 8;
 
 /// `items` の各要素に `f` を、最大 `n` 本のスレッドで並行にかけて、**元の並びのまま**結果を返す。
-fn parallel_map<T: Sync, R: Send>(items: &[T], n: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+pub fn parallel_map<T: Sync, R: Send>(items: &[T], n: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
     if items.is_empty() {
         return Vec::new();
     }

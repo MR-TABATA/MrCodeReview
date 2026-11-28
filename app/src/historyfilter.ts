@@ -41,8 +41,8 @@ const baseName = (path: string): string => path.replace(/\/+$/, '').split('/').p
 function reviewText(s: ReviewSummary, lang: Lang): string {
   const words: string[] = ['レビュー review'];
   if (s.failed) words.push('失敗 failed');
-  else if (s.findings === 0) words.push('指摘なし clean');
-  else if (s.counts) words.push(s.counts.open > 0 ? '未対応 open' : '済み handled');
+  else if (s.findings === 0) words.push('完了 done', '指摘なし clean');
+  else if (s.counts) words.push('完了 done', s.counts.open > 0 ? '未対応 open' : '済み handled');
   return [
     formatWhen(s.created_at, lang),
     ymd(new Date(s.created_at)),
@@ -69,8 +69,9 @@ function hookText(r: HookRun, lang: Lang): string {
     r.subject ?? '',
     ...r.recipes,
     ...r.steps.map((st) => st.recipe),
+    // 終了メッセージ（message）は、検索の対象に入れない: 状態の語（完了・失敗・中断・実行中）と、別の語が混ざり、
+    // 「失敗」で絞ったとき、状態が完了の実行まで、メッセージの言葉のせいで残ってしまうため
     HOOK_STATE_WORDS[r.state] ?? r.state,
-    r.message ?? '',
   ].join(' ');
 }
 

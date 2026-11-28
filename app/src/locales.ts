@@ -206,11 +206,12 @@ export interface Messages {
     colLast: string;
     colHook: string;
     colOpen: string;
-    lastReview: (when: string) => string;
     noReview: string;
     hookOn: string;
     hookOff: string;
     hookCheck: string;
+    hookUnknown: string;
+    hookUnknownTitle: (reason: string) => string;
     hookOnTitle: string;
     hookOffTitle: string;
     hookCheckTitle: string;
@@ -412,6 +413,9 @@ export interface Messages {
     pageTabRepos: string;
     pageTabHistory: string;
     hookRunsHeading: string;
+    repoSwitchFailed: (err: string) => string;
+    repoBranchesFailed: (err: string) => string;
+    repoHooksFailed: (err: string) => string;
     branchTitle: string;
     historySearchPlaceholder: string;
     historySearchLabel: string;
@@ -806,11 +810,12 @@ export const MESSAGES: Record<Lang, Messages> = {
       colLast: '最後のレビュー',
       colHook: 'Git フック',
       colOpen: '未対応',
-      lastReview: (when) => `最後のレビュー ${when}`,
       noReview: 'レビューはまだありません',
       hookOn: 'フック ON',
       hookOff: 'フック OFF',
       hookCheck: 'フック 要確認',
+      hookUnknown: 'フック 確認できません',
+      hookUnknownTitle: (reason) => `Git フックの状態を確認できませんでした: ${reason}`,
       hookOnTitle: 'コミットのあとに、自動でレビューします（Git フック）',
       hookOffTitle: 'Git フックは、使っていません（設定から入れられます）',
       hookCheckTitle: '設定は ON ですが、フックが入っていません。設定の「Git フック」で、入れ直してください',
@@ -1011,6 +1016,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       pageTabRepos: 'リポジトリ',
       pageTabHistory: '履歴・ログ',
       hookRunsHeading: 'フックの実行',
+      repoSwitchFailed: (err) => `リポジトリを切り替えられませんでした（ページは、そのままです）: ${err}`,
+      repoBranchesFailed: (err) => `ブランチ名を読めませんでした（前の表示のままです）: ${err}`,
+      repoHooksFailed: (err) => `Git フックの状態を読めませんでした（前の表示のままです）: ${err}`,
       branchTitle: 'いま、チェックアウトしているブランチ',
       historySearchPlaceholder: '絞り込み（スペースで区切ると、すべてを満たすもの。例: 潜在バグ 昨日 未対応）',
       historySearchLabel: '履歴・ログを絞り込む',
@@ -1518,11 +1526,12 @@ export const MESSAGES: Record<Lang, Messages> = {
       colLast: 'Last review',
       colHook: 'Git hook',
       colOpen: 'Open',
-      lastReview: (when) => `Last review ${when}`,
       noReview: 'No review yet',
       hookOn: 'Hook ON',
       hookOff: 'Hook OFF',
       hookCheck: 'Hook: check',
+      hookUnknown: 'Hook: unknown',
+      hookUnknownTitle: (reason) => `Could not check the Git hook: ${reason}`,
       hookOnTitle: 'Reviews run automatically after each commit (Git hook)',
       hookOffTitle: 'The Git hook is not used (you can install it from Settings)',
       hookCheckTitle: 'The setting is ON but the hook is not installed. Reinstall it under Settings > Git hook',
@@ -1783,6 +1792,9 @@ export const MESSAGES: Record<Lang, Messages> = {
       pageTabRepos: 'Repositories',
       pageTabHistory: 'History & log',
       hookRunsHeading: 'Hook runs',
+      repoSwitchFailed: (err) => `Could not switch the repository (the page stays as it is): ${err}`,
+      repoBranchesFailed: (err) => `Could not read the branch names (showing the previous values): ${err}`,
+      repoHooksFailed: (err) => `Could not read the Git hook status (showing the previous values): ${err}`,
       branchTitle: 'The branch checked out now',
       historySearchPlaceholder: 'Filter (space-separated words must all match. e.g. bugs yesterday open)',
       historySearchLabel: 'Filter history and log',

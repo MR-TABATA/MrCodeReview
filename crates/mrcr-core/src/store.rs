@@ -506,10 +506,15 @@ pub fn summaries(dir: &Path, limit: usize) -> Vec<ReviewSummary> {
 /// 記録の全文が壊れている・項目が無い・空のときは None（一覧は、そのまま出る）。控えを作れなくても、取り出した値は返す。
 type Meta = (Option<String>, Option<String>);
 
-fn meta_for(conn: &Connection, ids: &[&str]) -> std::collections::HashMap<String, Meta> {
+/// 返すのは、値の表と、**失敗の理由**（空なら、すべて成功）。失敗しても、一覧は出す（その行は、コミットとブランチが空）。
+/// 理由は、呼ぶ側が、ログに残す（黙って飛ばさない。控えが作れないと、一覧のたびに、記録の本文を読み直すことになる）。
+fn meta_for(conn: &Connection, ids: &[&str]) -> (std::collections::HashMap<String, Meta>, Vec<String>) {
     let non_empty = |s: String| Some(s).filter(|v| !v.is_empty());
     let mut out: std::collections::HashMap<String, Meta> = std::collections::HashMap::new();
-    let _ = conn.execute("CREATE TABLE IF NOT EXISTS review_meta (id TEXT PRIMARY KEY, head TEXT NOT NULL, branch TEXT NOT NULL)", []);
+    let mut failures: Vec<String> = Vec::new();
+    if let Err(e) = conn.execute("CREATE TABLE IF NOT EXISTS review_meta (id TEXT PRIMARY KEY, head TEXT NOT NULL, branch TEXT NOT NULL)", []) {
+        failures.push(format!("控え表を作れません: {e}"));
+    }
     if let Ok(mut stmt) = conn.prepare("SELECT id, head, branch FROM review_meta") {
         if let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))) {
             for (id, head, branch) in rows.flatten() {
@@ -519,7 +524,7 @@ fn meta_for(conn: &Connection, ids: &[&str]) -> std::collections::HashMap<String
     }
     let missing: Vec<&str> = ids.iter().copied().filter(|id| !out.contains_key(*id)).collect();
     if missing.is_empty() {
-        return out;
+        return (out, failures);
     }
     // 控えの無い記録は、まとめて（400 件ずつ）取り出す。1 件ずつ検索を出さない。
     // 記録が壊れている・項目が無いときは、「無い」として控える。**読み取りに失敗したとき（データベースの混雑など）は、控えない**
@@ -532,26 +537,52 @@ fn meta_for(conn: &Connection, ids: &[&str]) -> std::collections::HashMap<String
                     CASE WHEN json_valid(record) THEN json_extract(record, '$.snapshot.branch') END \
              FROM reviews WHERE id IN ({marks})"
         );
-        let Ok(mut stmt) = conn.prepare(&sql) else { continue };
-        let Ok(rows) = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?))
-        }) else {
-            continue;
+        let mut stmt = match conn.prepare(&sql) {
+            Ok(s) => s,
+            Err(e) => {
+                failures.push(format!("記録の取り出しを準備できません（{} 件）: {e}", chunk.len()));
+                continue;
+            }
         };
-        for (id, head, branch) in rows.flatten() {
-            found.push((id, head.unwrap_or_default(), branch.unwrap_or_default()));
+        let rows = match stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?))
+        }) {
+            Ok(r) => r,
+            Err(e) => {
+                failures.push(format!("記録を取り出せません（{} 件）: {e}", chunk.len()));
+                continue;
+            }
+        };
+        for row in rows {
+            match row {
+                Ok((id, head, branch)) => found.push((id, head.unwrap_or_default(), branch.unwrap_or_default())),
+                Err(e) => failures.push(format!("記録の 1 行を読めません: {e}")),
+            }
         }
     }
-    if let Ok(tx) = conn.unchecked_transaction() {
-        for (id, head, branch) in &found {
-            let _ = tx.execute("INSERT OR IGNORE INTO review_meta (id, head, branch) VALUES (?1, ?2, ?3)", rusqlite::params![id, head, branch]);
+    match conn.unchecked_transaction() {
+        Ok(tx) => {
+            let mut first_error: Option<String> = None;
+            let mut failed = 0usize;
+            for (id, head, branch) in &found {
+                if let Err(e) = tx.execute("INSERT OR IGNORE INTO review_meta (id, head, branch) VALUES (?1, ?2, ?3)", rusqlite::params![id, head, branch]) {
+                    failed += 1;
+                    first_error.get_or_insert_with(|| e.to_string());
+                }
+            }
+            if let Some(e) = first_error {
+                failures.push(format!("控えを書けません（{failed} 件）: {e}"));
+            }
+            if let Err(e) = tx.commit() {
+                failures.push(format!("控えを確定できません: {e}"));
+            }
         }
-        let _ = tx.commit();
+        Err(e) => failures.push(format!("控えの書き込みを始められません: {e}")),
     }
     for (id, head, branch) in found {
         out.insert(id, (non_empty(head), non_empty(branch)));
     }
-    out
+    (out, failures)
 }
 
 /// `repo` を渡すと、そのリポジトリ（記録に残っている根のパスと一致するもの）の履歴だけ。`limit` は、絞ったあとの件数。
@@ -587,7 +618,11 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
         return Vec::new();
     };
     let mut out: Vec<ReviewSummary> = rows.flatten().collect();
-    let mut metas = meta_for(&conn, &out.iter().map(|s| s.id.as_str()).collect::<Vec<_>>());
+    let (mut metas, failures) = meta_for(&conn, &out.iter().map(|s| s.id.as_str()).collect::<Vec<_>>());
+    if !failures.is_empty() {
+        // 一覧は、そのまま出す。理由は、残す（毎回、同じ失敗が続くと、一覧のたびに、記録の本文を読み直すことになる）
+        eprintln!("履歴の控え（コミット・ブランチ）に、失敗がありました: {}", failures.join(" / "));
+    }
     for s in &mut out {
         if let Some((head, branch)) = metas.remove(&s.id) {
             s.head = head;
@@ -1155,17 +1190,31 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("CREATE TABLE reviews (id TEXT PRIMARY KEY)", []).unwrap();
         conn.execute("INSERT INTO reviews (id) VALUES ('a')", []).unwrap();
-        let first = meta_for(&conn, &["a"]);
+        let (first, failures) = meta_for(&conn, &["a"]);
         assert!(!first.contains_key("a"), "読めなかった行は、値を返さない（空として扱う）");
+        assert!(failures.iter().any(|f| f.contains("取り出し")), "失敗の理由を返す（黙って飛ばさない）: {failures:?}");
         let cached: i64 = conn.query_row("SELECT COUNT(*) FROM review_meta", [], |r| r.get(0)).unwrap();
         assert_eq!(cached, 0, "読み取りの失敗を、「無い」として控えない");
         // 読めるようになったら、次の一覧で、取り出して、控える
         conn.execute("ALTER TABLE reviews ADD COLUMN record TEXT", []).unwrap();
         conn.execute("UPDATE reviews SET record = '{\"snapshot\":{\"head\":\"abc1234\",\"branch\":\"main\"}}' WHERE id = 'a'", []).unwrap();
-        let second = meta_for(&conn, &["a"]);
+        let (second, failures) = meta_for(&conn, &["a"]);
+        assert!(failures.is_empty(), "{failures:?}");
         assert_eq!(second["a"], (Some("abc1234".into()), Some("main".into())));
         let cached: i64 = conn.query_row("SELECT COUNT(*) FROM review_meta", [], |r| r.get(0)).unwrap();
         assert_eq!(cached, 1);
+    }
+
+    #[test]
+    fn a_failure_to_write_the_cache_is_reported_but_the_values_are_still_returned() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("CREATE TABLE reviews (id TEXT PRIMARY KEY, record TEXT)", []).unwrap();
+        conn.execute("INSERT INTO reviews VALUES ('a', '{\"snapshot\":{\"head\":\"abc1234\",\"branch\":\"main\"}}')", []).unwrap();
+        // 控え表を作れない・書けない状態（同じ名前の VIEW が、先にある）
+        conn.execute("CREATE VIEW review_meta AS SELECT id, id AS head, id AS branch FROM reviews WHERE 0", []).unwrap();
+        let (got, failures) = meta_for(&conn, &["a"]);
+        assert_eq!(got["a"], (Some("abc1234".into()), Some("main".into())), "控えを書けなくても、取り出した値は、返す");
+        assert!(failures.iter().any(|f| f.contains("控え")), "書けなかったことを、理由つきで返す: {failures:?}");
     }
 
     #[test]
@@ -1173,7 +1222,8 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("CREATE TABLE reviews (id TEXT PRIMARY KEY, record TEXT)", []).unwrap();
         conn.execute("INSERT INTO reviews VALUES ('broken', '{broken'), ('nohead', '{\"snapshot\":{}}')", []).unwrap();
-        let got = meta_for(&conn, &["broken", "nohead"]);
+        let (got, failures) = meta_for(&conn, &["broken", "nohead"]);
+        assert!(failures.is_empty(), "壊れた記録は、失敗ではなく、「無い」: {failures:?}");
         assert_eq!(got["broken"], (None, None));
         assert_eq!(got["nohead"], (None, None));
         let cached: i64 = conn.query_row("SELECT COUNT(*) FROM review_meta", [], |r| r.get(0)).unwrap();
@@ -1191,7 +1241,8 @@ mod tests {
         tx.commit().unwrap();
         let ids: Vec<String> = (0..1000).map(|i| format!("r{i}")).collect();
         let refs: Vec<&str> = ids.iter().map(String::as_str).collect();
-        let got = meta_for(&conn, &refs);
+        let (got, failures) = meta_for(&conn, &refs);
+        assert!(failures.is_empty(), "{failures:?}");
         assert_eq!(got.len(), 1000);
         assert_eq!(got["r0"], (Some("h0".into()), Some("b0".into())));
         assert_eq!(got["r999"], (Some("h999".into()), Some("b999".into())));

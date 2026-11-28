@@ -158,7 +158,14 @@ function repoCells(path: string, branch: string | null | undefined, info: { last
   const hook = info.hooks?.[path];
   const hookEl = hook
     ? (() => {
-        const [cls, label, title] = !hook.enabled ? ['off', m.hookOff, m.hookOffTitle] : hook.installed ? ['on', m.hookOn, m.hookOnTitle] : ['check', m.hookCheck, m.hookCheckTitle];
+        // 確認できなかったとき（理由つき）は、「入っていない」とは別に、出す
+        const [cls, label, title] = hook.error
+          ? ['unknown', m.hookUnknown, m.hookUnknownTitle(hook.error)]
+          : !hook.enabled
+            ? ['off', m.hookOff, m.hookOffTitle]
+            : hook.installed
+              ? ['on', m.hookOn, m.hookOnTitle]
+              : ['check', m.hookCheck, m.hookCheckTitle];
         return h('span', { class: `repo-pill repo-hook-${cls}`, title }, label);
       })()
     : null;

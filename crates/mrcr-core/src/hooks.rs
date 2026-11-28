@@ -383,20 +383,31 @@ pub struct Status {
 /// リポジトリの一覧に出す、Git フックの要約（実行ログ・観点・設計書は、読まない）。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Brief {
-    /// 設定の ON/OFF
+    /// 設定の ON/OFF（設定を読めなかったときは false。理由は `error`）
     pub enabled: bool,
-    /// フックのスクリプトに、管理のブロックが入っているか
-    pub installed: bool,
+    /// フックのスクリプトに、管理のブロックが入っているか。**確認できなかったときは None**（「入っていない」と取り違えない）
+    pub installed: Option<bool>,
+    /// 確認できなかった理由（設定ファイルを読めない・フックの置き場を調べられない・フックのファイルを読めない、など）。確認できたときは None
+    pub error: Option<String>,
 }
 
 /// `status` の軽い版。設定の ON/OFF と、フックが入っているかだけ。
-/// リポジトリではない・フックの置き場が読めないときは、`installed` は false（エラーにしない。一覧が、1 つの失敗で止まらないように）。
+/// **「入っていない」と「確認できなかった」を、区別する**: フックのファイルが無ければ `installed: Some(false)`。
+/// フックの置き場を調べられない・ファイルを読めないときは、`installed: None` と、理由（`error`）。
+/// リポジトリを解決できない・設定ファイルを読めないときは、`Err`（呼ぶ側が、一覧の 1 行の失敗として、理由を残す）。
 pub fn brief(dir: &Path, repo: &str) -> Result<Brief, String> {
     let key = repo_key(repo)?;
     let cfg = load(dir)?;
     let enabled = cfg.post_commit.get(&key).map(|e| e.enabled).unwrap_or(false);
-    let installed = hooks_dir(Path::new(&key)).ok().and_then(|h| std::fs::read_to_string(h.join(HOOK_NAME)).ok()).map(|t| has_block(&t)).unwrap_or(false);
-    Ok(Brief { enabled, installed })
+    let (installed, error) = match hooks_dir(Path::new(&key)) {
+        Err(e) => (None, Some(format!("フックの置き場を調べられません: {e}"))),
+        Ok(h) => match std::fs::read_to_string(h.join(HOOK_NAME)) {
+            Ok(text) => (Some(has_block(&text)), None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Some(false), None),
+            Err(e) => (None, Some(format!("フックのファイルを読めません: {e}"))),
+        },
+    };
+    Ok(Brief { enabled, installed, error })
 }
 
 pub fn status(dir: &Path, repo: &str) -> Result<Status, String> {
@@ -942,6 +953,65 @@ mod tests {
         assert_eq!(off.recipes, vec!["bugs", "errors"], "OFF にしても観点は残る");
 
         assert!(set(&data, r.to_str().unwrap(), true, &["a b".into()], None).is_err(), "不正な観点は、何も変えずにエラー");
+        std::env::remove_var("MRCR_CLI");
+    }
+
+    #[test]
+    fn brief_tells_on_off_installed_missing_and_could_not_check_apart() {
+        let _lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let (_g, r) = git_repo("brief");
+        let data = tmp("briefdata");
+        let fake_cli = data.join("mrcr");
+        std::fs::write(&fake_cli, "#!/bin/sh\n").unwrap();
+        std::env::set_var("MRCR_CLI", &fake_cli);
+        let repo = r.to_str().unwrap();
+        let hook = r.join(".git/hooks/post-commit");
+
+        // 何も設定していない
+        assert_eq!(brief(&data, repo).unwrap(), Brief { enabled: false, installed: Some(false), error: None });
+        // 有効にして、フックを入れた
+        set(&data, repo, true, &["bugs".into()], None).unwrap();
+        assert_eq!(brief(&data, repo).unwrap(), Brief { enabled: true, installed: Some(true), error: None });
+        // スクリプトを消した: 設定は ON のまま、入っていない（「要確認」になる）
+        std::fs::remove_file(&hook).unwrap();
+        assert_eq!(brief(&data, repo).unwrap(), Brief { enabled: true, installed: Some(false), error: None });
+        // 外した: OFF
+        set(&data, repo, false, &["bugs".into()], None).unwrap();
+        assert_eq!(brief(&data, repo).unwrap(), Brief { enabled: false, installed: Some(false), error: None });
+        std::env::remove_var("MRCR_CLI");
+    }
+
+    #[test]
+    fn brief_reports_could_not_check_instead_of_not_installed() {
+        let _lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let (_g, r) = git_repo("brief-err");
+        let data = tmp("briefdata-err");
+        let fake_cli = data.join("mrcr");
+        std::fs::write(&fake_cli, "#!/bin/sh\n").unwrap();
+        std::env::set_var("MRCR_CLI", &fake_cli);
+        let repo = r.to_str().unwrap();
+        set(&data, repo, true, &["bugs".into()], None).unwrap();
+
+        // フックのファイルを読めない（権限）: 「入っていない」ではなく、確認できない
+        let hook = r.join(".git/hooks/post-commit");
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read_to_string(&hook).is_err() {
+            let b = brief(&data, repo).unwrap();
+            assert!(b.enabled && b.installed.is_none(), "{b:?}");
+            assert!(b.error.as_deref().is_some_and(|e| e.contains("読めません")), "{b:?}");
+        }
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        // フックの置き場が .git の外（core.hooksPath）: 調べられない
+        let outside = tmp("briefdata-outside");
+        assert!(Command::new("git").arg("-C").arg(&*r).args(["config", "core.hooksPath"]).arg(&*outside).output().unwrap().status.success());
+        let b = brief(&data, repo).unwrap();
+        assert!(b.installed.is_none() && b.error.as_deref().is_some_and(|e| e.contains("置き場")), "{b:?}");
+
+        // 設定ファイルが壊れている: Err（呼ぶ側が、理由を残す）
+        std::fs::write(data.join(FILE), "{broken").unwrap();
+        assert!(brief(&data, repo).is_err());
         std::env::remove_var("MRCR_CLI");
     }
 

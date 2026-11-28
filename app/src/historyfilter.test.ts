@@ -110,6 +110,9 @@ describe('レビューの行', () => {
     expect(f('失敗')).toEqual(['fail']);
     expect(f('failed')).toEqual(['fail']);
     expect(f('レビュー')).toEqual(['open', 'handled', 'clean', 'fail']);
+    // 「完了」は、レビューにも当てはまる（実行が最後まで行った行。失敗は除く）。フックの「完了」と、同じ意味
+    expect(f('完了')).toEqual(['open', 'handled', 'clean']);
+    expect(f('done')).toEqual(['open', 'handled', 'clean']);
     expect(f('フック')).toEqual([]);
   });
 
@@ -148,9 +151,14 @@ describe('フックの行: 途中経過・終わりのメッセージ・状態�
   ];
   const f = (q: string) => filterHooks(runs, parseTerms(q), 'ja', NOW).map((r) => r.run);
 
-  it('実行の途中経過（steps の観点）と、終わりのメッセージが、検索の対象に入る', () => {
+  it('実行の途中経過（steps の観点）が、検索の対象に入る。終わりのメッセージは、入れない（状態の語と、混ざらないように）', () => {
     expect(f('perf')).toEqual(['p']);
-    expect(f('時間切れ')).toEqual(['t']);
+    expect(f('時間切れ'), 'メッセージの言葉では、当てはまらない').toEqual([]);
+  });
+
+  it('メッセージに「失敗」を含む、状態が完了の実行は、「失敗」で絞っても、残らない', () => {
+    const odd = [H('ok', { state: 'done', message: '失敗した観点は、ありません' }), H('ng', { state: 'failed', message: '一部の観点が失敗しました' })];
+    expect(filterHooks(odd, parseTerms('失敗'), 'ja', NOW).map((r) => r.run)).toEqual(['ng']);
   });
 
   it('「完了」「実行中」と、英語の done・running も、それぞれ該当する行だけに当てはまる', () => {

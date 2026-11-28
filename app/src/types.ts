@@ -47,10 +47,12 @@ export interface RepoData {
 
 /** リポジトリの一覧に出す、Git フックの要約（`repo_hooks`）。 */
 export interface RepoHookBrief {
-  /** 設定の ON/OFF */
+  /** 設定の ON/OFF（読めなかったときは false。理由は `error`） */
   enabled: boolean;
-  /** フックのスクリプトに、管理のブロックが入っているか */
-  installed: boolean;
+  /** フックのスクリプトに、管理のブロックが入っているか。**確認できなかったときは null**（「入っていない」と取り違えない） */
+  installed: boolean | null;
+  /** 確認できなかった理由。確認できたときは無い */
+  error?: string | null;
 }
 
 export interface RepoDataRow extends RepoData {

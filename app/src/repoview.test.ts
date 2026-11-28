@@ -112,6 +112,21 @@ describe('repoListPanel', () => {
     expect(bare.querySelector('.repo-pill')).toBeNull();
   });
 
+  it('フックの状態を確認できなかったとき（理由つき）は、「入っていない」「要確認」とは別に、「確認できません」と出す（理由は title）', () => {
+    const a = acts();
+    const repos = [{ id: '1', path: '/r/a' }, { id: '2', path: '/r/b' }];
+    const hooks = {
+      '/r/a': { enabled: true, installed: null, error: 'フックのファイルを読めません: Permission denied' },
+      '/r/b': { enabled: true, installed: false },
+    };
+    const el = repoListPanel(repos, '', a, {}, null, 'ja', {}, {}, { hooks });
+    const pills = [...el.querySelectorAll('.repo-item .repo-pill')] as HTMLElement[];
+    expect(pills[0].textContent).toBe('フック 確認できません');
+    expect(pills[0].classList.contains('repo-hook-unknown')).toBe(true);
+    expect(pills[0].title).toContain('Permission denied');
+    expect(pills[1].textContent, '本当に、入っていないとき').toBe('フック 要確認');
+  });
+
   it('件数のバッジは、20 件以上のときだけ strong（塗りつぶし）。19 件までは、数字だけ', () => {
     expect(OPEN_STRONG_FROM).toBe(20);
     const repos = [{ id: '1', path: '/r/a' }, { id: '2', path: '/r/b' }, { id: '3', path: '/r/c' }];

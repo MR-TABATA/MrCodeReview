@@ -7,7 +7,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeM
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ confirm: vi.fn(), message: vi.fn(), open: vi.fn(), save: vi.fn() }));
 
-import { loadHook, render, select, state, wantsHook } from './main';
+import { loadHook, loadRepoStatus, render, select, state, wantsHook } from './main';
 import { newHookUi } from './hookview';
 import type { ReviewView } from './types';
 
@@ -50,7 +50,9 @@ describe('上部タブでページを切り替える', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>';
     invokeMock.mockReset();
-    invokeMock.mockResolvedValue(null);
+    // 既定の答え（リポジトリのページを開くと、状態・データ量・ブランチ・フックを読みに行く）。ほかは、null
+    const base: Record<string, unknown> = { repo_status: [], repo_data: [], repo_branches: {}, repo_hooks: {}, list_reviews: [] };
+    invokeMock.mockImplementation(async (cmd: string) => base[cmd] ?? null);
     state.repo = '/r';
     state.settings = null;
     state.usage = null;
@@ -122,6 +124,10 @@ describe('上部タブでページを切り替える', () => {
       list_bases: [],
       preview_snapshot: null,
       find_repo_icon: null,
+      repo_status: [],
+      repo_data: [],
+      repo_branches: {},
+      repo_hooks: {},
     };
     invokeMock.mockImplementation(async (cmd: string) => answers[cmd] ?? null);
     state.registeredRepos = [
@@ -139,6 +145,119 @@ describe('上部タブでページを切り替える', () => {
     expect(selected()).toEqual(['history']);
     state.page = 'newreview'; // ポーリングを止める
     state.registeredRepos = [];
+  });
+
+  describe('リポジトリのページ', () => {
+    const answers = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+      list_reviews: [],
+      hook_status: { recent: [], log_unreadable: 0 },
+      list_recipes: { recipes: [], warnings: [] },
+      list_bases: [],
+      preview_snapshot: null,
+      find_repo_icon: null,
+      repo_status: [{ path: '/r', exists: true, is_git: true }],
+      repo_data: [{ path: '/r', reviews: 2, findings: 4, triaged: 0, memos: 0, open: 4, last_at: 1_795_775_717_000 }],
+      repo_branches: { '/r': 'main', '/other': 'dev' },
+      repo_hooks: { '/r': { enabled: true, installed: true }, '/other': { enabled: false, installed: false } },
+      ...over,
+    });
+    const setup = (over: Record<string, unknown> = {}) => {
+      const a = answers(over);
+      invokeMock.mockImplementation(async (cmd: string) => {
+        const v = a[cmd];
+        if (v instanceof Error) throw v;
+        return v ?? null;
+      });
+      state.registeredRepos = [
+        { id: '1', path: '/r' },
+        { id: '2', path: '/other' },
+      ];
+      state.repoAuxErrors = [];
+      state.repoMsg = { text: '', kind: '' };
+    };
+    const callsOf = (cmd: string) => invokeMock.mock.calls.filter((c) => c[0] === cmd);
+    afterEach(() => {
+      state.registeredRepos = [];
+      state.repoBranches = {};
+      state.repoHooks = {};
+      state.repoAuxErrors = [];
+      state.repoMsg = { text: '', kind: '' };
+      state.page = 'newreview';
+    });
+
+    it('行を押したとき、切り替えに失敗したら、ページは変えず、理由を出す（前のリポジトリの履歴を、新しい名前で出さない）', async () => {
+      setup({ list_reviews: new Error('履歴を読めません') });
+      state.page = 'repos';
+      render();
+      document.querySelectorAll<HTMLElement>('.page-aside .repo-item')[1].click();
+      await flush();
+      expect(state.page, 'ページは、そのまま').toBe('repos');
+      expect(selected()).toEqual(['repos']);
+      const err = document.querySelector('.repo-page-error');
+      expect(err?.textContent).toContain('切り替えられませんでした');
+      expect(err?.textContent).toContain('履歴を読めません');
+    });
+
+    it('切り替えが成功したら、終わってから、履歴・ログへ移る。前の失敗の表示は、消える', async () => {
+      setup();
+      state.repoMsg = { text: '前の失敗', kind: 'err' };
+      state.page = 'repos';
+      render();
+      document.querySelectorAll<HTMLElement>('.page-aside .repo-item')[1].click();
+      await flush();
+      expect(state.repo).toBe('/other');
+      expect(state.page).toBe('history');
+      expect(state.repoMsg.text).toBe('');
+      state.page = 'newreview';
+    });
+
+    it('ブランチ名だけ読めなくても、状態・データ量・フックの更新は、止まらない。前のブランチ名は残り、理由が出る', async () => {
+      setup({ repo_branches: new Error('git を起動できません') });
+      state.repoBranches = { '/r': 'old-branch' };
+      state.page = 'repos';
+      render();
+      await loadRepoStatus(false);
+      expect(state.repoData['/r'].open, '主要なデータは、更新される').toBe(4);
+      expect(state.repoHooks['/r']?.installed, 'フックも、更新される').toBe(true);
+      expect(state.repoBranches['/r'], '前のブランチ名は、残る').toBe('old-branch');
+      expect(state.repoAuxErrors.some((e) => e.includes('ブランチ名') && e.includes('git を起動できません'))).toBe(true);
+      expect(document.querySelector('.repo-page-error')?.textContent).toContain('git を起動できません');
+    });
+
+    it('フックの状態だけ読めなくても、ブランチ名・データ量は、更新される。前のフックの状態は残り、理由が出る', async () => {
+      setup({ repo_hooks: new Error('設定ファイルが壊れています') });
+      state.repoHooks = { '/r': { enabled: false, installed: false } };
+      state.page = 'repos';
+      render();
+      await loadRepoStatus(false);
+      expect(state.repoBranches['/r']).toBe('main');
+      expect(state.repoData['/r'].reviews).toBe(2);
+      expect(state.repoHooks['/r'], '前の値は、残る').toEqual({ enabled: false, installed: false });
+      expect(state.repoAuxErrors.some((e) => e.includes('Git フック') && e.includes('壊れています'))).toBe(true);
+      // 次に読めたら、理由は、消える
+      invokeMock.mockImplementation(async (cmd: string) => answers()[cmd] ?? null);
+      await loadRepoStatus(false);
+      expect(state.repoAuxErrors).toEqual([]);
+      expect(state.repoHooks['/r']?.installed).toBe(true);
+    });
+
+    it('窓に戻ったときの読み直しは、リポジトリのページ以外では、選んだ 1 つのブランチだけ。フックの状態は、読まない', async () => {
+      setup();
+      state.repo = '/r';
+      state.page = 'newreview';
+      render();
+      invokeMock.mockClear();
+      await loadRepoStatus(false);
+      expect(callsOf('repo_branches').map((c) => (c[1] as { paths: string[] }).paths)).toEqual([['/r']]);
+      expect(callsOf('repo_hooks').length, 'フックの状態は、読まない').toBe(0);
+      state.page = 'repos';
+      render(); // ページが変わった描き直しで、1 回、読む
+      await flush();
+      invokeMock.mockClear();
+      await loadRepoStatus(false);
+      expect(callsOf('repo_branches').map((c) => (c[1] as { paths: string[] }).paths)).toEqual([['/r', '/other']]);
+      expect(callsOf('repo_hooks').map((c) => (c[1] as { paths: string[] }).paths)).toEqual([['/r', '/other']]);
+    });
   });
 
   it('新規レビューのページ: 実行する場所だけ。結果も、履歴も、ここには出ない', () => {

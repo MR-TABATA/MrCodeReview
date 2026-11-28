@@ -217,6 +217,8 @@ const state = {
   repoBranches: {} as Record<string, string | null>,
   /** 登録リポジトリごとの、Git フックの要約（一覧に出す）。分からないものは null */
   repoHooks: {} as Record<string, RepoHookBrief | null>,
+  /** ブランチ・フックの状態を読めなかった理由（リポジトリのページに出す。前の値は、残す） */
+  repoAuxErrors: [] as string[],
   /** 「データを削除して枠を空ける」の確認中のリポジトリ（パス） */
   repoConfirmDelete: '',
   /** 各リポジトリのデータの量（履歴など）。解除の可否と、削除の確認に使う */
@@ -1194,25 +1196,35 @@ async function chooseAndAddFile(): Promise<void> {
 
 /** 登録リポジトリの、いまの状態（見つかるか・git か）と、データの量（履歴など）を読む。 */
 async function loadRepoStatus(icons = true): Promise<void> {
-  const paths = state.registeredRepos.map((r) => r.path);
-  const before = JSON.stringify([state.repoStatus, state.repoData, state.repoBranches, state.repoHooks]);
-  try {
-    const [list, data, branches, hookBriefs] = await Promise.all([
-      invoke<RepoStatus[]>('repo_status', { paths }),
-      invoke<RepoDataRow[]>('repo_data', { paths }),
-      invoke<Record<string, string | null>>('repo_branches', { paths }),
-      invoke<Record<string, RepoHookBrief | null>>('repo_hooks', { paths }),
-    ]);
-    state.repoStatus = Object.fromEntries(list.map((x) => [x.path, x]));
-    state.repoData = Object.fromEntries(data.map((x) => [x.path, x]));
-    state.repoBranches = branches;
-    state.repoHooks = hookBriefs;
-  } catch (e) {
-    state.repoMsg = { text: ut().app.repoStatusFailed(String(e)), kind: 'err' };
-  }
+  const all = state.registeredRepos.map((r) => r.path);
+  // ブランチは、ヘッダーに出す、選んだ 1 つ（リポジトリのページでは、全部）。フックの状態は、リポジトリのページだけ（全部）。
+  // 窓に戻るたびに、登録した全リポジトリで、git を起動し、フックのファイルを読むことは、しない。
+  const onRepos = state.page === 'repos';
+  const branchPaths = onRepos ? all : state.repo && all.includes(state.repo) ? [state.repo] : [];
+  const hookPaths = onRepos ? all : [];
+  const before = JSON.stringify([state.repoStatus, state.repoData, state.repoBranches, state.repoHooks, state.repoAuxErrors]);
+  // 4 つの読み込みを、別々に扱う。補助（ブランチ・フック）の失敗が、主要（状態・データ量）の更新を、止めない。
+  const [status, data, branches, hooks] = await Promise.allSettled([
+    invoke<RepoStatus[]>('repo_status', { paths: all }),
+    invoke<RepoDataRow[]>('repo_data', { paths: all }),
+    branchPaths.length ? invoke<Record<string, string | null>>('repo_branches', { paths: branchPaths }) : Promise.resolve({} as Record<string, string | null>),
+    hookPaths.length ? invoke<Record<string, RepoHookBrief | null>>('repo_hooks', { paths: hookPaths }) : Promise.resolve({} as Record<string, RepoHookBrief | null>),
+  ]);
+  const mainFailed = [status, data].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+  if (status.status === 'fulfilled') state.repoStatus = Object.fromEntries(status.value.map((x) => [x.path, x]));
+  if (data.status === 'fulfilled') state.repoData = Object.fromEntries(data.value.map((x) => [x.path, x]));
+  if (mainFailed) state.repoMsg = { text: ut().app.repoStatusFailed(String(mainFailed.reason)), kind: 'err' };
+  // 補助: 成功したら、読んだ分だけ入れ替える（読まなかったリポジトリの値は、残す）。失敗したら、前の値を残して、理由を出す
+  const m = msg(getAppLang()).mainUi;
+  const aux: string[] = [];
+  if (branches.status === 'fulfilled') state.repoBranches = { ...state.repoBranches, ...branches.value };
+  else aux.push(m.repoBranchesFailed(String(branches.reason)));
+  if (hooks.status === 'fulfilled') state.repoHooks = { ...state.repoHooks, ...hooks.value };
+  else aux.push(m.repoHooksFailed(String(hooks.reason)));
+  state.repoAuxErrors = aux;
   if (icons) for (const r of state.registeredRepos) void loadRepoIcon(r.path);
   // 窓に戻ったときの読み直しは、変わったときだけ描き直す（「追加」の押せる・押せないが、フォルダの移動に追いつくように）
-  if (icons || state.settings || JSON.stringify([state.repoStatus, state.repoData, state.repoBranches, state.repoHooks]) !== before) render();
+  if (icons || state.settings || JSON.stringify([state.repoStatus, state.repoData, state.repoBranches, state.repoHooks, state.repoAuxErrors]) !== before) render();
 }
 
 /** Rust が返した登録の一覧を、画面の写しに入れる。 */
@@ -1488,6 +1500,19 @@ function handleRenameRepo(repo: RegisteredRepo): void {
   const inputName = window.prompt(ut().app.renamePrompt(defaultName), curName);
   if (inputName === null) return;
   void renameRepoTo(repo.id, inputName);
+}
+
+/** リポジトリのページで、行を押したとき。切り替えが終わってから、「履歴・ログ」へ移る。**切り替えに失敗したら、ページは変えず、理由を出す**（前のリポジトリの履歴が、新しいリポジトリの名前で出ない）。 */
+async function selectRepoAndOpenHistory(path: string): Promise<void> {
+  try {
+    await changeRepo(path);
+  } catch (e) {
+    state.repoMsg = { text: msg(getAppLang()).mainUi.repoSwitchFailed(String(e)), kind: 'err' };
+    render();
+    return;
+  }
+  state.repoMsg = { text: '', kind: '' };
+  goPage('history');
 }
 
 async function chooseRepo(): Promise<void> {
@@ -2160,7 +2185,7 @@ function leftPanel(): HTMLElement {
   const acts = {
     // リポジトリを押すと、そのリポジトリを選んで、「履歴・ログ」へ移る（そのリポジトリの、履歴と、フックの実行）
     onSelect: (repo: RegisteredRepo) => {
-      void changeRepo(repo.path).then(() => goPage('history'));
+      void selectRepoAndOpenHistory(repo.path);
     },
     onAdd: () => {
       void chooseAndAddRepo();
@@ -3332,7 +3357,17 @@ function detailView(): HTMLElement {
   }
   // 設定・レポート・使用量を開いていないときは、上部タブで選んだページ
   const pm = msg(lang).mainUi;
-  if (state.page === 'repos') return h('main', { class: 'detail page page-aside' }, pageHeader(pm.pageTabRepos), leftPanel());
+  if (state.page === 'repos') {
+    // 切り替えの失敗・ブランチやフックを読めなかった理由は、見出しの下に出す（前の値は、残っている）
+    const problems = [state.repoMsg.kind === 'err' ? state.repoMsg.text : '', ...state.repoAuxErrors].filter(Boolean);
+    return h(
+      'main',
+      { class: 'detail page page-aside' },
+      pageHeader(pm.pageTabRepos),
+      ...problems.map((p) => h('p', { class: 'err repo-page-error' }, p)),
+      leftPanel(),
+    );
+  }
   if (state.page === 'history') {
     const n = state.history.length;
     return h(
@@ -3371,6 +3406,8 @@ function render(): void {
   lastRenderedPage = state.page;
   // 「履歴・ログ」のページは、フックの実行を出す。ページが変わって、これになったとき（タブでも、結果からの戻りでも）、読む
   if (pageChanged && state.page === 'history') queueMicrotask(() => void loadHook());
+  // リポジトリのページは、全リポジトリのブランチ・フックの状態を出す。ページが変わって、これになったとき、読む
+  if (pageChanged && state.page === 'repos') queueMicrotask(() => void loadRepoStatus(false));
   const keepTop = pageChanged ? 0 : (root.querySelector('.detail')?.scrollTop ?? 0);
   const m = msg(getAppLang()).mainUi;
   // 設定・レポート・使用量を開いているあいだは、どのタブも「いま」にしない
@@ -3575,4 +3612,4 @@ if (import.meta.env?.MODE !== 'test') {
   void boot();
 }
 
-export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings, changeRepo, select, wantsHook, loadHook };
+export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings, changeRepo, select, wantsHook, loadHook, loadRepoStatus };

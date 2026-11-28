@@ -509,14 +509,14 @@ async fn repo_branches(state: tauri::State<'_, AppState>, paths: Vec<String>) ->
 }
 
 fn repo_branches_checked(data_dir: &Path, paths: &[String]) -> std::collections::HashMap<String, Option<String>> {
-    paths
-        .iter()
-        .map(|p| (p.clone(), if repos::require_registered(data_dir, p).is_ok() { snapshot::current_branch(p) } else { None }))
-        .collect()
+    // git を、リポジトリごとに、並行して起動する（数十件でも、順に待たない）
+    let branches = repodata::parallel_map(paths, repodata::GIT_PARALLEL, |p| if repos::require_registered(data_dir, p).is_ok() { snapshot::current_branch(p) } else { None });
+    paths.iter().cloned().zip(branches).collect()
 }
 
 /// 登録済みのリポジトリごとの、Git フックの要約（ON/OFF・入っているか）。リポジトリの一覧に出す。
-/// 登録されていない場所・Git のリポジトリではない所は None（読まない）。
+/// 登録されていない場所は None（読まない＝対象外）。**読み取りに失敗したものは、None にせず、理由つき（`error`）で返す**
+/// （設定ファイルが壊れているのか、対象外なのかを、区別できるように）。失敗は、ログにも残す。
 #[tauri::command]
 async fn repo_hooks(state: tauri::State<'_, AppState>, paths: Vec<String>) -> Result<std::collections::HashMap<String, Option<hooks::Brief>>, String> {
     let data_dir = state.data_dir.clone();
@@ -524,10 +524,16 @@ async fn repo_hooks(state: tauri::State<'_, AppState>, paths: Vec<String>) -> Re
 }
 
 fn repo_hooks_checked(data_dir: &Path, paths: &[String]) -> std::collections::HashMap<String, Option<hooks::Brief>> {
-    paths
-        .iter()
-        .map(|p| (p.clone(), if repos::require_registered(data_dir, p).is_ok() { hooks::brief(data_dir, p).ok() } else { None }))
-        .collect()
+    let briefs = repodata::parallel_map(paths, repodata::GIT_PARALLEL, |p| {
+        if repos::require_registered(data_dir, p).is_err() {
+            return None;
+        }
+        Some(hooks::brief(data_dir, p).unwrap_or_else(|e| {
+            eprintln!("Git フックの状態を読めません（{p}）: {e}");
+            hooks::Brief { enabled: false, installed: None, error: Some(e) }
+        }))
+    });
+    paths.iter().cloned().zip(briefs).collect()
 }
 
 /// 画面の「比較元」に出す選択肢（未コミットの変更・直近のコミット・ブランチの分岐点・最近のコミット）。
@@ -2153,7 +2159,7 @@ mod tests {
         let other = demo_repo("hooks-brief-unregistered");
         let other_s = other.to_str().unwrap().to_string();
         let out = repo_hooks_checked(&data, &[repo_s.to_string(), other_s.clone(), "/nonexistent-mrcr-dir/x".to_string()]);
-        assert_eq!(out[repo_s], Some(hooks::Brief { enabled: false, installed: false }), "何も設定していない");
+        assert_eq!(out[repo_s], Some(hooks::Brief { enabled: false, installed: Some(false), error: None }), "何も設定していない");
         assert_eq!(out[&other_s], None, "登録されていない場所は、読まない");
         assert_eq!(out["/nonexistent-mrcr-dir/x"], None);
         let _ = std::fs::remove_dir_all(&data);
