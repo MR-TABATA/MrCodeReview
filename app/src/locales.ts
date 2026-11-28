@@ -412,6 +412,27 @@ export interface Messages {
     pageTabsLabel: string;
     pageTabRepos: string;
     pageTabHistory: string;
+    pageTabAspects: string;
+    aspects: {
+      cardAspects: string;
+      cardRuns: string;
+      cardFindings: string;
+      cardIgnore: string;
+      colAspect: string;
+      colRuns: string;
+      colFindings: string;
+      colBreakdown: string;
+      colIgnore: string;
+      historyBtn: string;
+      historyBtnTitle: (title: string) => string;
+      empty: string;
+      scope: (n: number) => string;
+      unreadable: (n: number) => string;
+      failedNote: (n: number) => string;
+      toolBadge: string;
+      ignoreTitle: string;
+      breakdownTitle: (open: number, done: number, wait: number, dismiss: number) => string;
+    };
     hookRunsHeading: string;
     repoSwitchFailed: (err: string) => string;
     repoBranchesFailed: (err: string) => string;
@@ -1015,6 +1036,27 @@ export const MESSAGES: Record<Lang, Messages> = {
       pageTabsLabel: 'ページ',
       pageTabRepos: 'リポジトリ',
       pageTabHistory: '履歴・ログ',
+      pageTabAspects: '観点',
+      aspects: {
+        cardAspects: '観点',
+        cardRuns: '実行（合計）',
+        cardFindings: '指摘（合計）',
+        cardIgnore: '無視の割合（全体）',
+        colAspect: '観点',
+        colRuns: '実行',
+        colFindings: '指摘',
+        colBreakdown: '判断の内訳',
+        colIgnore: '無視の割合',
+        historyBtn: '履歴',
+        historyBtnTitle: (t) => `「履歴・ログ」で、「${t}」に絞り込む`,
+        empty: 'まだレビューがありません。',
+        scope: (n) => `集計の対象は、${n} 件のレビューです（設定の「履歴の件数」が上限。それより古い記録は、入っていません）。`,
+        unreadable: (n) => `仕分けの内訳を読めなかった記録が ${n} 件あります（指摘の件数には入れ、内訳と無視の割合には入れていません）。`,
+        failedNote: (n) => `失敗 ${n}`,
+        toolBadge: 'Tool',
+        ignoreTitle: '無視 ÷（済み＋待ち＋無視）。「未」は、まだ判断していないので、入れません。',
+        breakdownTitle: (o, d, w, i) => `未 ${o}・済み ${d}・待ち ${w}・無視 ${i}`,
+      },
       hookRunsHeading: 'フックの実行',
       repoSwitchFailed: (err) => `リポジトリを切り替えられませんでした（ページは、そのままです）: ${err}`,
       repoBranchesFailed: (err) => `ブランチ名を読めませんでした（前の表示のままです）: ${err}`,
@@ -1791,6 +1833,27 @@ export const MESSAGES: Record<Lang, Messages> = {
       pageTabsLabel: 'Pages',
       pageTabRepos: 'Repositories',
       pageTabHistory: 'History & log',
+      pageTabAspects: 'Aspects',
+      aspects: {
+        cardAspects: 'Aspects',
+        cardRuns: 'Runs (total)',
+        cardFindings: 'Findings (total)',
+        cardIgnore: 'Dismissed (overall)',
+        colAspect: 'Aspect',
+        colRuns: 'Runs',
+        colFindings: 'Findings',
+        colBreakdown: 'How they were handled',
+        colIgnore: 'Dismissed',
+        historyBtn: 'History',
+        historyBtnTitle: (t) => `Filter "History & log" by "${t}"`,
+        empty: 'No reviews yet.',
+        scope: (n) => `Totals cover ${n} review(s) (capped by the "history size" setting; older records are not included).`,
+        unreadable: (n) => `${n} review(s) had an unreadable triage breakdown (counted in findings, left out of the breakdown and the dismissed share).`,
+        failedNote: (n) => `${n} failed`,
+        toolBadge: 'Tool',
+        ignoreTitle: 'Dismissed ÷ (done + waiting + dismissed). "Open" is left out: not decided yet.',
+        breakdownTitle: (o, d, w, i) => `open ${o} · done ${d} · waiting ${w} · dismissed ${i}`,
+      },
       hookRunsHeading: 'Hook runs',
       repoSwitchFailed: (err) => `Could not switch the repository (the page stays as it is): ${err}`,
       repoBranchesFailed: (err) => `Could not read the branch names (showing the previous values): ${err}`,

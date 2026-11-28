@@ -99,9 +99,9 @@ describe('上部タブでページを切り替える', () => {
   });
   const cols = (li: Element) => [...li.children].map((c) => c.className.split(' ')[0]);
 
-  it('タブは 3 つ（リポジトリ・履歴・ログ・新規レビュー）。「ログ」だけのタブは無い', () => {
+  it('タブは 4 つ（リポジトリ・観点・履歴・ログ・新規レビュー）。「ログ」だけのタブは無い', () => {
     render();
-    expect([...document.querySelectorAll('.pagetabs button')].map((b) => b.textContent)).toEqual(['リポジトリ', '履歴・ログ', '新規レビュー']);
+    expect([...document.querySelectorAll('.pagetabs button')].map((b) => b.textContent)).toEqual(['リポジトリ', '観点', '履歴・ログ', '新規レビュー']);
   });
 
   it('ヘッダーのリポジトリの横に、いまのブランチ名が出る。無い（detached HEAD・Git ではない）ときは、出ない', () => {
@@ -649,7 +649,7 @@ describe('上部タブでページを切り替える', () => {
       state.page = 'result';
       render();
       expect(selected()).toEqual(['history']);
-      expect(document.querySelectorAll('.pagetabs button').length).toBe(3);
+      expect(document.querySelectorAll('.pagetabs button').length).toBe(4);
       expect(document.querySelector('.page-title')?.textContent).toBe('履歴・ログ');
       expect(document.querySelector('.recipe-bar-top')).toBeNull();
       expect(document.querySelector('.result-compact')).not.toBeNull();
@@ -722,6 +722,31 @@ describe('上部タブでページを切り替える', () => {
     back.click();
     expect(state.page).toBe('history');
     expect(state.selected).toBeNull();
+  });
+
+  describe('観点のページ', () => {
+    it('タブで開くと、観点ごとの表が出る。「履歴」を押すと、履歴・ログへ移り、絞り込みに観点名が入る', async () => {
+      state.history = [summary('a', { recipe_title: 'セキュリティ' }), summary('b'), summary('c')] as never;
+      render();
+      tab('aspects').click();
+      await flush();
+      expect(selected()).toEqual(['aspects']);
+      expect(document.querySelectorAll('.aspect-row[data-aspect]').length).toBe(2);
+      (document.querySelector('.aspect-row[data-aspect="セキュリティ"] .aspect-hist') as HTMLElement).click();
+      await flush();
+      expect(state.page).toBe('history');
+      expect(selected()).toEqual(['history']);
+      expect(state.historyQuery).toBe('セキュリティ');
+      expect((document.getElementById('history-query') as HTMLInputElement).value).toBe('セキュリティ');
+    });
+
+    it('履歴が空なら、案内だけ（表は出さない）', () => {
+      state.history = [];
+      state.page = 'aspects';
+      render();
+      expect(document.querySelector('.aspects-empty')).not.toBeNull();
+      expect(document.querySelector('.aspect-table')).toBeNull();
+    });
   });
 
   describe('結果を開いたときの、戻り先', () => {

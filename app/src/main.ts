@@ -65,6 +65,8 @@ import { fixAllBySeverity as runFixAllBySeverity, fixAllSeverityButtons } from '
 import { newReportState, reportFileName, reportOptions, reportPanel, reportRange, htmlNodes, type ReportState } from './reportview';
 import { periodSince, usagePanel, type Period, type UsageState } from './usageview';
 import { DEFAULT_PAGE, pageTabs, type Page } from './pages';
+import { aggregateAspects, type AspectStats } from './aspectstats';
+import { aspectsPanel } from './aspectsview';
 import { createHistoryView, type HistoryView } from './historyfilter';
 import { runLogDetail } from './runlogdetail';
 import type {
@@ -1689,6 +1691,21 @@ function togglePickAll(): void {
   }
   state.picked = next;
   render();
+}
+
+/** 観点のページの集計。履歴の配列が替わったときだけ、数え直す。 */
+let aspectStatsMemo: { src: ReviewSummary[]; stats: AspectStats } | null = null;
+function aspectStats(): AspectStats {
+  if (!aspectStatsMemo || aspectStatsMemo.src !== state.history) aspectStatsMemo = { src: state.history, stats: aggregateAspects(state.history) };
+  return aspectStatsMemo.stats;
+}
+
+/** 観点のページの「履歴」: 履歴・ログへ移り、絞り込みの入力欄に、観点名を入れる。 */
+function openHistoryOfAspect(name: string): void {
+  state.historyQuery = name;
+  state.historyLimit = HISTORY_LIMIT;
+  state.picked = prunePicks(state.picked, displayedHistory());
+  goPage('history');
 }
 
 /** 絞り込みを変えたとき。見えなくなった行の選択は、外す（見えない行を、レポートや削除に入れない）。 */
@@ -3368,6 +3385,15 @@ function detailView(): HTMLElement {
       leftPanel(),
     );
   }
+  if (state.page === 'aspects') {
+    const tools = new Set(state.recipes.filter((r) => r.kind === 'tool').map((r) => r.title));
+    return h(
+      'main',
+      { class: 'detail page page-aside' },
+      pageHeader(pm.pageTabAspects),
+      aspectsPanel(aspectStats(), state.history.length, lang, tools, openHistoryOfAspect),
+    );
+  }
   if (state.page === 'history') {
     const n = state.history.length;
     return h(
@@ -3425,7 +3451,7 @@ function render(): void {
         headerView(),
         pageTabs(
           inMode ? null : state.page === 'result' ? (state.backTo === 'newreview' ? null : state.backTo) : state.page,
-          { nav: m.pageTabsLabel, repos: m.pageTabRepos, history: m.pageTabHistory, newreview: m.pageTabNewReview },
+          { nav: m.pageTabsLabel, repos: m.pageTabRepos, aspects: m.pageTabAspects, history: m.pageTabHistory, newreview: m.pageTabNewReview },
           goPage,
         ),
         baseForm(),

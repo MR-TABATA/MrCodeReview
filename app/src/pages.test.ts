@@ -2,13 +2,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_PAGE, PAGES, pageTabs, type PageTabLabels } from './pages';
 
-const labels: PageTabLabels = { nav: 'ページ', repos: 'リポジトリ', history: '履歴・ログ', newreview: '新規レビュー' };
+const labels: PageTabLabels = { nav: 'ページ', repos: 'リポジトリ', aspects: '観点', history: '履歴・ログ', newreview: '新規レビュー' };
 
 describe('上部タブ', () => {
-  it('並びは、リポジトリ・履歴・ログ（1 つ）・新規レビュー。観点のタブは、まだ出さない。結果は、タブではない', () => {
-    expect(PAGES).toEqual(['repos', 'history', 'newreview']);
+  it('並びは、リポジトリ・観点・履歴・ログ（1 つ）・新規レビュー。結果は、タブではない', () => {
+    expect(PAGES).toEqual(['repos', 'aspects', 'history', 'newreview']);
     const el = pageTabs('newreview', labels, vi.fn());
-    expect([...el.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['リポジトリ', '履歴・ログ', '新規レビュー']);
+    expect([...el.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['リポジトリ', '観点', '履歴・ログ', '新規レビュー']);
   });
 
   it('起動時のページは、実行する場所の「新規レビュー」', () => {
