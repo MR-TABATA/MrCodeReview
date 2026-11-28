@@ -71,14 +71,14 @@ const makeReview = (over: Partial<ReviewView> = {}): ReviewView =>
 describe('一括「対応」と handoffBar（レビュー指摘の修正）', () => {
   beforeEach(() => {
     invokeMock.mockReset();
-    state.runError = '';
+    state.handlingError = '';
     state.selected = null;
     state.expanded = new Set();
     document.body.innerHTML = '<div id="app"></div>';
   });
 
   describe('mrcr:1793608390178-43127d18#1: 一括「対応」が途中で失敗したときの挙動', () => {
-    it('high 3件中2件目が失敗したとき、1件目のみfixになり、state.runErrorにエラーが入り、3件目は呼ばれず、refreshHandoffとrenderは呼ばれる', async () => {
+    it('high 3件中2件目が失敗したとき、1件目のみfixになり、state.handlingErrorにエラーが入り、3件目は呼ばれず、refreshHandoffとrenderは呼ばれる', async () => {
       const review = makeReview({
         id: 'rev-1',
         findings: [makeFinding('high', 'h1'), makeFinding('high', 'h2'), makeFinding('high', 'h3')],
@@ -116,8 +116,8 @@ describe('一括「対応」と handoffBar（レビュー指摘の修正）', ()
       expect(state.selected.triage[1]).toBe('new');
       expect(state.selected.triage[2]).toBe('new');
 
-      // state.runError にエラーの文字列が入る
-      expect(state.runError).toContain('2件目のset_triageで障害が発生');
+      // state.handlingError にエラーの文字列が入る
+      expect(state.handlingError).toContain('2件目のset_triageで障害が発生');
 
       // 3件目の invoke は呼ばれない（index 0 と 1 のみ呼ばれる）
       const setTriageCalls = invokeMock.mock.calls.filter((c) => c[0] === 'set_triage');

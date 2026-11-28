@@ -1103,7 +1103,7 @@ describe('上部タブでページを切り替える', () => {
     const f = { file: 'a.rs', line: 1, severity: 'medium', title: '見出し', detail: '詳細', evidence: 'x', verified: true };
     const skipped = { verdict: 'skipped', text: '誤検知です', reported_at: 1, source: 'cli:agent' };
     const show = (memo = '') => {
-      state.runError = '';
+      state.handlingError = '';
       state.selected = { ...fakeReview('fp'), findings: [f], triage: ['fix'], finding_notes: [{ memo, done_at: null, done_head: null }], agent_reports: [skipped] } as unknown as ReviewView;
       state.history = [summary('fp')] as never;
       state.page = 'history';
@@ -1147,6 +1147,53 @@ describe('上部タブでページを切り替える', () => {
       (document.querySelector('.false-positive') as HTMLElement).click();
       await flush();
       expect(names()).toEqual(['set_triage:dismiss']);
+    });
+  });
+
+  describe('仕分け・メモの保存の失敗の理由（実行のエラーとは別）', () => {
+    const f = { file: 'a.rs', line: 1, severity: 'medium', title: '見出し', detail: '詳細', evidence: 'x', verified: true };
+    const show = () => {
+      state.handlingError = '';
+      state.runError = '';
+      state.selected = { ...fakeReview('he'), findings: [f], triage: ['new'], finding_notes: [null], agent_reports: [null] } as unknown as ReviewView;
+      state.history = [summary('he')] as never;
+      state.page = 'history';
+      state.expandedFindings = new Set(['he:0']);
+      render();
+    };
+    const handling = (triage: string) => ({ triage: [triage], notes: [{ memo: '', done_at: null, done_head: null }] });
+
+    it('保存に失敗した理由は、次に保存できたら、消える（成功しているのに、赤字が残り続けない）', async () => {
+      let fail = true;
+      invokeMock.mockImplementation(async (cmd: string, args: { status?: string }) => {
+        if (cmd === 'set_triage') {
+          if (fail) throw new Error('保存できません');
+          return handling(args.status ?? 'new');
+        }
+        return null;
+      });
+      show();
+      (document.querySelector('.t-wait') as HTMLElement).click();
+      await flush();
+      expect(document.querySelector('.handling-error')?.textContent).toContain('保存できません');
+      fail = false;
+      (document.querySelector('.t-wait') as HTMLElement).click(); // 今度は、成功する
+      await flush();
+      expect(document.querySelector('.handling-error')).toBeNull();
+      expect(state.handlingError).toBe('');
+    });
+
+    it('実行のエラー（runError）は、結果の画面に出さない。別のレビューを開いたら、前の失敗の理由は消える', async () => {
+      show();
+      state.runError = 'API キーがありません';
+      state.handlingError = '前の保存の失敗';
+      render();
+      expect(document.querySelector('.handling-error')?.textContent).toBe('前の保存の失敗');
+      expect(document.body.textContent).not.toContain('API キーがありません');
+      invokeMock.mockImplementation(async (cmd: string) => (cmd === 'get_review' ? fakeReview('other') : cmd === 'build_handoff' ? '' : null));
+      await select('other');
+      expect(state.handlingError).toBe('');
+      expect(document.querySelector('.handling-error')).toBeNull();
     });
   });
 
@@ -1211,6 +1258,211 @@ describe('上部タブでページを切り替える', () => {
       await refreshHistory();
       await flush();
       expect(invokeMock.mock.calls.filter((c) => c[0] === 'build_handoff').length).toBe(0);
+    });
+  });
+
+  describe('結果の指摘の表（step 5）', () => {
+    const mk = (n: number, over: Record<string, unknown> = {}) => {
+      const sev = ['low', 'high', 'medium'];
+      const findings = Array.from({ length: n }, (_, i) => ({ file: `src/f${i}.rs`, line: i + 1, severity: sev[i % 3], title: `見出し${i}`, detail: `詳細${i}`, evidence: `x${i}`, verified: true }));
+      return { ...fakeReview('tb'), findings, triage: findings.map(() => 'new'), finding_notes: findings.map(() => null), agent_reports: findings.map(() => null), ...over } as unknown as ReviewView;
+    };
+    const show = (r: ReviewView, page: 'history' | 'newreview' = 'history') => {
+      state.history = [summary('tb')] as never;
+      state.selected = r;
+      state.page = page;
+      state.expandedFindings = new Set();
+      state.expanded = new Set();
+      state.openCards = new Set();
+      render();
+    };
+
+    it('指摘は表で出る。履歴の行の下には、集計の 1 行。カード（fc-head）と、閉じたままの仕分けのボタンは、出ない', () => {
+      show(mk(3));
+      expect(document.querySelectorAll('.hdetail .ftable .fitem').length).toBe(3);
+      expect(document.querySelector('.hdetail .fsum-compact .fsum-line')?.textContent).toBe('指摘 3 件 ・ high 1 ・ medium 1 ・ low 1');
+      expect(document.querySelector('.hdetail .fsum-cards')).toBeNull();
+      expect(document.querySelector('.hdetail .fc-head')).toBeNull();
+      expect(document.querySelector('.hdetail .ftable .triage')).toBeNull(); // 一覧で、押し間違えない。仕分けは、開いた詳細の中
+      expect([...document.querySelectorAll('.hdetail .ftable .ftitle')].map((t) => t.textContent)).toEqual(['見出し1', '見出し2', '見出し0']); // 重大度の高い順
+    });
+
+    it('新規レビューの下の結果は、4 枚の集計と表。指摘が 1 件でも、表', () => {
+      show(mk(1), 'newreview');
+      expect(document.querySelectorAll('.result-anchor .fsum-card').length).toBe(4);
+      expect(document.querySelectorAll('.result-anchor .ftable .fitem').length).toBe(1);
+    });
+
+    it('行を押すと、その行の下に詳細（仕分けのボタン・全文・引用）が開く。同時に開くのは 1 件だけ。もう一度押すと、閉じる', () => {
+      show(mk(3));
+      const rows = () => [...document.querySelectorAll<HTMLElement>('.hdetail .ftable .fitem')];
+      rows()[1].querySelector<HTMLElement>('.frow')!.click();
+      expect(rows()[1].querySelector('.fdetail .triage')).not.toBeNull();
+      expect(rows()[1].querySelector('.fdetail .fc-body')?.textContent).toContain('詳細2');
+      expect(document.querySelectorAll('.fdetail').length).toBe(1);
+      rows()[0].querySelector<HTMLElement>('.frow')!.click(); // 別の行
+      expect(document.querySelectorAll('.fdetail').length).toBe(1);
+      expect(rows()[0].querySelector('.fdetail')).not.toBeNull();
+      expect(rows()[1].querySelector('.fdetail')).toBeNull();
+      rows()[0].querySelector<HTMLElement>('.frow')!.click(); // 同じ行: 閉じる
+      expect(document.querySelectorAll('.fdetail').length).toBe(0);
+      expect(state.selected?.id).toBe('tb'); // 結果（履歴の行の詳細）は、閉じない
+    });
+
+    it('対応済みの指摘（エージェントが「対応した」）を開くと、仕分けのボタンは出ない（読むだけ）。済みでない指摘では、出る', () => {
+      const r = mk(2, { triage: ['fix', 'fix'], agent_reports: [{ verdict: 'did', text: '直した', reported_at: 1, source: 'c' }, null] });
+      show(r);
+      const rows = () => [...document.querySelectorAll<HTMLElement>('.hdetail .ftable .fitem')];
+      state.expandedFindings = new Set(['tb:0']); // 対応済み（済みは、下に並ぶ）
+      state.expanded = new Set([0]);
+      render();
+      const done = rows().find((x) => x.querySelector('.fc-no')?.textContent === '#1')!;
+      expect(done.querySelector('.fdetail')).not.toBeNull();
+      expect(done.querySelector('.fdetail .triage')).toBeNull();
+      expect(done.querySelector('.fdetail .handling .done-row')).toBeNull(); // 「対応済みにする」「誤検知」も、出ない（申告が、記録）
+      state.expandedFindings = new Set(['tb:1']);
+      state.expanded = new Set([1]);
+      render();
+      const undone = rows().find((x) => x.querySelector('.fc-no')?.textContent === '#2')!;
+      expect(undone.querySelector('.fdetail .triage')).not.toBeNull();
+    });
+
+    it('判断の列に、仕分けの印と、申告の印が出る。対応済みの行は、薄くして、下に並ぶ', () => {
+      const r = mk(3, {
+        triage: ['fix', 'fix', 'new'],
+        finding_notes: [null, null, null],
+        agent_reports: [{ verdict: 'skipped', text: '誤検知です', reported_at: 1, source: 'c' }, { verdict: 'did', text: '直した', reported_at: 1, source: 'c' }, null],
+      });
+      show(r);
+      const items = [...document.querySelectorAll<HTMLElement>('.hdetail .ftable .fitem')];
+      // 並び: 済みでない（#3 → 未仕分け、#1 → 判断待ち）、済み（#2）は下
+      expect(items.map((i) => i.querySelector('.fc-no')?.textContent)).toEqual(['#3', '#1', '#2']);
+      expect(items[2].classList.contains('fdone')).toBe(true);
+      expect(items[1].querySelector('.fstat')?.textContent).toContain('対応');
+      expect(items[1].querySelector('.fstat')?.textContent).toContain('確認して対応しなかった');
+      expect(items[1].querySelector('.fstat')?.textContent).not.toContain('未対応');
+      expect(items[0].querySelector('.fpill')?.textContent).toBe('未仕分け');
+      expect(items[2].querySelector('.fstat')?.textContent).toContain('対応した');
+    });
+  });
+
+  describe('結果のページ（「ページで開く」）', () => {
+    const open = () => {
+      state.history = [summary('pg')] as never;
+      state.selected = { ...fakeReview('pg'), model: 'claude-sonnet-5-5', duration_ms: 14000, usage: { input_tokens: 18420, output_tokens: 1, cache_read_tokens: null, cache_write_tokens: null } } as unknown as ReviewView;
+      state.page = 'history';
+      render();
+    };
+
+    it('履歴の行の下の結果に、「ページで開く」がある。押すと、結果のページ（実行の情報 5 枚・指摘の集計・表）になる。タブは、履歴・ログのまま', () => {
+      open();
+      (document.querySelector('.hdetail .open-page-btn') as HTMLElement).click();
+      expect(state.page).toBe('result');
+      expect(state.selected?.id).toBe('pg');
+      expect(selected()).toEqual(['history']);
+      expect(document.querySelector('.hdetail')).toBeNull(); // 行の下ではなく、ページ
+      expect(document.querySelector('.page-title')?.textContent).toContain('履歴・ログ');
+      const info = [...document.querySelectorAll('.fsum-info .fsum-card')].map((c) => c.textContent);
+      expect(info).toEqual(['状態完了', 'モデルclaude-sonnet-5-5', '観点バグ', '入力トークン18,420', '所要時間14 秒']);
+      expect(document.querySelector('.back-to-log-btn')?.textContent).toBe('履歴・ログ');
+      expect(document.querySelector('.back-to-log-btn')?.getAttribute('title')).toBe('← 履歴・ログ');
+      expect(document.querySelector('.result nav.tabs')).not.toBeNull(); // フル版（タブ・指摘・差分・記録）
+    });
+
+    it('戻るボタンで、履歴・ログへ戻る。結果は、開いたまま（行の下に、また開いている）', () => {
+      open();
+      (document.querySelector('.hdetail .open-page-btn') as HTMLElement).click();
+      (document.querySelector('.back-to-log-btn') as HTMLElement).click();
+      expect(state.page).toBe('history');
+      expect(state.selected?.id).toBe('pg');
+      expect(document.querySelector('.hdetail .result-compact')).not.toBeNull();
+    });
+
+    it('見出しは、パンくず（履歴・ログ › 観点名）。「履歴・ログ」を押すと、戻る', () => {
+      open();
+      (document.querySelector('.hdetail .open-page-btn') as HTMLElement).click();
+      const crumb = document.querySelector('.page-title .crumb')!;
+      expect(crumb.querySelector('.crumb-link')?.textContent).toBe('履歴・ログ');
+      expect(crumb.querySelector('.crumb-here')?.textContent).toBe('バグ');
+      (crumb.querySelector('.crumb-link') as HTMLElement).click();
+      expect(state.page).toBe('history');
+      expect(state.selected?.id).toBe('pg');
+    });
+
+    it('履歴・ログと結果のページの行き来だけ、動きでつなぐ（進む・戻る）。その描画だけに付き、次の描き直しでは、付かない。ほかのタブの切り替えは、動かさない', () => {
+      const enter = () => document.querySelector('.detail')?.getAttribute('data-enter') ?? null;
+      open();
+      expect(enter()).toBeNull();
+      (document.querySelector('.hdetail .open-page-btn') as HTMLElement).click();
+      expect(enter()).toBe('forward');
+      render(); // 中の操作などによる描き直し: 動かさない
+      expect(enter()).toBeNull();
+      (document.querySelector('.back-to-log-btn') as HTMLElement).click();
+      expect(enter()).toBe('back');
+      render();
+      expect(enter()).toBeNull();
+      tab('aspects').click();
+      expect(enter()).toBeNull(); // ほかのタブ: 動かさない
+    });
+
+    it('戻ったとき、さっきの行を光らせ、開いたまま。「ページで開く」の前の、スクロール位置に戻す', () => {
+      open();
+      const main = document.querySelector('.detail') as HTMLElement;
+      main.scrollTop = 240;
+      (document.querySelector('.hdetail .open-page-btn') as HTMLElement).click();
+      expect((document.querySelector('.detail') as HTMLElement).scrollTop).toBe(0);
+      (document.querySelector('.back-to-log-btn') as HTMLElement).click();
+      expect(document.querySelector('.history li.on.flash')).not.toBeNull();
+      expect((document.querySelector('.detail') as HTMLElement).scrollTop).toBe(240);
+      render(); // 次の描き直しでは、光らせない
+      expect(document.querySelector('.history li.flash')).toBeNull();
+    });
+
+    it('実行に失敗したレビューをページで開くと、状態カードは「失敗」。入力トークンが無いときは「—」', () => {
+      state.history = [summary('pg')] as never;
+      state.selected = { ...fakeReview('pg'), error: 'API キーがありません', usage: { input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_write_tokens: null } } as unknown as ReviewView;
+      state.page = 'history';
+      render();
+      (document.querySelector('.hdetail .open-page-btn') as HTMLElement).click();
+      const info = [...document.querySelectorAll('.fsum-info .fsum-card')].map((c) => c.textContent);
+      expect(info[0]).toBe('状態失敗');
+      expect(info[3]).toBe('入力トークン—');
+    });
+
+    it('行を開いて「ページで開く」→ 戻る、のあとも、同じ行だけが開いている。もう一度押すと、閉じる', () => {
+      const sev = ['high', 'medium', 'low'];
+      const findings = [0, 1, 2].map((i) => ({ file: `src/f${i}.rs`, line: i + 1, severity: sev[i], title: `見出し${i}`, detail: `詳細${i}`, evidence: `x${i}`, verified: true }));
+      state.history = [summary('pg')] as never;
+      state.selected = { ...fakeReview('pg'), findings, triage: ['new', 'new', 'new'], finding_notes: [null, null, null], agent_reports: [null, null, null] } as unknown as ReviewView;
+      state.page = 'history';
+      state.expandedFindings = new Set();
+      state.expanded = new Set();
+      render();
+      const rows = () => [...document.querySelectorAll<HTMLElement>('.ftable .fitem')];
+      const openRows = () => rows().map((r, i) => (r.querySelector('.fdetail') ? i : -1)).filter((i) => i >= 0);
+      rows()[1].querySelector<HTMLElement>('.frow')!.click();
+      expect(openRows()).toEqual([1]);
+      (document.querySelector('.hdetail .open-page-btn') as HTMLElement).click(); // 結果のページ
+      expect(openRows()).toEqual([1]); // 同じ行が、開いている
+      (document.querySelector('.back-to-log-btn') as HTMLElement).click(); // 戻る
+      expect(openRows()).toEqual([1]); // 行 1 だけ
+      rows()[1].querySelector<HTMLElement>('.frow')!.click();
+      expect(openRows()).toEqual([]); // 閉じる
+      expect(state.expandedFindings.size + state.expanded.size).toBe(0); // 2 つの開閉の状態が、そろって空
+    });
+
+    it('結果が無くなれば（消した・リポジトリを替えた）、履歴・ログへ戻る。タブを押しても、履歴・ログへ移る（結果は閉じる）', () => {
+      open();
+      state.page = 'result';
+      state.selected = null;
+      render();
+      expect(state.page).toBe('history');
+      open();
+      state.page = 'result';
+      render();
+      tab('history').click();
+      expect(state.page).toBe('history');
+      expect(state.selected).toBeNull();
     });
   });
 

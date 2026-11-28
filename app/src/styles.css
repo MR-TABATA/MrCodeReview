@@ -1680,3 +1680,77 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 .hmore.hbtn { display: flex; width: fit-content; margin: 12px auto 4px; }
 .pickbar .hbtn { margin-left: auto; }
 .pickbar .hbtn + .hbtn { margin-left: 8px; }
+
+/* ── 指摘の表（step 5）── */
+.ftable { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; margin-top: 8px; }
+.ftable .fitem { margin: 0; border: 0; border-radius: 0; border-top: 1px solid var(--line); box-shadow: none; padding: 0; background: transparent; }
+.ftable .fitem.s-fix { border-left: 0; }
+.frow { display: grid; grid-template-columns: 34px 138px 78px minmax(0, 1fr) minmax(110px, 230px); gap: 12px; align-items: center; padding: 10px 14px; }
+.frow-head { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--code-bg); padding-top: 7px; padding-bottom: 7px; }
+.fitem > .frow { cursor: pointer; }
+.fitem > .frow:hover { background: var(--accent-bg); }
+.fitem.open > .frow { background: var(--accent-bg); }
+.fitem > .frow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fitem.fdone > .frow > :not(.fc-no) { opacity: .6; }
+.ftable .fno, .ftable .fc-no { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fstat { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.fpill { display: inline-flex; align-items: center; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--code-bg); color: var(--muted); white-space: nowrap; }
+.fpill.fp-fix { background: var(--ok-bg); color: var(--ok); }
+.fpill.fp-wait { background: var(--accent-bg); color: var(--accent); }
+.fpill.fp-dismiss { background: var(--code-bg); color: var(--muted); }
+.fpill.fp-new { background: var(--warn-bg); color: var(--warn); }
+.fmain { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ftitle { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.fpeek { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; color: var(--muted); font-size: 12px; }
+.fpeek .fc-peek { flex: 1 1 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.floc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); background: transparent; padding: 0; }
+.fdetail { padding: 4px 14px 14px 60px; background: var(--accent-bg); border-top: 1px solid var(--line); }
+.fdetail .triage { margin-top: 8px; }
+.fdetail .fc-body { padding-top: 6px; }
+@media (max-width: 899px) {
+  .frow { grid-template-columns: 34px 120px 74px minmax(0, 1fr); }
+  .frow .floc { grid-column: 4; grid-row: 2; }
+  .frow-head > :last-child { display: none; }
+  .fdetail { padding-left: 14px; }
+}
+
+/* 指摘の集計の帯 */
+.fsum { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 8px; }
+.fsum-compact { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.fsum-line { font-size: 13px; font-weight: 600; }
+.fsum .hcounts { flex: 0 1 auto; justify-content: flex-start; margin-top: 0; flex-wrap: wrap; }
+.fsum-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.fsum-card { border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line)); border-radius: 10px; background: var(--accent-bg); padding: 10px 14px; }
+.fsum-t { font-size: 12px; color: var(--muted); }
+.fsum-n { font-size: 24px; font-weight: 700; margin-top: 2px; }
+@media (max-width: 899px) { .fsum-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ftable .fitem.fc-sev-high > .frow { box-shadow: inset 3px 0 0 var(--bad); }
+.ftable .fitem.fc-sev-medium > .frow { box-shadow: inset 3px 0 0 var(--warn); }
+.ftable .fitem.fc-sev-low > .frow { box-shadow: inset 3px 0 0 var(--sev-low); }
+/* 履歴の行（開いているときは、文字が青）の中の結果は、ふつうの文字色に戻す */
+.history li .hdetail { color: var(--text); }
+.ftable .fitem.unverified { border-color: transparent; border-top-color: var(--line); }
+
+/* 結果のページ: 実行の情報 5 枚 */
+.fsum-info { grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 4px 0 8px; }
+.fsum-v { font-size: 15px; font-weight: 600; margin-top: 4px; overflow-wrap: anywhere; }
+@media (max-width: 899px) { .fsum-info { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* 画面のつなぎ: 履歴・ログ ⇄ 結果のページ（進む＝右から、戻る＝左から）。モーションを減らす設定のときは、動かさない */
+@keyframes page-in-forward { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes page-in-back { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+.detail[data-enter="forward"] { animation: page-in-forward .2s ease-out; }
+.detail[data-enter="back"] { animation: page-in-back .2s ease-out; }
+@keyframes row-flash { 0% { box-shadow: inset 0 0 0 2px var(--accent); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
+.history li.flash { animation: row-flash 1.2s ease-out; }
+.history li { scroll-margin-top: 84px; }
+@media (prefers-reduced-motion: reduce) {
+  .detail[data-enter] { animation: none; }
+  .history li.flash { animation: none; }
+}
+/* パンくず（結果のページの見出し） */
+.crumb { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.crumb-link { border: 0; background: transparent; padding: 0; font: inherit; color: var(--accent); cursor: pointer; width: auto; }
+.crumb-link:hover { text-decoration: underline; }
+.crumb-sep { color: var(--muted); }
+.crumb-here { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

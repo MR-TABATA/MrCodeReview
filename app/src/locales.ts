@@ -493,6 +493,27 @@ export interface Messages {
     rightPanelEmptyRepo: string;
     rightPanelEmptyAll: string;
     triageLabels: [TriageState, string][];
+    findingTable: {
+      tableLabel: string;
+      colStatus: string;
+      colSeverity: string;
+      colFinding: string;
+      colWhere: string;
+      cardTotal: string;
+      infoStatus: string;
+      infoStatusDone: string;
+      infoStatusFailed: string;
+      infoModel: string;
+      infoAspect: string;
+      infoTokens: string;
+      infoDuration: string;
+      openPageBtn: string;
+      openPageTitle: string;
+      backToHistory: string;
+      backToHistoryTitle: string;
+      summaryLine: (total: number, high: number, medium: number, low: number) => string;
+      untriaged: string;
+    };
     triageResetTitle: string;
     chipEvidenceMismatch: string;
     chipEvidenceMismatchTitle: (groundingNote: string) => string;
@@ -1125,6 +1146,27 @@ export const MESSAGES: Record<Lang, Messages> = {
       rightPanelAllRepos: 'すべてのリポジトリ',
       rightPanelEmptyRepo: 'このリポジトリの履歴は、まだありません。',
       rightPanelEmptyAll: 'まだありません。',
+      findingTable: {
+        tableLabel: '指摘の一覧',
+        colStatus: '判断',
+        colSeverity: '重大度',
+        colFinding: '指摘',
+        colWhere: '場所',
+        cardTotal: '指摘',
+        infoStatus: '状態',
+        infoStatusDone: '完了',
+        infoStatusFailed: '失敗',
+        infoModel: 'モデル',
+        infoAspect: '観点',
+        infoTokens: '入力トークン',
+        infoDuration: '所要時間',
+        openPageBtn: 'ページで開く',
+        openPageTitle: 'この結果を、ページいっぱいに開きます（戻ると、履歴・ログの、この行が開いたままです）',
+        backToHistory: '履歴・ログ',
+        backToHistoryTitle: '← 履歴・ログ',
+        summaryLine: (total, high, medium, low) => `指摘 ${total} 件 ・ high ${high} ・ medium ${medium} ・ low ${low}`,
+        untriaged: '未仕分け',
+      },
       triageLabels: [
         ['fix', '対応'],
         ['wait', '待ち'],
@@ -1929,6 +1971,27 @@ export const MESSAGES: Record<Lang, Messages> = {
       rightPanelAllRepos: 'All repositories',
       rightPanelEmptyRepo: 'No review history for this repository.',
       rightPanelEmptyAll: 'No history yet.',
+      findingTable: {
+        tableLabel: 'Findings',
+        colStatus: 'Status',
+        colSeverity: 'Severity',
+        colFinding: 'Finding',
+        colWhere: 'Where',
+        cardTotal: 'Findings',
+        infoStatus: 'Status',
+        infoStatusDone: 'Done',
+        infoStatusFailed: 'Failed',
+        infoModel: 'Model',
+        infoAspect: 'Aspect',
+        infoTokens: 'Input tokens',
+        infoDuration: 'Duration',
+        openPageBtn: 'Open as page',
+        openPageTitle: 'Open this result full page (going back leaves this row open in History & log)',
+        backToHistory: 'History & log',
+        backToHistoryTitle: '← History & log',
+        summaryLine: (total, high, medium, low) => `${total} findings · high ${high} · medium ${medium} · low ${low}`,
+        untriaged: 'Untriaged',
+      },
       triageLabels: [
         ['fix', 'Fix'],
         ['wait', 'Wait'],

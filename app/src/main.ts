@@ -66,6 +66,9 @@ import { newReportState, reportFileName, reportOptions, reportPanel, reportRange
 import { periodSince, usagePanel, type Period, type UsageState } from './usageview';
 import { DEFAULT_PAGE, pageTabs, type Page } from './pages';
 import { aggregateAspects, type AspectStats } from './aspectstats';
+import { findingStats } from './findingstats';
+import { findingsSummary, findingsTable, runInfoCards, type FindingRow } from './findingtable';
+import { fmtSeconds } from './duration';
 import { aspectsPanel } from './aspectsview';
 import { createHistoryView, type HistoryView } from './historyfilter';
 import { runLogDetail } from './runlogdetail';
@@ -255,6 +258,8 @@ const state = {
   recordSub: 'detail' as RecordSub,
   running: '' as string, // 実行中のレシピ id。空なら実行していない
   runError: '',
+  /** 仕分け・メモ・対応済みの保存に失敗した理由。実行のエラー（runError）とは、分ける。次に保存できたら、消す */
+  handlingError: '',
   /** 「まとめて実行」の状態と、選んだ観点の過去の実績（観点の id → 実績。まだ読んでいなければ、無い） */
   batch: newBatchUi(),
   batchStats: {} as Record<string, DurationStats | undefined>,
@@ -785,6 +790,7 @@ async function select(id: string): Promise<void> {
   state.usage = null;
   state.continuity = null;
   closeReport();
+  state.handlingError = '';
   state.selected = (await invoke<ReviewView | null>('get_review', { id })) ?? null;
   // 「前回」へ移ったとき、その行が折りたたまれた日付の中にあっても、見えるようにする
   const opened = state.history.find((x) => x.id === id);
@@ -801,7 +807,7 @@ async function fixAllBySeverity(sev: string, status: TriageState = 'fix'): Promi
   await runFixAllBySeverity(r, sev, {
     setTriage: (index, st) => invoke<Handling>('set_triage', { id: r.id, index, status: st }),
     applyHandling: (handling) => applyHandling(r, handling),
-    onError: (error) => { state.runError = error; },
+    onError: (error) => { state.handlingError = error; },
     refreshHistory: () => refreshHistoryLater.call(),
     refreshHandoff,
     render,
@@ -820,16 +826,17 @@ export function findReviewTarget(
   return selected;
 }
 
-/** 仕分けを変える。成功したら true（失敗は、`state.runError` に入れて、false）。 */
+/** 仕分けを変える。成功したら true（失敗は、`state.handlingError` に入れて、false。成功したら、前の失敗の理由を消す）。 */
 async function setTriage(index: number, status: TriageState, reviewId?: string): Promise<boolean> {
   const r = findReviewTarget(reviewId);
   if (!r) return false;
   let ok = true;
   try {
     applyHandling(r, await invoke<Handling>('set_triage', { id: r.id, index, status }));
+    state.handlingError = '';
     refreshHistoryLater.call(); // 履歴の件数（未・済み・待ち・無視）は、サーバー側で数える。変えたら、まとめて読み直す
   } catch (e) {
-    state.runError = String(e);
+    state.handlingError = String(e);
     ok = false;
   }
   await refreshHandoff();
@@ -855,9 +862,9 @@ async function saveMemo(index: number, memo: string, reviewId?: string): Promise
   let ok = true;
   try {
     applyHandling(r, await invoke<Handling>('set_memo', { id: r.id, index, memo }));
-    state.runError = '';
+    state.handlingError = '';
   } catch (e) {
-    state.runError = String(e);
+    state.handlingError = String(e);
     ok = false;
   }
   render();
@@ -875,7 +882,12 @@ async function markFalsePositive(index: number, memo: string, reviewId?: string)
   if (!(await setTriage(index, 'dismiss', reviewId))) return;
   if (cur.includes(label)) return; // すでに「誤検知」と書いてある（二重に足さない）
   // メモに失敗したら、仕分けも元の「対応」に戻す（理由のない「無視」を、残さない）。理由は、画面に出る
-  if (!(await saveMemo(index, cur ? `${cur} ／ ${label}` : label, reviewId))) await setTriage(index, 'fix', reviewId);
+  if (!(await saveMemo(index, cur ? `${cur} ／ ${label}` : label, reviewId))) {
+    const memoError = state.handlingError;
+    const reverted = await setTriage(index, 'fix', reviewId); // 成功すると、失敗の理由を消すので、メモの失敗の理由を、戻す
+    state.handlingError = reverted ? memoError : `${memoError} ／ ${state.handlingError}`;
+    render();
+  }
 }
 
 /** 「対応済み」を付ける／外す。 */
@@ -884,10 +896,10 @@ async function toggleDone(index: number, done: boolean, reviewId?: string): Prom
   if (!r) return;
   try {
     applyHandling(r, await invoke<Handling>('set_done', { id: r.id, index, done }));
-    state.runError = '';
+    state.handlingError = '';
     refreshHistoryLater.call(); // 「済み」の数が変わる
   } catch (e) {
-    state.runError = String(e);
+    state.handlingError = String(e);
   }
   render();
 }
@@ -2690,7 +2702,6 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
     }
     render();
   };
-  const loc = `${f.file || ut().app.noFile}${f.line === null ? '' : `:${f.line}`}`;
   const chips = findingChips(f, status, carry, note, agent);
   const cont = continuityChip(reviewId, carry);
   if (cont) chips.unshift(cont);
@@ -2732,43 +2743,113 @@ function richFindingCard(reviewId: string, f: Finding, index: number, status: Tr
     h('div', { class: 'fc-sub' }, open ? null : h('span', { class: 'fc-peek' }, f.detail), ...chips),
     // 「CLI に渡す」を押した直後の案内は、閉じていても、見える所に出す（押した結果が見えなくならないように）
     hand && !done ? handoffResult(index, state.handoffUi, handoffActs()) : null,
-    open
+    open ? findingBody(reviewId, f, index, status, carry, note, hand, agent, byAgent) : null,
+  );
+}
+
+/** 開いた指摘の中身（全文・引用・申告の欄・メモ・仕分けの記録）。カード（richFindingCard）と、指摘の表の、開いた行で、同じものを使う。 */
+function findingBody(reviewId: string, f: Finding, index: number, status: TriageState, carry: Carry | null | undefined, note: Note | undefined, hand: boolean, agent: AgentReport | null | undefined, byAgent: boolean): HTMLElement {
+  const loc = `${f.file || ut().app.noFile}${f.line === null ? '' : `:${f.line}`}`;
+  return h(
+    'div',
+    { class: 'fc-body' },
+    tagLine(findingTag(reviewId, index), copyText),
+    h('p', { class: 'fc-detail' }, f.detail),
+    // 引用の出どころ（パス:行）は、見出しではなく、ここ。長いパスも、切らずに折り返して全部見せる
+    h(
+      'div',
+      { class: 'fc-evrow' },
+      h('div', { class: 'f-ev-label', title: ut().detail.groundingNote }, f.verified ? msg(getAppLang()).mainUi.quoteVerified : msg(getAppLang()).mainUi.quoteNotVerified),
+      h('code', { class: 'fc-loc' }, loc),
+    ),
+    h('pre', { class: 'evidence' }, f.evidence || msg(getAppLang()).mainUi.noQuote),
+    f.spec_quote
       ? h(
           'div',
-          { class: 'fc-body' },
-          tagLine(findingTag(reviewId, index), copyText),
-          h('p', { class: 'fc-detail' }, f.detail),
-          // 引用の出どころ（パス:行）は、見出しではなく、ここ。長いパスも、切らずに折り返して全部見せる
+          { class: 'fc-spec-box' },
           h(
             'div',
-            { class: 'fc-evrow' },
-            h('div', { class: 'f-ev-label', title: ut().detail.groundingNote }, f.verified ? msg(getAppLang()).mainUi.quoteVerified : msg(getAppLang()).mainUi.quoteNotVerified),
-            h('code', { class: 'fc-loc' }, loc),
+            { class: 'f-ev-label' },
+            f.spec_verified === true
+              ? msg(getAppLang()).mainUi.specQuoteVerified
+              : f.spec_verified === false
+                ? msg(getAppLang()).mainUi.specQuoteMismatch
+                : msg(getAppLang()).mainUi.specQuoteLabel,
           ),
-          h('pre', { class: 'evidence' }, f.evidence || msg(getAppLang()).mainUi.noQuote),
-          f.spec_quote
-            ? h(
-                'div',
-                { class: 'fc-spec-box' },
-                h(
-                  'div',
-                  { class: 'f-ev-label' },
-                  f.spec_verified === true
-                    ? msg(getAppLang()).mainUi.specQuoteVerified
-                    : f.spec_verified === false
-                      ? msg(getAppLang()).mainUi.specQuoteMismatch
-                      : msg(getAppLang()).mainUi.specQuoteLabel,
-                ),
-                h('pre', { class: 'spec-quote' }, f.spec_quote),
-                f.spec_source ? h('div', { class: 'f-ev-label spec-source' }, msg(getAppLang()).mainUi.specQuoteSource(f.spec_source)) : null,
-              )
-            : null,
-          carryNote(carry),
-          hand ? agentBox(agent, when, showNowDiff) : null,
-          handlingBox(index, status, note, byAgent, reviewId, agent),
+          h('pre', { class: 'spec-quote' }, f.spec_quote),
+          f.spec_source ? h('div', { class: 'f-ev-label spec-source' }, msg(getAppLang()).mainUi.specQuoteSource(f.spec_source)) : null,
         )
       : null,
-  );
+    carryNote(carry),
+    hand ? agentBox(agent, when, showNowDiff) : null,
+    handlingBox(index, status, note, byAgent, reviewId, agent),
+        );
+}
+
+/** 指摘の表の、行を開閉する。同時に開くのは 1 件だけ（別の行を押すと、前の行が閉じる。開いている行を押すと、閉じる）。 */
+function toggleFindingOpen(reviewId: string, index: number): void {
+  const key = `${reviewId}:${index}`;
+  const wasOpen = state.expandedFindings.has(key) || (state.selected?.id === reviewId && state.expanded.has(index));
+  for (const k of [...state.expandedFindings]) if (k.startsWith(`${reviewId}:`)) state.expandedFindings.delete(k);
+  if (state.selected?.id === reviewId) state.expanded.clear();
+  state.openCards.clear();
+  if (!wasOpen) {
+    state.expandedFindings.add(key);
+    if (state.selected?.id === reviewId) state.expanded.add(index);
+  }
+  render();
+}
+
+/** 結果の指摘を、表にする。並びは、対応済みを下・重大度の高い順。行の下に開く詳細は、カードと同じ部品。 */
+function findingsTableFor(r: ReviewView): HTMLElement {
+  const lang = getAppLang();
+  const labels = new Map(triageLabels(lang));
+  const rows: FindingRow[] = findingOrder(r.findings.length, (i) => isDoneFinding(r.triage[i] ?? 'new', r.finding_notes?.[i], r.agent_reports?.[i]), (i) => r.findings[i].severity)
+    .filter((i) => shownByContinuity(continuityOf(r), state.continuity, i))
+    .map((i) => {
+      const f = r.findings[i];
+      const status = r.triage[i] ?? 'new';
+      const note = r.finding_notes?.[i];
+      const agent = r.agent_reports?.[i];
+      const carry = r.carries?.[i];
+      const byAgent = agentDone(agent, status);
+      const done = isDoneFinding(status, note, byAgent ? agent : null);
+      const key = `${r.id}:${i}`;
+      const open = state.expandedFindings.has(key) || (state.selected?.id === r.id && state.expanded.has(i));
+      const chips = findingChips(f, status, carry, note, agent);
+      const cont = continuityChip(r.id, carry);
+      if (cont) chips.unshift(cont);
+      // 判断の列には、申告・対応済み・未対応・メモの印。それ以外（根拠不一致・規則・引き継ぎ）は、見出しの下
+      const isStatusChip = (c: HTMLElement): boolean => ['did', 'skipped', 'open', 'memo'].some((k) => c.classList.contains(k));
+      return {
+        index: i,
+        severity: f.severity,
+        status,
+        verified: f.verified,
+        done,
+        open,
+        no: findingNo(i, findingTag(r.id, i)),
+        sev: h('span', { class: `badge fc-sev sev-${f.severity}`, title: ut().app.severityTitle(f.severity), 'aria-label': ut().app.severityAria(f.severity) }, `${SEV_ICON[f.severity] ?? '●'} ${f.severity}`),
+        statusPill: h('span', { class: `fpill fp-${status}` }, labels.get(status) ?? msg(lang).mainUi.findingTable.untriaged),
+        statusChips: chips.filter(isStatusChip),
+        title: f.title || ut().app.noTitle,
+        peek: f.detail,
+        subChips: chips.filter((c) => !isStatusChip(c)),
+        loc: `${f.file || ut().app.noFile}${f.line === null ? '' : `:${f.line}`}`,
+        onToggle: () => toggleFindingOpen(r.id, i),
+        detail: open
+          ? h(
+              'div',
+              { class: 'fdetail-in' },
+              // 仕分けのボタンは、表の行ではなく、開いた詳細の中（一覧で、押し間違えて、仕分けが変わらないように）。「対応した」と申告された指摘は、読むだけ
+              done ? null : triageControls(i, status, true, 'triage fc-triage', false, r.id),
+              !done ? handoffResult(i, state.handoffUi, handoffActs()) : null,
+              findingBody(r.id, f, i, status, carry, note, true, agent, byAgent),
+            )
+          : null,
+      } satisfies FindingRow;
+    });
+  return findingsTable(rows, lang);
 }
 
 function findingCard(reviewId: string, f: Finding, index: number, status: TriageState, carry?: Carry | null, compact = false, note?: Note, hand = false, agent?: AgentReport | null): HTMLElement {
@@ -3184,7 +3265,7 @@ function relatedSection(rel: Related | null): HTMLElement | null {
 }
 
 /** 4 つのページの先頭に付ける、共通の見出し（タイトル・補足・右側の操作）。 */
-function pageHeader(title: string, opts: { note?: string; actions?: Node | null } = {}): HTMLElement {
+function pageHeader(title: string | Node, opts: { note?: string; actions?: Node | null } = {}): HTMLElement {
   return h(
     'header',
     { class: 'page-head' },
@@ -3324,19 +3405,28 @@ function resultView(): HTMLElement {
     ['diff', m.tabDiff, state.tab === 'diff'],
     [state.recordSub, m.tabRecord, isRecordTab(state.tab)],
   ];
-  // 履歴・ログでは、行の下に開く（行を押すと閉じる）。新規レビューの下の結果だけ、「✕ 結果を閉じる」を出す
+  // 3 つの出し方: 履歴・ログの行の下（簡易版・行を押すと閉じる）／結果のページ（フル版・「← 履歴・ログ」で戻る）／新規レビューの下（フル版・「✕ 結果を閉じる」）
   const compact = state.page === 'history';
+  const onResultPage = state.page === 'result';
+  const ft = m.findingTable;
   const closeBtn = compact
     ? null
-    : pillButton(
-        'x',
-        m.closeResult.replace(/^[←✕]\s*/, ''),
-        () => {
-          state.selected = null;
-          render();
-        },
-        { title: m.closeResult, cls: 'back-to-log-btn' },
-      );
+    : onResultPage
+      ? pillButton(
+          'arrow-left',
+          ft.backToHistory,
+          backToHistoryList, // 開いている結果（state.selected）は、そのまま。履歴・ログの、この行が、開いたまま
+          { title: ft.backToHistoryTitle, cls: 'back-to-log-btn' },
+        )
+      : pillButton(
+          'x',
+          m.closeResult.replace(/^[←✕]\s*/, ''),
+          () => {
+            state.selected = null;
+            render();
+          },
+          { title: m.closeResult, cls: 'back-to-log-btn' },
+        );
   const head = h(
     'div',
     { class: 'd-head' },
@@ -3344,13 +3434,25 @@ function resultView(): HTMLElement {
       'div',
       { class: 'row dhead-row' },
       closeBtn,
-      // 履歴・ログでは、行に名前が出ているので、見出しは出さない
+      // 履歴・ログの行の下では、行に名前が出ているので、見出しは出さない
       compact ? null : h('h2', {}, `${reviewName(r.recipe.title, r.seq)} — ${shortRepo(r.repo)}`),
       h('span', { class: 'spacer' }),
+      compact
+        ? pillButton(
+            'expand',
+            ft.openPageBtn,
+            openResultPage,
+            { title: ft.openPageTitle, cls: 'open-page-btn' },
+          )
+        : null,
       pillButton('report', m.reportThisReviewBtn, () => void openReportFor([r.id]), { title: m.reportThisReviewTitle, cls: 'report-this-btn' }),
     ),
     // 見出しは、観点とリポジトリだけ。日時・LLM・モデル・所要時間・HEAD・差分・比較元は、履歴の行と、「詳細」タブにある
   );
+  // 結果のページだけ、上に、実行の情報（状態・モデル・観点・入力トークン・所要時間）
+  const info = onResultPage
+    ? runInfoCards({ failed: !!(r.error || r.parse_error), model: r.model, aspect: reviewName(r.recipe.title, r.seq, lang), inputTokens: r.usage.input_tokens, durationText: fmtSeconds(r.duration_ms, lang) }, lang)
+    : null;
   const nav = h(
     'nav',
     { class: 'tabs' },
@@ -3370,11 +3472,11 @@ function resultView(): HTMLElement {
       )
     : null;
 
-  // 指摘のカード（対応済みは、下に置く。「対応済みにする」を押した直後に、下へ移る）
-  const findingCards = (): HTMLElement[] =>
-    findingOrder(r.findings.length, (i) => isDoneFinding(r.triage[i] ?? 'new', r.finding_notes?.[i], r.agent_reports?.[i]), (i) => r.findings[i].severity)
-      .filter((i) => shownByContinuity(continuityOf(r), state.continuity, i))
-      .map((i) => findingCard(r.id, r.findings[i], i, r.triage[i] ?? 'new', r.carries?.[i], false, r.finding_notes?.[i], true, r.agent_reports?.[i]));
+  // 指摘の表（対応済みは、下に置く。「対応済みにする」を押した直後に、下へ移る）と、その上の集計の帯
+  const findingsBlock = (summaryCompact: boolean): (HTMLElement | null)[] => [
+    findingsSummary(findingStats(r), summaryCompact, lang),
+    r.findings.length ? findingsTableFor(r) : null,
+  ];
   const prevTitle = previousSeq(r) ? msg(getAppLang()).mainUi.continuity.panelTitle(reviewName(r.recipe.title, previousSeq(r))) : undefined;
 
   // 履歴・ログから開いた結果: タイトルの下に指摘のカード、その下に「前回」（タブ・「すべて開く」「取り込む」の行・まとめて CLI に渡す欄は無い。差分・送った内容は、ログで見る）
@@ -3387,10 +3489,10 @@ function resultView(): HTMLElement {
       ...(r.notes ?? []).map((n) => h('p', { class: 'note-line' }, n)),
       r.parse_error ? h('p', { class: 'err' }, m.parseFailed(r.parse_error)) : null,
       // 仕分け・メモの保存に失敗した理由（履歴・ログには、ほかに出す場所が無い）
-      state.runError ? h('p', { class: 'err handling-error' }, state.runError) : null,
+      state.handlingError ? h('p', { class: 'err handling-error' }, state.handlingError) : null,
       !r.error && !r.parse_error && !r.findings.length ? h('p', { class: 'summary' }, m.noFindings) : null,
-      ...findingCards(),
-      // 「前回」の帯と変化は、指摘のカードの下（説明が長いので、指摘を先に見せる）
+      ...findingsBlock(true),
+      // 「前回」の帯と変化は、指摘の表の下（説明が長いので、指摘を先に見せる）
       continuityBand(r),
       fatesPanel(filteredFates(r, continuityOf(r), state.continuity), prevTitle),
       // 実行の記録（モデル・トークン・所要時間・入力・差分）。折りたたみ。開いたときにだけ、中身を作る
@@ -3413,9 +3515,10 @@ function resultView(): HTMLElement {
       ...(r.notes ?? []).map((n) => h('p', { class: 'note-line' }, n)),
       r.parse_error ? h('p', { class: 'err' }, m.parseFailed(r.parse_error)) : null,
       !r.error && !r.parse_error && !r.findings.length ? h('p', { class: 'summary' }, m.noFindings) : null,
+      state.handlingError ? h('p', { class: 'err handling-error' }, state.handlingError) : null,
       r.findings.length ? handoffBar(r, true) : null,
-      ...findingCards(),
-      // 「前回」の帯と変化は、指摘のカードの下（履歴・ログから開いた結果と同じ並び）
+      ...findingsBlock(false),
+      // 「前回」の帯と変化は、指摘の表の下（履歴・ログから開いた結果と同じ並び）
       continuityBand(r),
       fatesPanel(filteredFates(r, continuityOf(r), state.continuity), prevTitle),
       r.findings.length ? handoffPreview(handoffInfo(r), state.handoffUi, handoffActs(), state.agents) : null,
@@ -3450,7 +3553,7 @@ function resultView(): HTMLElement {
     body = detailPanel(r, { when, dur, num, base: baseLabel(r.snapshot.base) });
   }
 
-  return h('div', { class: 'result' }, head, nav, subnav, body);
+  return h('div', { class: 'result' }, head, info, nav, subnav, body);
 }
 
 function detailView(): HTMLElement {
@@ -3549,6 +3652,18 @@ function detailView(): HTMLElement {
       rightPanel(),
     );
   }
+  if (state.page === 'result') {
+    // 見出しは、パンくず（履歴・ログ › 観点名 ①）。「履歴・ログ」を押すと、戻る。深い階層に入ったことが、見えるように
+    const sel = state.selected;
+    const crumb = h(
+      'span',
+      { class: 'crumb' },
+      h('button', { class: 'crumb-link', type: 'button', onclick: backToHistoryList }, pm.pageTabHistory),
+      h('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›'),
+      h('span', { class: 'crumb-here' }, sel ? reviewName(sel.recipe.title, sel.seq, lang) : ''),
+    );
+    return h('main', { class: 'detail page' }, pageHeader(crumb), resultView());
+  }
   const r = currentRecipe();
   const tool = r ? r.kind === 'tool' : false;
   // 実行バーと「送る内容」は、1 枚のカードにまとめる
@@ -3560,19 +3675,43 @@ function detailView(): HTMLElement {
 
 /** 前回の描画で開いていたページ。ページが変わったときは、スクロール位置を引き継がない。 */
 let lastRenderedPage: Page | null = null;
+/** 「ページで開く」の直前の、履歴・ログのスクロール位置。戻ったときに、戻す。 */
+let historyScroll = 0;
+/** 結果のページから戻った直後の描画で、さっきの行へスクロールして、光らせる。 */
+let returnToRow = false;
+
+/** 履歴・ログから、結果のページへ（現在のスクロール位置を、覚える）。 */
+function openResultPage(): void {
+  historyScroll = document.querySelector('.detail')?.scrollTop ?? 0;
+  state.page = 'result';
+  render();
+}
+
+/** 結果のページから、履歴・ログへ戻る。開いている結果（state.selected）は、そのまま。さっきの行へ、スクロールして、光らせる。 */
+function backToHistoryList(): void {
+  state.page = 'history';
+  returnToRow = true;
+  render();
+}
 /** 実行が終わったとき、次の描画で、実行バーの下の結果へスクロールする。 */
 let scrollToResultNext = false;
 
 function render(): void {
   const root = getRoot();
   if (!root) return;
+  // 結果を閉じた（消した・リポジトリを替えた）ときは、履歴・ログへ戻す
+  if (state.page === 'result' && !state.selected) state.page = 'history';
   const pageChanged = lastRenderedPage !== state.page;
+  const prevPage = lastRenderedPage;
   lastRenderedPage = state.page;
+  // 履歴・ログと結果のページの行き来だけ、動きでつなぐ（進む＝右から、戻る＝左から。ほかのタブの切り替えは、動かさない）
+  const enter = pageChanged ? (prevPage === 'history' && state.page === 'result' ? 'forward' : prevPage === 'result' && state.page === 'history' ? 'back' : null) : null;
+  const goingBack = enter === 'back' && returnToRow;
   // 「履歴・ログ」のページは、フックの実行を出す。ページが変わって、これになったとき（タブでも、結果からの戻りでも）、読む
   if (pageChanged && state.page === 'history') queueMicrotask(() => void loadHook());
   // リポジトリのページは、全リポジトリのブランチ・フックの状態を出す。ページが変わって、これになったとき、読む
   if (pageChanged && state.page === 'repos') queueMicrotask(() => void loadRepoStatus(false));
-  const keepTop = pageChanged ? 0 : (root.querySelector('.detail')?.scrollTop ?? 0);
+  const keepTop = goingBack ? historyScroll : pageChanged ? 0 : (root.querySelector('.detail')?.scrollTop ?? 0);
   const m = msg(getAppLang()).mainUi;
   // 設定・レポート・使用量を開いているあいだは、どのタブも「いま」にしない
   const inMode = !!(state.settings || state.report || state.usage);
@@ -3588,7 +3727,7 @@ function render(): void {
         { class: 'top' },
         headerView(),
         pageTabs(
-          inMode ? null : state.page,
+          inMode ? null : state.page === 'result' ? 'history' : state.page,
           { nav: m.pageTabsLabel, repos: m.pageTabRepos, aspects: m.pageTabAspects, history: m.pageTabHistory, newreview: m.pageTabNewReview },
           goPage,
         ),
@@ -3598,6 +3737,16 @@ function render(): void {
   );
   const detailEl = root.querySelector('.detail');
   if (detailEl) detailEl.scrollTop = keepTop;
+  if (detailEl && enter) detailEl.setAttribute('data-enter', enter); // この描画だけ（次の描き直しでは、付けない＝動かない）
+  if (goingBack) {
+    returnToRow = false;
+    // さっきの行が、見える位置になければ、スクロールして、一瞬、光らせる
+    const row = root.querySelector<HTMLElement>('.history li.on');
+    if (row) {
+      row.classList.add('flash');
+      if (typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+    }
+  }
   if (keepSearch) {
     const el = document.getElementById('history-query') as HTMLInputElement | null;
     if (el) {
