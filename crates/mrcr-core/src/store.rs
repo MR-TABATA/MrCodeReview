@@ -1325,6 +1325,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// リポジトリの「未」の数字は、「未」＋「判断待ち」（エージェントが対応しなかったと申告した、「対応」の指摘）。判断待ちが外れて、少なく出ない。
+    /// 判断待ちの境界: 「対応」だけ。「無視」「待ち」に、対応しなかった申告があっても、判断待ちに入れない。合計は、いつも、指摘の数と一致する。
+    #[test]
+    fn open_count_includes_pending_and_pending_only_counts_findings_still_marked_fix() {
+        let d = scratch("pending-bounds");
+        let f = |t: &str| Finding { file: "a.rs".into(), line: Some(1), severity: "high".into(), title: t.into(), detail: "d".into(), evidence: "e".into(), verified: true, rule: None, ..Default::default() };
+        let mut r = rec("r1", 10);
+        r.findings = (0..5).map(|i| f(&format!("f{i}"))).collect();
+        append(&d, &r).unwrap();
+        let skipped = || crate::agent_report::AgentReport { verdict: "skipped".into(), text: "x".into(), reported_at: 1, source: "s".into() };
+        // 0: 対応＋対応しなかった → 判断待ち／1: 無視＋対応しなかった → 無視（判断待ちに入れない）／2: 待ち＋対応しなかった → 待ち
+        // 3: 対応＋対応しなかった＋対応済みの印 → 済み／4: 仕分けなし → 未
+        for (i, st) in [(0, "fix"), (1, "dismiss"), (2, "wait"), (3, "fix")] {
+            crate::triage::set_with(&d, "r1", i, st, 5, 100, None).unwrap();
+        }
+        for i in 0..4 {
+            crate::agent_report::save(&d, "r1", &[(i, skipped())]).unwrap();
+        }
+        crate::notes::set_done(&d, "r1", 3, 5, true, 200, None).unwrap();
+        let c = summaries_in(&d, None, 10).into_iter().find(|s| s.id == "r1").unwrap().counts.unwrap();
+        assert_eq!(c, TriageCounts { open: 1, pending: 1, done: 1, wait: 1, dismiss: 1 });
+        assert_eq!(c.open + c.pending + c.done + c.wait + c.dismiss, 5, "合計は、指摘の数");
+        // リポジトリの「未」＝ 未（1）＋ 判断待ち（1）
+        let conn = db::open(&d).unwrap();
+        assert_eq!(open_count(&conn, "/r").unwrap(), 2);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn deleting_reviews_removes_their_related_rows_only_and_the_open_count_follows() {
         let d = scratch("delete-reviews");

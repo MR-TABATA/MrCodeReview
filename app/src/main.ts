@@ -493,6 +493,22 @@ function refreshOpenReviewReports(): Promise<boolean> {
   });
 }
 
+/** 開いているレビューの報告を、読み直す間隔。エージェントは、窓の外（端末）で報告を書く。窓を見つめたままでも、カードが追いつくように。 */
+export const REPORT_POLL_MS = 5000;
+
+/**
+ * 開いているレビューがあり、窓が見えている（隠れても、最小化されてもいない）ときだけ、報告を読み直す。
+ * 窓にフォーカスが無くても（端末を前にしていても）読む。読むのは報告だけ（軽い）。変わったときだけ描き直す。
+ * 入力欄にフォーカスがあるあいだは、読まない。
+ */
+export function pollOpenReviewReports(): Promise<boolean> {
+  if (!state.selected || document.hidden) return Promise.resolve(false);
+  // メモなどを入力している最中は、読み直さない（描き直すと、入力途中の文字が消える）。次の回に、追いつく
+  const ae = document.activeElement;
+  if (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement) return Promise.resolve(false);
+  return refreshOpenReviewReports();
+}
+
 async function refreshHistory(): Promise<void> {
   // 選んでいるリポジトリの履歴だけ。選んでいなければ、すべて
   try {
@@ -804,17 +820,21 @@ export function findReviewTarget(
   return selected;
 }
 
-async function setTriage(index: number, status: TriageState, reviewId?: string): Promise<void> {
+/** 仕分けを変える。成功したら true（失敗は、`state.runError` に入れて、false）。 */
+async function setTriage(index: number, status: TriageState, reviewId?: string): Promise<boolean> {
   const r = findReviewTarget(reviewId);
-  if (!r) return;
+  if (!r) return false;
+  let ok = true;
   try {
     applyHandling(r, await invoke<Handling>('set_triage', { id: r.id, index, status }));
     refreshHistoryLater.call(); // 履歴の件数（未・済み・待ち・無視）は、サーバー側で数える。変えたら、まとめて読み直す
   } catch (e) {
     state.runError = String(e);
+    ok = false;
   }
   await refreshHandoff();
   render();
+  return ok;
 }
 
 export function applyHandling(r: ReviewView, h: Handling, cache: Map<string, ReviewView> = state.runLogReviewCache): void {
@@ -827,17 +847,21 @@ export function applyHandling(r: ReviewView, h: Handling, cache: Map<string, Rev
   }
 }
 
-/** 対応メモを保存する（入力欄を離れたとき・Enter）。 */
-async function saveMemo(index: number, memo: string, reviewId?: string): Promise<void> {
+/** 対応メモを保存する（入力欄を離れたとき・Enter）。保存できた（または、変える必要が無かった）なら true。 */
+async function saveMemo(index: number, memo: string, reviewId?: string): Promise<boolean> {
   const r = findReviewTarget(reviewId);
-  if (!r || (r.finding_notes[index]?.memo ?? '') === memo.trim()) return;
+  if (!r) return false;
+  if ((r.finding_notes[index]?.memo ?? '') === memo.trim()) return true;
+  let ok = true;
   try {
     applyHandling(r, await invoke<Handling>('set_memo', { id: r.id, index, memo }));
     state.runError = '';
   } catch (e) {
     state.runError = String(e);
+    ok = false;
   }
   render();
+  return ok;
 }
 
 /**
@@ -847,8 +871,11 @@ async function saveMemo(index: number, memo: string, reviewId?: string): Promise
 async function markFalsePositive(index: number, memo: string, reviewId?: string): Promise<void> {
   const label = msg(getAppLang()).mainUi.falsePositiveMemo;
   const cur = memo.trim();
-  await setTriage(index, 'dismiss', reviewId);
-  if (!cur.includes(label)) await saveMemo(index, cur ? `${cur} ／ ${label}` : label, reviewId);
+  // 仕分けに失敗したら、メモも書かない（仕分けは「対応」のままなのに、「誤検知」と残らないように）
+  if (!(await setTriage(index, 'dismiss', reviewId))) return;
+  if (cur.includes(label)) return; // すでに「誤検知」と書いてある（二重に足さない）
+  // メモに失敗したら、仕分けも元の「対応」に戻す（理由のない「無視」を、残さない）。理由は、画面に出る
+  if (!(await saveMemo(index, cur ? `${cur} ／ ${label}` : label, reviewId))) await setTriage(index, 'fix', reviewId);
 }
 
 /** 「対応済み」を付ける／外す。 */
@@ -2614,8 +2641,10 @@ function findingChips(f: Finding, status: TriageState, carry: Carry | null | und
     out.push(chip(agent.verdict === 'did' ? 'did' : 'skipped', `🤖 ${verdictText}`, m.chipAgentTitle));
   }
   // 「対応」にした指摘は、まだ直していないか（未対応）、直し済みか（対応済み）を、閉じたままでも見えるようにする
-  // エージェントが「確認して対応しなかった」と申告した指摘には、「未対応」を出さない（これから直す指摘に読めてしまう。判断は、あなたの手にある）
-  const st = agent?.verdict === 'skipped' ? null : fixStateChip(status, isDoneFinding(status, note, agent), lang);
+  // エージェントが「確認して対応しなかった」と申告した指摘には、「未対応」を出さない（これから直す指摘に読めてしまう。判断は、あなたの手にある）。
+  // ただし、あなたが「対応済みにする」を付けたあとは、「対応済み」の印を出す（印が無いと、一覧の「済み」と食い違う）
+  const resolved = isDoneFinding(status, note, agent);
+  const st = agent?.verdict === 'skipped' && !resolved ? null : fixStateChip(status, resolved, lang);
   if (st) out.push(chip(st.cls, st.text, st.title));
   if (note?.memo) out.push(chip('memo', m.chipMemo, note.memo));
   // 未仕分けの指摘に付いた Carry は、「同じ指摘だ」という判定だけ（引き継ぐ仕分けは無い）。「引き継ぎ」の印は、仕分け済みのときだけ
@@ -3357,6 +3386,8 @@ function resultView(): HTMLElement {
       r.error ? h('p', { class: 'err' }, h('span', {}, m.execFailed(r.error))) : null,
       ...(r.notes ?? []).map((n) => h('p', { class: 'note-line' }, n)),
       r.parse_error ? h('p', { class: 'err' }, m.parseFailed(r.parse_error)) : null,
+      // 仕分け・メモの保存に失敗した理由（履歴・ログには、ほかに出す場所が無い）
+      state.runError ? h('p', { class: 'err handling-error' }, state.runError) : null,
       !r.error && !r.parse_error && !r.findings.length ? h('p', { class: 'summary' }, m.noFindings) : null,
       ...findingCards(),
       // 「前回」の帯と変化は、指摘のカードの下（説明が長いので、指摘を先に見せる）
@@ -3742,6 +3773,7 @@ window.addEventListener('focus', () => {
 
 if (import.meta.env?.MODE !== 'test') {
   void boot();
+  setInterval(() => void pollOpenReviewReports(), REPORT_POLL_MS);
 }
 
 export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, refreshHistory, openSettings, changeRepo, select, wantsHook, loadHook, loadRepoStatus };

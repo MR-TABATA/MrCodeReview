@@ -621,6 +621,24 @@ mod tests {
         d
     }
 
+    /// 画面が渡す指摘の件数（`count`）が、保存されている報告の番号と合わないとき: 範囲の外は、読み捨てる。足りない分は、「報告なし」で埋める。
+    #[test]
+    fn reading_reports_with_a_different_count_drops_out_of_range_and_pads_with_none() {
+        let d = scratch("count-mismatch");
+        let rep = |t: &str| AgentReport { verdict: DID.into(), text: t.into(), reported_at: 1, source: "s".into() };
+        save(&d, "r1", &[(0, rep("a")), (4, rep("e"))]).unwrap();
+        let few = try_get_all(&d, "r1", 2).unwrap();
+        assert_eq!(few.len(), 2);
+        assert_eq!(few[0].as_ref().map(|r| r.text.as_str()), Some("a"));
+        assert!(few[1].is_none(), "番号 4 は、範囲の外なので、読み捨てる");
+        let many = try_get_all(&d, "r1", 6).unwrap();
+        assert_eq!(many.len(), 6);
+        assert_eq!(many.iter().filter(|r| r.is_some()).count(), 2);
+        assert!(many[5].is_none());
+        assert!(try_get_all(&d, "none", 3).unwrap().iter().all(Option::is_none));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     fn only_claude(p: &Path) -> Sources {
         Sources { claude: p.to_path_buf(), agy: p.join("no-agy"), copilot: p.join("no-copilot") }
     }

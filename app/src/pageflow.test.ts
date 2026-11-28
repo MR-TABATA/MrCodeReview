@@ -7,7 +7,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeM
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ confirm: vi.fn(), message: vi.fn(), open: vi.fn(), save: vi.fn() }));
 
-import { changeRepo, refreshHistory, loadHook, loadRepoStatus, render, select, state, wantsHook } from './main';
+import { changeRepo, pollOpenReviewReports, REPORT_POLL_MS, refreshHistory, loadHook, loadRepoStatus, render, select, state, wantsHook } from './main';
 import { newHookUi } from './hookview';
 import type { ReviewView } from './types';
 
@@ -1060,6 +1060,19 @@ describe('上部タブでページを切り替える', () => {
       expect([...document.querySelectorAll('.finding .chip')].map((c) => c.textContent)).toContain('未対応');
     });
 
+    it('「確認して対応しなかった」の申告があっても、あなたが「対応済みにする」を付けたあとは、「対応済み」の印を出す（一覧の「済み」と食い違わない）', () => {
+      state.selected = { ...fakeReview('fp'), findings: [f], triage: ['fix'], finding_notes: [{ memo: '', done_at: 1_795_775_717_000, done_head: 'abc1234' }], agent_reports: [skipped] } as unknown as ReviewView;
+      state.history = [summary('fp')] as never;
+      state.page = 'history';
+      state.openCards = new Set([0]);
+      state.expandedFindings = new Set(['fp:0']);
+      render();
+      const chips = [...document.querySelectorAll('.finding .chip')].map((c) => c.textContent);
+      expect(chips).toContain('🤖 確認して対応しなかった');
+      expect(chips).toContain('対応済み');
+      expect(chips).not.toContain('未対応');
+    });
+
     it('押すと、仕分けを「無視」にして、メモに「誤検知」と残す。すでにあるメモは、消さずにあとに足す', async () => {
       const done = (triage: string[], memo: string) => ({ triage, notes: [{ memo, done_at: null, done_head: null }] });
       invokeMock.mockImplementation(async (cmd: string, args: { memo?: string }) => {
@@ -1083,6 +1096,121 @@ describe('上部タブでページを切り替える', () => {
       await flush();
       const memoCall = invokeMock.mock.calls.find((c) => c[0] === 'set_memo');
       expect((memoCall![1] as { memo: string }).memo).toBe('前に書いたメモ ／ 誤検知');
+    });
+  });
+
+  describe('「誤検知」ボタンの、途中の失敗', () => {
+    const f = { file: 'a.rs', line: 1, severity: 'medium', title: '見出し', detail: '詳細', evidence: 'x', verified: true };
+    const skipped = { verdict: 'skipped', text: '誤検知です', reported_at: 1, source: 'cli:agent' };
+    const show = (memo = '') => {
+      state.runError = '';
+      state.selected = { ...fakeReview('fp'), findings: [f], triage: ['fix'], finding_notes: [{ memo, done_at: null, done_head: null }], agent_reports: [skipped] } as unknown as ReviewView;
+      state.history = [summary('fp')] as never;
+      state.page = 'history';
+      state.openCards = new Set([0]);
+      state.expandedFindings = new Set(['fp:0']);
+      render();
+    };
+    const handling = (triage: string, memo: string) => ({ triage: [triage], notes: [{ memo, done_at: null, done_head: null }] });
+    const names = () => invokeMock.mock.calls.filter((c) => c[0] === 'set_triage' || c[0] === 'set_memo').map((c) => `${c[0]}:${(c[1] as { status?: string }).status ?? ''}`);
+
+    it('仕分けに失敗したら、メモは書かない。理由が、履歴・ログの画面に出る', async () => {
+      invokeMock.mockImplementation(async (cmd: string) => {
+        if (cmd === 'set_triage') throw new Error('仕分けを保存できません');
+        return null;
+      });
+      show();
+      (document.querySelector('.false-positive') as HTMLElement).click();
+      await flush();
+      expect(names()).toEqual(['set_triage:dismiss']); // set_memo は、呼ばない
+      expect(state.selected!.triage).toEqual(['fix']);
+      expect(document.querySelector('.handling-error')?.textContent).toContain('仕分けを保存できません');
+    });
+
+    it('メモの保存に失敗したら、仕分けを「対応」に戻す（理由のない「無視」を残さない）。理由は、画面に出る', async () => {
+      invokeMock.mockImplementation(async (cmd: string, args: { status?: string }) => {
+        if (cmd === 'set_triage') return handling(args.status ?? 'fix', '');
+        if (cmd === 'set_memo') throw new Error('メモを保存できません');
+        return null;
+      });
+      show();
+      (document.querySelector('.false-positive') as HTMLElement).click();
+      await flush();
+      expect(names()).toEqual(['set_triage:dismiss', 'set_memo:', 'set_triage:fix']);
+      expect(state.selected!.triage).toEqual(['fix']);
+      expect(document.querySelector('.handling-error')?.textContent).toContain('メモを保存できません');
+    });
+
+    it('メモに、すでに「誤検知」とあるときは、二重に足さない（仕分けだけ「無視」にする）', async () => {
+      invokeMock.mockImplementation(async (cmd: string, args: { status?: string }) => (cmd === 'set_triage' ? handling(args.status ?? 'fix', '誤検知でした') : null));
+      show('誤検知でした');
+      (document.querySelector('.false-positive') as HTMLElement).click();
+      await flush();
+      expect(names()).toEqual(['set_triage:dismiss']);
+    });
+  });
+
+  describe('開いているレビューの報告の読み直し（失敗・変化なし）', () => {
+    const rep = [{ verdict: 'did', text: '直した', reported_at: 1, source: 'cli:agent' }];
+    const open = () => {
+      const o = { ...fakeReview('rv'), findings: [{ file: 'a.rs', line: 1, severity: 'medium', title: 't', detail: '', evidence: '', verified: true }], triage: ['fix'], finding_notes: [null], agent_reports: rep } as unknown as ReviewView;
+      state.history = [summary('rv')] as never;
+      state.selected = o;
+      state.page = 'history';
+      return o;
+    };
+    const base: Record<string, unknown> = { repo_status: [], repo_data: [], list_reviews: [], list_recipes: { recipes: [], warnings: [] }, list_bases: [] };
+
+    it('報告を読めなかったとき、いまの表示（報告）を、空で上書きしない', async () => {
+      const o = open();
+      invokeMock.mockImplementation(async (cmd: string) => {
+        if (cmd === 'get_agent_reports') throw new Error('読み取れません');
+        return base[cmd] ?? null;
+      });
+      await refreshHistory();
+      await flush();
+      expect(state.selected!.agent_reports).toEqual(rep);
+      expect(state.selected).toBe(o);
+    });
+
+    it('定期の読み直し: 開いているレビューがあり、窓が見えているときだけ、報告を読む。フォーカスが無くても読む。変わったら、カードが追いつく', async () => {
+      expect(REPORT_POLL_MS).toBe(5000);
+      const o = open();
+      const reported = [{ verdict: 'skipped', text: '誤検知です', reported_at: 2, source: 'cli:agent' }];
+      invokeMock.mockImplementation(async (cmd: string) => (cmd === 'get_agent_reports' ? reported : (base[cmd] ?? null)));
+      const hidden = vi.spyOn(document, 'hidden', 'get');
+      try {
+        hidden.mockReturnValue(true); // 窓が隠れている: 読まない
+        expect(await pollOpenReviewReports()).toBe(false);
+        expect(invokeMock.mock.calls.some((c) => c[0] === 'get_agent_reports')).toBe(false);
+        hidden.mockReturnValue(false); // 見えている（フォーカスは、問わない）
+        expect(await pollOpenReviewReports()).toBe(true);
+        await flush();
+        expect(o.agent_reports).toEqual(reported);
+        expect(await pollOpenReviewReports()).toBe(false); // 変わっていない: 描き直さない
+        // メモなどを入力している最中は、読まない（描き直すと、入力途中の文字が消える）
+        const input = document.createElement('input');
+        document.body.append(input);
+        input.focus();
+        invokeMock.mockClear();
+        expect(await pollOpenReviewReports()).toBe(false);
+        expect(invokeMock.mock.calls.length).toBe(0);
+        input.remove();
+        state.selected = null; // 開いていない: 読まない
+        invokeMock.mockClear();
+        expect(await pollOpenReviewReports()).toBe(false);
+        expect(invokeMock.mock.calls.length).toBe(0);
+      } finally {
+        hidden.mockRestore();
+      }
+    });
+
+    it('報告が、変わっていないときは、渡す文面を作り直さない（描き直さない）', async () => {
+      open();
+      invokeMock.mockImplementation(async (cmd: string) => (cmd === 'get_agent_reports' ? JSON.parse(JSON.stringify(rep)) : (base[cmd] ?? null)));
+      await refreshHistory();
+      await flush();
+      expect(invokeMock.mock.calls.filter((c) => c[0] === 'build_handoff').length).toBe(0);
     });
   });
 
