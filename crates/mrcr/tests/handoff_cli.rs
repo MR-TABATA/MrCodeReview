@@ -939,3 +939,27 @@ fn a_report_that_loses_to_a_newer_stored_one_says_so_and_shows_the_stored_one() 
     assert!(s.starts_with("保存しました（2 件）"), "2 件のうち 1 件は、保存された: {s}");
     assert!(s.contains("1 件は、より新しい申告が、すでに保存されているので、保存しませんでした"), "{s}");
 }
+
+/// 画面と同じ呼び名（観点名・丸数字・カードの番号）が、見出し・指摘の行・報告待ちの行・JSON に出る。
+/// 本人が、CLI の出力と MCR の画面を、突き合わせずに済むため。
+#[test]
+fn headings_and_findings_carry_the_name_shown_in_the_app() {
+    let env = standard();
+    let id = &env.id;
+    let s = out(&mrcr(&env, &["handoff", "get"]));
+    assert!(s.contains(&format!("## セキュリティ ①（レビュー `{id}`）")), "見出しに、画面の呼び名: {s}");
+    assert!(s.contains(&format!("**mrcr:{id}#1**（画面: セキュリティ ① #1）")), "指摘の行に、画面の呼び名と番号: {s}");
+    assert!(s.contains(&format!("**mrcr:{id}#2**（画面: セキュリティ ① #2）")), "{s}");
+    assert!(s.contains("画面の呼び名（「潜在バグ ⑨ #1」"), "報告のしかたに、画面の呼び名で書く案内: {s}");
+
+    // 2 回目: 報告待ちの行にも、同じ表記
+    let s = out(&mrcr(&env, &["handoff", "get"]));
+    let waiting = section_of(&s, "### 報告待ち");
+    assert!(waiting.contains(&format!("**mrcr:{id}#1**（画面: セキュリティ ① #1）")), "報告待ちの行: {waiting}");
+
+    // JSON: レビューの呼び名
+    let o = mrcr(&env, &["handoff", "get", id, "--json"]);
+    assert_eq!(code(&o), 0, "{}", err(&o));
+    let v: serde_json::Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(v["reviews"][0]["review_name"], "セキュリティ ①", "{v}");
+}

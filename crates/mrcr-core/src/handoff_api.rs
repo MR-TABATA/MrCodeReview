@@ -62,6 +62,8 @@ pub struct Handoff {
     pub repo: String,
     pub recipe_id: String,
     pub recipe_title: String,
+    /// MCR の画面での、レビューの呼び名（「潜在バグ ⑨」。連番が無い古い記録は、観点名だけ）
+    pub review_name: String,
     pub fix: Vec<ReleasedFinding>,
     pub hold: Vec<ReleasedFinding>,
 }
@@ -231,12 +233,31 @@ pub fn persist_releases(dir: &Path, plans: &[(Release, Ensured)]) -> Result<(), 
     tx.commit().map_err(|e| format!("渡した記録を保存できません: {e}"))
 }
 
+/// 連番を丸数字にする（画面の `circleNumber` と同じ。①〜⑳、㉑〜㉟、㊱〜㊿。50 を超えたら `(n)`）。
+pub fn circle_number(n: u32) -> String {
+    let c = match n {
+        1..=20 => char::from_u32(0x2460 + n - 1),
+        21..=35 => char::from_u32(0x3251 + n - 21),
+        36..=50 => char::from_u32(0x32b1 + n - 36),
+        _ => None,
+    };
+    c.map(String::from).unwrap_or_else(|| format!("({n})"))
+}
+
+/// 画面でのレビューの呼び名。「潜在バグ ⑨」（観点名 + スペース + 丸数字）。連番が無い古い記録は、観点名だけ。
+pub fn review_name(title: &str, seq: Option<u32>) -> String {
+    match seq {
+        Some(n) if n > 0 => format!("{title} {}", circle_number(n)),
+        _ => title.to_string(),
+    }
+}
+
 /// 渡した記録と、読んだレビュー・申告から、**渡した指摘の見え方**を作る（**何も読み書きしない**）。
 /// `reports` は、指摘の番号（0 始まり）で引く。保存する前の（計画の）記録からも、作れる。
 pub fn handoff_view(rec: &ReviewRecord, release: &Release, reports: &[Option<AgentReport>]) -> Result<Handoff, String> {
     let fix = released_findings(rec, &release.fix, reports, release.released_at)?;
     let hold = released_findings(rec, &release.hold, reports, release.released_at)?;
-    Ok(Handoff { repo: rec.repo.clone(), recipe_id: rec.recipe.id.clone(), recipe_title: rec.recipe.title.clone(), release: release.clone(), fix, hold })
+    Ok(Handoff { repo: rec.repo.clone(), recipe_id: rec.recipe.id.clone(), recipe_title: rec.recipe.title.clone(), review_name: review_name(&rec.recipe.title, rec.seq), release: release.clone(), fix, hold })
 }
 
 /// 渡す番号を、昇順・重複なしにして、検証する（空・範囲外・重なり）。
@@ -632,6 +653,19 @@ pub fn pending_review_ids(dir: &Path, repo_keys: &[String], limit: usize) -> Res
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn 画面の呼び名は_観点名と丸数字() {
+        assert_eq!(circle_number(1), "①");
+        assert_eq!(circle_number(9), "⑨");
+        assert_eq!(circle_number(20), "⑳");
+        assert_eq!(circle_number(21), "㉑");
+        assert_eq!(circle_number(36), "㊱");
+        assert_eq!(circle_number(51), "(51)");
+        assert_eq!(review_name("潜在バグ", Some(9)), "潜在バグ ⑨");
+        assert_eq!(review_name("潜在バグ", None), "潜在バグ", "連番が無い古い記録は、観点名だけ");
+        assert_eq!(review_name("潜在バグ", Some(0)), "潜在バグ");
+    }
+
     use super::*;
     use crate::store::sample_record;
     use std::path::PathBuf;
@@ -993,7 +1027,9 @@ mod tests {
     #[test]
     fn handoff_view_built_from_data_in_memory_equals_what_get_reads() {
         let d = tmp("view");
-        let rec = make_review(&d, "r1", 3);
+        make_review(&d, "r1", 3);
+        // 連番は、保存するときに付く。保存したものを読んだ記録から、作る（`get` と同じ入力）
+        let rec = store::get(&d, "r1").unwrap();
         release(&d, "r1", &[0, 1], &[2], "gui", 100).unwrap();
         report(&d, "r1", 0, SKIPPED, "前提が違う", "claude-code", 150).unwrap();
         let rel = get(&d, "r1").unwrap().unwrap().release;
