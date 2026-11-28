@@ -1,7 +1,9 @@
 import { h } from './dom';
 import { icon } from './icons';
 import { getAppLang, msg, type Lang } from './i18n';
+import { formatWhen } from './historyview';
 import { repoDisplayName, type RegisteredRepo } from './reporegistry';
+import type { RepoHookBrief } from './types';
 
 export interface RepoViewActions {
   onSelect(repo: RegisteredRepo): void;
@@ -147,6 +149,40 @@ export function renderAppIcon(title: string, iconUrl?: string | null, isDoc = fa
   return h('span', { class: 'repo-app-icon-badge', style: `background-color: ${bg};` }, initials);
 }
 
+/**
+ * 一覧の行の、列（ブランチ・最後のレビュー・Git フック）。分からないものも、空の欄を置く（行ごとに、列の位置を、そろえるため）。
+ * 最後のレビュー: 日時（レビューが無ければ「まだありません」）。Git フック: ON・OFF・要確認。
+ */
+function repoCells(path: string, branch: string | null | undefined, info: { lastAt?: Record<string, number>; hooks?: Record<string, RepoHookBrief | null> }, m: ReturnType<typeof msg>['repoView'], lang: Lang): HTMLElement[] {
+  const last = info.lastAt?.[path];
+  const hook = info.hooks?.[path];
+  const hookEl = hook
+    ? (() => {
+        const [cls, label, title] = !hook.enabled ? ['off', m.hookOff, m.hookOffTitle] : hook.installed ? ['on', m.hookOn, m.hookOnTitle] : ['check', m.hookCheck, m.hookCheckTitle];
+        return h('span', { class: `repo-pill repo-hook-${cls}`, title }, label);
+      })()
+    : null;
+  return [
+    h('div', { class: 'repo-cell repo-cell-branch' }, branch ? h('span', { class: 'repo-item-branch', title: m.branchTitle }, `⎇ ${branch}`) : null),
+    h('div', { class: 'repo-cell repo-cell-last' }, last === undefined ? null : h('span', { class: 'repo-item-last' }, last > 0 ? formatWhen(last, lang) : m.noReview)),
+    h('div', { class: 'repo-cell repo-cell-hook' }, hookEl),
+  ];
+}
+
+/** 一覧の見出しの行（列の名前）。行と、同じ列の幅。 */
+function repoHead(m: ReturnType<typeof msg>['repoView']): HTMLElement {
+  return h(
+    'div',
+    { class: 'repo-list-head', 'aria-hidden': 'true' },
+    h('span', {}, m.colRepo),
+    h('span', {}, m.colBranch),
+    h('span', { class: 'repo-cell-last' }, m.colLast),
+    h('span', {}, m.colHook),
+    h('span', { class: 'repo-col-open' }, m.colOpen),
+    h('span', {}),
+  );
+}
+
 export function repoListPanel(
   repos: RegisteredRepo[],
   selectedPath: string,
@@ -159,6 +195,8 @@ export function repoListPanel(
   openCounts: Record<string, number> = {},
   /** リポジトリのパス → いまのブランチ名。無い（detached HEAD・Git ではない）ものは、出さない */
   branches: Record<string, string | null> = {},
+  /** リポジトリのパス → 一覧に出す補足（最後のレビューの日時・Git フックの状態）。渡さなければ、出さない */
+  info: { lastAt?: Record<string, number>; hooks?: Record<string, RepoHookBrief | null> } = {},
 ): HTMLElement {
   const m = msg(lang).repoView;
   const listEl = h('div', { class: 'repo-list' });
@@ -195,8 +233,15 @@ export function repoListPanel(
             { class: 'repo-item-text' },
             h('div', { class: 'repo-item-name' }, title),
             h('div', { class: 'repo-item-path', title: r.path }, shownPath),
-            branches[r.path] ? h('div', { class: 'repo-item-branch', title: m.branchTitle }, `⎇ ${branches[r.path]}`) : null,
           ),
+        ),
+        ...repoCells(r.path, branches[r.path], info, m, lang),
+        h(
+          'div',
+          { class: 'repo-cell repo-cell-open' },
+          (openCounts[r.path] ?? 0) > 0
+            ? h('span', { class: `repo-open-badge ${openCounts[r.path] >= OPEN_STRONG_FROM ? 'strong' : ''}`, title: m.openCountTitle(openCounts[r.path]) }, String(openCounts[r.path]))
+            : null,
         ),
         h(
           'div',
@@ -220,9 +265,6 @@ export function repoListPanel(
             '✕',
           ),
         ),
-        (openCounts[r.path] ?? 0) > 0
-          ? h('span', { class: `repo-open-badge ${openCounts[r.path] >= OPEN_STRONG_FROM ? 'strong' : ''}`, title: m.openCountTitle(openCounts[r.path]) }, String(openCounts[r.path]))
-          : null,
       );
     };
 
@@ -231,6 +273,7 @@ export function repoListPanel(
       | { kind: 'repo'; repo: RegisteredRepo }
       | { kind: 'doc-group'; info: DocGroupInfo; repos: RegisteredRepo[] };
 
+    listEl.append(repoHead(m));
     const entries: GroupEntry[] = [];
     const docGroups = new Map<string, { kind: 'doc-group'; info: DocGroupInfo; repos: RegisteredRepo[] }>();
 

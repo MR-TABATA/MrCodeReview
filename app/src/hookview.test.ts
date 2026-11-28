@@ -369,7 +369,9 @@ describe('hookRunRow（ログの、フックの行）', () => {
     expect([...el.children].map((c) => c.className.split(' ')[0])).toEqual(['hlead', 'hwhen', 'h1', 'hbranch', 'hcommit', 'hfind', 'hcounts-empty']);
     expect(el.querySelector('.h1 .badge')?.textContent).toBe('フック');
     expect(el.querySelector('.hfind')?.textContent).toBe('指摘 3 件');
-    expect(el.querySelector('.hdur')?.textContent).toBe('11.6 秒');
+    expect(el.querySelector('.hdur .hdur-t')?.textContent).toBe('11.6 秒');
+    expect(el.querySelector('.hdur .hookrun-state')?.textContent).toBe('完了');
+    expect(el.querySelector('.h1 .hookrun-state'), '状態の印は、右端の欄にある（件名のすぐ横には、無い）').toBeNull();
     el.click();
     expect(toggled).toBe(1);
   });
@@ -397,7 +399,7 @@ describe('hookRunRow（ログの、フックの行）', () => {
     expect(text(el)).toContain('実行中');
     expect(el.querySelector('.hookstep-running')!.textContent).toContain('spec');
     expect(el.querySelector('.hookstep-running')!.textContent).toContain('実行中…');
-    expect(el.querySelector('.hdur')!.textContent).toBe('');
+    expect(el.querySelector('.hdur .hdur-t')!.textContent).toBe('');
     expect(el.querySelector('.hfind')!.textContent).toBe('');
   });
 

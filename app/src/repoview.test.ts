@@ -66,19 +66,50 @@ describe('repoListPanel', () => {
     expect(repoListPanel(repos, '', a).querySelectorAll('.repo-open-badge')).toHaveLength(0);
   });
 
-  it('いまのブランチ名を、パスの下に出す。無い（detached HEAD・Git ではない）・渡さないときは、出さない', () => {
+  it('列: ブランチ・最後のレビュー・Git フック・未対応が、行ごとに、同じ位置の欄に並ぶ。分からないものは、空の欄（列の位置を、そろえる）', () => {
     const a = acts();
     const repos = [
       { id: '1', path: '/r/a' },
       { id: '2', path: '/r/b' },
       { id: '3', path: '/r/c' },
+      { id: '4', path: '/r/d' },
     ];
-    const el = repoListPanel(repos, '', a, {}, null, undefined, {}, { '/r/a': 'feature/x', '/r/b': null });
+    const info = {
+      lastAt: { '/r/a': new Date(2026, 10, 27, 21, 8, 15).getTime(), '/r/b': 0 },
+      hooks: { '/r/a': { enabled: true, installed: true }, '/r/b': { enabled: false, installed: false }, '/r/c': { enabled: true, installed: false }, '/r/d': null },
+    };
+    const el = repoListPanel(repos, '', a, {}, null, 'ja', { '/r/a': 3 }, { '/r/a': 'feature/x', '/r/b': null }, info);
     const items = [...el.querySelectorAll('.repo-item')];
-    expect(items[0].querySelector('.repo-item-branch')?.textContent).toBe('⎇ feature/x');
-    expect(items[1].querySelector('.repo-item-branch')).toBeNull();
-    expect(items[2].querySelector('.repo-item-branch')).toBeNull();
-    expect(repoListPanel(repos, '', a).querySelectorAll('.repo-item-branch')).toHaveLength(0);
+    // どの行も、同じ並びの欄（名前 ／ ブランチ ／ 最後のレビュー ／ フック ／ 未対応 ／ 操作）
+    for (const it of items) {
+      expect([...it.children].map((c) => c.className.split(' ').slice(0, 2).join(' '))).toEqual([
+        'repo-item-main',
+        'repo-cell repo-cell-branch',
+        'repo-cell repo-cell-last',
+        'repo-cell repo-cell-hook',
+        'repo-cell repo-cell-open',
+        'repo-item-actions',
+      ]);
+    }
+    const cell = (i: number, name: string) => items[i].querySelector(`.repo-cell-${name}`)!;
+    expect(cell(0, 'branch').textContent).toBe('⎇ feature/x');
+    expect(cell(0, 'last').textContent).toBe('2026/11/27 21:08:15');
+    expect(cell(0, 'hook').textContent).toBe('フック ON');
+    expect(cell(0, 'open').textContent).toBe('3');
+    expect(cell(1, 'branch').textContent, 'detached HEAD・Git ではない').toBe('');
+    expect(cell(1, 'last').textContent).toBe('レビューはまだありません');
+    expect(cell(1, 'hook').textContent).toBe('フック OFF');
+    expect(cell(1, 'open').textContent, '0 件・未取得は、出さない').toBe('');
+    expect(cell(2, 'hook').textContent).toBe('フック 要確認');
+    expect(cell(2, 'last').textContent, '日時が分からなければ、空').toBe('');
+    expect(cell(3, 'hook').textContent, '分からなければ、空').toBe('');
+    // 見出しの行（列の名前）。行と同じ数の欄
+    const head = el.querySelector('.repo-list-head')!;
+    expect([...head.children].map((c) => c.textContent)).toEqual(['リポジトリ', 'ブランチ', '最後のレビュー', 'Git フック', '未対応', '']);
+    // 補足を渡さなければ、欄は空（見出しと、列の位置は、そのまま）
+    const bare = repoListPanel(repos, '', a);
+    expect(bare.querySelector('.repo-item .repo-cell-last')?.textContent).toBe('');
+    expect(bare.querySelector('.repo-pill')).toBeNull();
   });
 
   it('件数のバッジは、20 件以上のときだけ strong（塗りつぶし）。19 件までは、数字だけ', () => {

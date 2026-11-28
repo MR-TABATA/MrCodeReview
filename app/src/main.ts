@@ -22,7 +22,7 @@ import { detailPanel } from './detailview';
 import { findingOrder, isDoneFinding } from './findingorder';
 import { agentBox, agentDone, agentNotice, agentStatus, agentStatusBar, foldedRow, newAgentUi, refreshAgentReportsOnFocus, type AgentActions } from './agentview';
 import { handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffActions, type HandoffTarget } from './handoffview';
-import type { AgentDef, HookRun } from './types';
+import type { AgentDef, HookRun, RepoHookBrief } from './types';
 import { displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
 import { providerLabel, providerNote } from './providertext';
 import { ut } from './uitext';
@@ -215,6 +215,8 @@ const state = {
   repoStatus: {} as Record<string, RepoStatus>,
   /** 登録リポジトリごとの、いまのブランチ名（detached HEAD・Git ではないときは null）。窓に戻ったときも、読み直す */
   repoBranches: {} as Record<string, string | null>,
+  /** 登録リポジトリごとの、Git フックの要約（一覧に出す）。分からないものは null */
+  repoHooks: {} as Record<string, RepoHookBrief | null>,
   /** 「データを削除して枠を空ける」の確認中のリポジトリ（パス） */
   repoConfirmDelete: '',
   /** 各リポジトリのデータの量（履歴など）。解除の可否と、削除の確認に使う */
@@ -1193,22 +1195,24 @@ async function chooseAndAddFile(): Promise<void> {
 /** 登録リポジトリの、いまの状態（見つかるか・git か）と、データの量（履歴など）を読む。 */
 async function loadRepoStatus(icons = true): Promise<void> {
   const paths = state.registeredRepos.map((r) => r.path);
-  const before = JSON.stringify([state.repoStatus, state.repoData, state.repoBranches]);
+  const before = JSON.stringify([state.repoStatus, state.repoData, state.repoBranches, state.repoHooks]);
   try {
-    const [list, data, branches] = await Promise.all([
+    const [list, data, branches, hookBriefs] = await Promise.all([
       invoke<RepoStatus[]>('repo_status', { paths }),
       invoke<RepoDataRow[]>('repo_data', { paths }),
       invoke<Record<string, string | null>>('repo_branches', { paths }),
+      invoke<Record<string, RepoHookBrief | null>>('repo_hooks', { paths }),
     ]);
     state.repoStatus = Object.fromEntries(list.map((x) => [x.path, x]));
     state.repoData = Object.fromEntries(data.map((x) => [x.path, x]));
     state.repoBranches = branches;
+    state.repoHooks = hookBriefs;
   } catch (e) {
     state.repoMsg = { text: ut().app.repoStatusFailed(String(e)), kind: 'err' };
   }
   if (icons) for (const r of state.registeredRepos) void loadRepoIcon(r.path);
   // 窓に戻ったときの読み直しは、変わったときだけ描き直す（「追加」の押せる・押せないが、フォルダの移動に追いつくように）
-  if (icons || state.settings || JSON.stringify([state.repoStatus, state.repoData, state.repoBranches]) !== before) render();
+  if (icons || state.settings || JSON.stringify([state.repoStatus, state.repoData, state.repoBranches, state.repoHooks]) !== before) render();
 }
 
 /** Rust が返した登録の一覧を、画面の写しに入れる。 */
@@ -2154,8 +2158,9 @@ function recipeInfoSection(): HTMLElement | null {
 function leftPanel(): HTMLElement {
   const lang = getAppLang();
   const acts = {
+    // リポジトリを押すと、そのリポジトリを選んで、「履歴・ログ」へ移る（そのリポジトリの、履歴と、フックの実行）
     onSelect: (repo: RegisteredRepo) => {
-      void changeRepo(repo.path);
+      void changeRepo(repo.path).then(() => goPage('history'));
     },
     onAdd: () => {
       void chooseAndAddRepo();
@@ -2174,7 +2179,10 @@ function leftPanel(): HTMLElement {
   return h(
     'aside',
     { class: 'left' },
-    repoListPanel(visibleRepos(state.registeredRepos), state.repo, acts, state.repoIcons, addBlockedNow(), lang, Object.fromEntries(Object.entries(state.repoData).map(([path, d]) => [path, d.open])), state.repoBranches),
+    repoListPanel(visibleRepos(state.registeredRepos), state.repo, acts, state.repoIcons, addBlockedNow(), lang, Object.fromEntries(Object.entries(state.repoData).map(([path, d]) => [path, d.open])), state.repoBranches, {
+      lastAt: Object.fromEntries(Object.entries(state.repoData).map(([path, d]) => [path, d.last_at])),
+      hooks: state.repoHooks,
+    }),
   );
 }
 

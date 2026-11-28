@@ -515,6 +515,21 @@ fn repo_branches_checked(data_dir: &Path, paths: &[String]) -> std::collections:
         .collect()
 }
 
+/// 登録済みのリポジトリごとの、Git フックの要約（ON/OFF・入っているか）。リポジトリの一覧に出す。
+/// 登録されていない場所・Git のリポジトリではない所は None（読まない）。
+#[tauri::command]
+async fn repo_hooks(state: tauri::State<'_, AppState>, paths: Vec<String>) -> Result<std::collections::HashMap<String, Option<hooks::Brief>>, String> {
+    let data_dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || repo_hooks_checked(&data_dir, &paths)).await.map_err(|e| e.to_string())
+}
+
+fn repo_hooks_checked(data_dir: &Path, paths: &[String]) -> std::collections::HashMap<String, Option<hooks::Brief>> {
+    paths
+        .iter()
+        .map(|p| (p.clone(), if repos::require_registered(data_dir, p).is_ok() { hooks::brief(data_dir, p).ok() } else { None }))
+        .collect()
+}
+
 /// 画面の「比較元」に出す選択肢（未コミットの変更・直近のコミット・ブランチの分岐点・最近のコミット）。
 #[tauri::command]
 async fn list_bases(state: tauri::State<'_, AppState>, repo: String) -> Result<Vec<snapshot::BaseOption>, String> {
@@ -1898,6 +1913,7 @@ pub fn run() {
             print_page,
             list_bases,
         repo_branches,
+        repo_hooks,
             continue_info,
             list_spec_files,
             list_spec_sections,
@@ -2124,6 +2140,22 @@ mod tests {
         assert!(continue_info_checked(&data, repo_s, "tests").unwrap().is_none(), "失敗した実行は、前回にならない");
 
         let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn repo_hooks_reports_the_switch_and_whether_the_hook_is_installed_only_for_registered_repos() {
+        let repo = demo_repo("hooks-brief");
+        let repo_s = repo.to_str().unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-hooks-brief-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        repos::add(&data, repo_s, None).unwrap();
+        let other = demo_repo("hooks-brief-unregistered");
+        let other_s = other.to_str().unwrap().to_string();
+        let out = repo_hooks_checked(&data, &[repo_s.to_string(), other_s.clone(), "/nonexistent-mrcr-dir/x".to_string()]);
+        assert_eq!(out[repo_s], Some(hooks::Brief { enabled: false, installed: false }), "何も設定していない");
+        assert_eq!(out[&other_s], None, "登録されていない場所は、読まない");
+        assert_eq!(out["/nonexistent-mrcr-dir/x"], None);
         let _ = std::fs::remove_dir_all(&data);
     }
 

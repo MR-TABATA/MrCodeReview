@@ -380,6 +380,25 @@ pub struct Status {
     pub log_unreadable: usize,
 }
 
+/// リポジトリの一覧に出す、Git フックの要約（実行ログ・観点・設計書は、読まない）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Brief {
+    /// 設定の ON/OFF
+    pub enabled: bool,
+    /// フックのスクリプトに、管理のブロックが入っているか
+    pub installed: bool,
+}
+
+/// `status` の軽い版。設定の ON/OFF と、フックが入っているかだけ。
+/// リポジトリではない・フックの置き場が読めないときは、`installed` は false（エラーにしない。一覧が、1 つの失敗で止まらないように）。
+pub fn brief(dir: &Path, repo: &str) -> Result<Brief, String> {
+    let key = repo_key(repo)?;
+    let cfg = load(dir)?;
+    let enabled = cfg.post_commit.get(&key).map(|e| e.enabled).unwrap_or(false);
+    let installed = hooks_dir(Path::new(&key)).ok().and_then(|h| std::fs::read_to_string(h.join(HOOK_NAME)).ok()).map(|t| has_block(&t)).unwrap_or(false);
+    Ok(Brief { enabled, installed })
+}
+
 pub fn status(dir: &Path, repo: &str) -> Result<Status, String> {
     let key = repo_key(repo)?;
     let cfg = load(dir)?;

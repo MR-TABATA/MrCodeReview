@@ -41,6 +41,16 @@ export interface RepoData {
   memos: number;
   /** 「未」の指摘の数（未仕分け ＋ 対応中） */
   open: number;
+  /** いちばん新しいレビューの日時（UNIX ミリ秒）。レビューが無ければ 0 */
+  last_at: number;
+}
+
+/** リポジトリの一覧に出す、Git フックの要約（`repo_hooks`）。 */
+export interface RepoHookBrief {
+  /** 設定の ON/OFF */
+  enabled: boolean;
+  /** フックのスクリプトに、管理のブロックが入っているか */
+  installed: boolean;
 }
 
 export interface RepoDataRow extends RepoData {

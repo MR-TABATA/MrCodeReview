@@ -114,6 +114,33 @@ describe('上部タブでページを切り替える', () => {
     expect(document.querySelector('.topbar .repo-branch')).toBeNull();
   });
 
+  it('リポジトリのページの行を押すと、そのリポジトリを選んで、「履歴・ログ」のページへ移る', async () => {
+    const answers: Record<string, unknown> = {
+      list_reviews: [],
+      hook_status: { recent: [], log_unreadable: 0 },
+      list_recipes: { recipes: [], warnings: [] },
+      list_bases: [],
+      preview_snapshot: null,
+      find_repo_icon: null,
+    };
+    invokeMock.mockImplementation(async (cmd: string) => answers[cmd] ?? null);
+    state.registeredRepos = [
+      { id: '1', path: '/r' },
+      { id: '2', path: '/other' },
+    ];
+    state.page = 'repos';
+    render();
+    const rows = document.querySelectorAll<HTMLElement>('.page-aside .repo-item');
+    expect(rows.length).toBe(2);
+    rows[1].click();
+    await flush();
+    expect(state.repo).toBe('/other');
+    expect(state.page).toBe('history');
+    expect(selected()).toEqual(['history']);
+    state.page = 'newreview'; // ポーリングを止める
+    state.registeredRepos = [];
+  });
+
   it('新規レビューのページ: 実行する場所だけ。結果も、履歴も、ここには出ない', () => {
     render();
     expect(selected()).toEqual(['newreview']);

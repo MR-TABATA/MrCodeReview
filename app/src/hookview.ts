@@ -125,13 +125,18 @@ export function hookRunRow(r: HookRun, lang: Lang = getAppLang(), o: { expanded:
       'span',
       { class: 'h1' },
       h('span', { class: 'badge' }, m.runKind),
-      h('span', { class: 'ht hookrun-commit' }, subject),
-      h('span', { class: `hookrun-state hookrun-state-${r.state}` }, m.runState(r.state)),
+      h('span', { class: 'ht hookrun-commit', title: subject }, subject),
     ),
     h('span', { class: 'hbranch' }), // フックの実行の記録には、ブランチ名が無い（列の位置を、そろえるための空欄）
     h('span', { class: 'hcommit', title: r.commit ?? '' }, shortCommit(r.commit)),
     h('span', { class: 'hfind' }, r.findings === null ? '' : msg(lang).historyView.findingsCount(r.findings)),
-    h('span', { class: 'hcounts-empty hdur' }, r.ms === null ? '' : m.secs(r.ms)),
+    // 右端の欄: 状態の印（幅をそろえる）と、所要時間。レビューの行の、仕分けの件数と、同じ幅
+    h(
+      'span',
+      { class: 'hcounts-empty hdur' },
+      h('span', { class: `hookrun-state hookrun-state-${r.state}` }, m.runState(r.state)),
+      h('span', { class: 'hdur-t' }, r.ms === null ? '' : m.secs(r.ms)),
+    ),
     detail,
   );
 }

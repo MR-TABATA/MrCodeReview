@@ -23,6 +23,8 @@ pub struct RepoData {
     pub memos: usize,
     /// 「未」の指摘の数（未仕分け ＋ 対応中。履歴の各行の「未」の合計）。左のリポジトリ一覧に出す
     pub open: usize,
+    /// いちばん新しいレビューの日時（UNIX ミリ秒）。レビューが無ければ 0。リポジトリの一覧に出す
+    pub last_at: u64,
 }
 
 impl RepoData {
@@ -33,6 +35,7 @@ impl RepoData {
         self.triaged += o.triaged;
         self.memos += o.memos;
         self.open += o.open;
+        self.last_at = self.last_at.max(o.last_at);
     }
 }
 
@@ -137,6 +140,7 @@ fn count(conn: &Connection, key: &str) -> Result<RepoData, String> {
         triaged: n(&format!("SELECT COUNT(*) FROM triage WHERE review_id IN {IDS}"))?,
         memos: n(&format!("SELECT COUNT(*) FROM finding_note WHERE memo <> '' AND review_id IN {IDS}"))?,
         open: store::open_count(conn, key)?,
+        last_at: n("SELECT COALESCE(MAX(created_at), 0) FROM reviews WHERE repo = ?1")? as u64,
     })
 }
 
@@ -165,6 +169,11 @@ fn counts_for(conn: &Connection, keys: &[String]) -> Result<HashMap<String, Repo
         e.0 = n;
         e.1 = f;
     }))?;
+    // いちばん新しいレビューの日時
+    let mut last: HashMap<String, u64> = HashMap::new();
+    grouped(format!("SELECT repo, COALESCE(MAX(created_at), 0), 0 FROM reviews WHERE repo IN ({marks}) GROUP BY repo"), Box::new(|k, t, _| {
+        last.insert(k.to_string(), t as u64);
+    }))?;
     // 仕分けした指摘の数
     grouped(format!("SELECT r.repo, COUNT(*), 0 FROM triage t JOIN reviews r ON r.id = t.review_id WHERE r.repo IN ({marks}) GROUP BY r.repo"), Box::new(|k, n, _| {
         by.entry(k.to_string()).or_default().2 = n;
@@ -178,7 +187,8 @@ fn counts_for(conn: &Connection, keys: &[String]) -> Result<HashMap<String, Repo
     let open_by = store::open_counts(conn, &with_history)?;
     for (k, (reviews, findings, triaged, memos)) in by {
         let open = open_by.get(&k).copied().unwrap_or(0);
-        out.insert(k, RepoData { reviews, findings, triaged, memos, open });
+        let last_at = last.get(&k).copied().unwrap_or(0);
+        out.insert(k, RepoData { reviews, findings, triaged, memos, open, last_at });
     }
     Ok(out)
 }
@@ -252,6 +262,27 @@ mod tests {
     }
 
     #[test]
+    fn last_at_is_the_newest_review_time_per_repo_and_zero_without_reviews() {
+        let d = scratch("last-at");
+        let conn = db::open(&d).unwrap();
+        add_review(&conn, "a1", "/gone/a", 1);
+        add_review(&conn, "a2", "/gone/a", 1);
+        add_review(&conn, "b1", "/gone/b", 1);
+        conn.execute("UPDATE reviews SET created_at = 1000 WHERE id = 'a1'", []).unwrap();
+        conn.execute("UPDATE reviews SET created_at = 5000 WHERE id = 'a2'", []).unwrap();
+        conn.execute("UPDATE reviews SET created_at = 300 WHERE id = 'b1'", []).unwrap();
+        drop(conn);
+        let paths = vec!["/gone/a".to_string(), "/gone/b".to_string(), "/gone/none".to_string()];
+        let s = summaries(&d, &paths).unwrap();
+        assert_eq!((s[0].data.last_at, s[1].data.last_at, s[2].data.last_at), (5000, 300, 0));
+        // 同じリポジトリの別のパスを足すと、新しいほう
+        let mut sum = s[1].data.clone();
+        sum.add(&s[0].data);
+        assert_eq!(sum.last_at, 5000);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn counts_only_this_repo_and_deletes_every_related_table_leaving_others_intact() {
         let d = scratch("delete");
         let conn = db::open(&d).unwrap();
@@ -262,12 +293,12 @@ mod tests {
 
         let paths = vec!["/gone/a/".to_string(), "/gone/b".to_string(), "/gone/none".to_string()];
         let s = summaries(&d, &paths).unwrap();
-        assert_eq!(s[0].data, RepoData { reviews: 2, findings: 3, triaged: 3, memos: 2, open: 1 }, "末尾の / があっても、同じ");
+        assert_eq!(s[0].data, RepoData { reviews: 2, findings: 3, triaged: 3, memos: 2, open: 1, last_at: 1 }, "末尾の / があっても、同じ");
         assert_eq!(s[1].data.reviews, 1);
         assert_eq!(s[2].data, RepoData::default(), "履歴が無ければ、すべて 0");
 
         let removed = delete_all(&d, "/gone/a").unwrap();
-        assert_eq!(removed, RepoData { reviews: 2, findings: 3, triaged: 3, memos: 2, open: 1 });
+        assert_eq!(removed, RepoData { reviews: 2, findings: 3, triaged: 3, memos: 2, open: 1, last_at: 1 });
         let conn = db::open(&d).unwrap();
         // a のものは、5 つの表のすべてから消え、b のものだけが残る
         assert_eq!(rows(&conn, "reviews"), 1);

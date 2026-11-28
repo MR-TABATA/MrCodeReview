@@ -201,6 +201,19 @@ export interface Messages {
     unlinkTitle: string;
     openCountTitle: (n: number) => string;
     branchTitle: string;
+    colRepo: string;
+    colBranch: string;
+    colLast: string;
+    colHook: string;
+    colOpen: string;
+    lastReview: (when: string) => string;
+    noReview: string;
+    hookOn: string;
+    hookOff: string;
+    hookCheck: string;
+    hookOnTitle: string;
+    hookOffTitle: string;
+    hookCheckTitle: string;
     heading: string;
     addTitle: string;
     addBtn: string;
@@ -788,9 +801,22 @@ export const MESSAGES: Record<Lang, Messages> = {
       unlinkTitle: '登録を解除',
       openCountTitle: (n) => `未対応の指摘 ${n} 件（未仕分けと、対応中。待ち・無視・済みは含みません）`,
       branchTitle: 'いま、チェックアウトしているブランチ',
+      colRepo: 'リポジトリ',
+      colBranch: 'ブランチ',
+      colLast: '最後のレビュー',
+      colHook: 'Git フック',
+      colOpen: '未対応',
+      lastReview: (when) => `最後のレビュー ${when}`,
+      noReview: 'レビューはまだありません',
+      hookOn: 'フック ON',
+      hookOff: 'フック OFF',
+      hookCheck: 'フック 要確認',
+      hookOnTitle: 'コミットのあとに、自動でレビューします（Git フック）',
+      hookOffTitle: 'Git フックは、使っていません（設定から入れられます）',
+      hookCheckTitle: '設定は ON ですが、フックが入っていません。設定の「Git フック」で、入れ直してください',
       heading: 'リポジトリ',
       addTitle: 'リポジトリを追加',
-      addBtn: '+ 追加',
+      addBtn: '追加',
     },
 
     recipeBar: {
@@ -1487,9 +1513,22 @@ export const MESSAGES: Record<Lang, Messages> = {
       unlinkTitle: 'Unlink registration',
       openCountTitle: (n) => `${n} open finding(s) (untriaged or in progress; not counting Wait, Ignore or Done)`,
       branchTitle: 'The branch checked out now',
+      colRepo: 'Repository',
+      colBranch: 'Branch',
+      colLast: 'Last review',
+      colHook: 'Git hook',
+      colOpen: 'Open',
+      lastReview: (when) => `Last review ${when}`,
+      noReview: 'No review yet',
+      hookOn: 'Hook ON',
+      hookOff: 'Hook OFF',
+      hookCheck: 'Hook: check',
+      hookOnTitle: 'Reviews run automatically after each commit (Git hook)',
+      hookOffTitle: 'The Git hook is not used (you can install it from Settings)',
+      hookCheckTitle: 'The setting is ON but the hook is not installed. Reinstall it under Settings > Git hook',
       heading: 'Repositories',
       addTitle: 'Add repository',
-      addBtn: '+ Add',
+      addBtn: 'Add',
     },
 
     recipeBar: {

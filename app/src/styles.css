@@ -842,12 +842,12 @@ button.small.run { width: auto; padding: 3px 10px; font-size: 12px; }
 
 /* ── ヘッダー: リポジトリ表示 ── */
 .repo-header-display {
-  display: flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); max-width: 340px; min-width: 140px;
+  display: flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); max-width: 460px; min-width: 140px;
 }
 .current-repo-label {
-  font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap;
 }
-.repo-name-badge { color: var(--text); display: inline-flex; align-items: center; gap: 7px; }
+.repo-name-badge { color: var(--text); display: inline-flex; align-items: center; gap: 7px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 
 /* ── メイン最上部: 観点チェックボックス & 実行バー ── */
@@ -1537,7 +1537,53 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 
 /* ブランチ名: 履歴・ログの行の列、ヘッダーのリポジトリの横、リポジトリの一覧 */
 .history .hbranch { flex: 0 0 9em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-.repo-branch { margin-left: 8px; padding: 1px 9px; border-radius: 999px; background: var(--code-bg); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; max-width: 22em; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; }
+.repo-branch { flex: 0 1 auto; min-width: 0; padding: 1px 9px; border-radius: 999px; background: var(--code-bg); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 500; white-space: nowrap; max-width: 16em; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 .repo-item-branch { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hmore { display: block; margin: 12px auto 4px; padding: 7px 20px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; }
 .hmore:hover { border-color: var(--accent); color: var(--accent); }
+
+/* リポジトリの一覧の補足: 最後のレビューの日時・Git フックの状態 */
+.repo-item-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; font-size: 11px; color: var(--muted); }
+.repo-pill { padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--code-bg); color: var(--muted); white-space: nowrap; }
+.repo-hook-on { background: var(--ok-bg); color: var(--ok); }
+.repo-hook-check { background: var(--warn-bg); color: var(--warn); }
+
+/* ページの枠をそろえる: スクロールバーの有無で、幅がずれない。見出しは、スクロールしても、同じ位置に残す */
+/* バーの分の場所は、左右に同じだけ確保する（バーが出ないページで、右だけ空かない） */
+.detail.page { scrollbar-gutter: stable both-edges; padding-top: 0; }
+/* 見出しの行の高さは、どのページも同じ（右のボタンの高さに、引っ張られて、見出しが下がらない）。文字は、中央にそろえる */
+.page-head { position: sticky; top: 0; z-index: 4; background: var(--bg); padding-top: 18px; align-items: center; min-height: 62px; box-sizing: border-box; }
+
+/* リポジトリのページ: 外側の枠・余白を外して、行の左端と幅を、履歴・ログと同じにする */
+.page-aside > .left { border: 0; background: transparent; border-radius: 0; overflow: visible; }
+.page-aside > .left section { padding: 0; border: 0; }
+
+/* フックの行: バッジは折り返さない。状態の印は、右端の欄に、幅をそろえて置く */
+.history .h1 .badge { flex: none; white-space: nowrap; }
+.history .h1 .ht { flex: 0 1 auto; }
+.history .hdur { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+.history .hdur .hookrun-state { flex: none; min-width: 4em; padding: 1px 8px; text-align: center; font-weight: 600; }
+.history .hdur .hdur-t { flex: 0 0 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* リポジトリの一覧: 列に分けて、横に広げる（名前とパス ／ ブランチ ／ 最後のレビュー ／ Git フック ／ 未対応 ／ 操作）。見出しの行も、同じ列の幅 */
+.repo-item, .repo-list-head { display: grid; grid-template-columns: minmax(0, 1fr) 13em 14em 8em 4.5em 3.4em; align-items: center; column-gap: 12px; }
+.repo-list-head { padding: 4px 10px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.repo-item .repo-cell { min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.repo-item .repo-cell-open, .repo-list-head .repo-col-open { text-align: right; }
+.repo-item .repo-open-badge { margin-left: 0; display: inline-block; }
+.repo-item .repo-item-actions { justify-content: flex-end; margin-left: 0; }
+.repo-item-meta { display: none; }
+@media (max-width: 899px) {
+  .repo-item, .repo-list-head { grid-template-columns: minmax(0, 1fr) 10em 8em 4em 3.4em; }
+  .repo-item .repo-cell-last, .repo-list-head .repo-cell-last { display: none; }
+}
+
+/* リポジトリのページの「追加」: 見出しの行の背景（白い帯）をなくし、「履歴・ログ」のボタンと同じ、丸いボタンにする（先頭の丸い印は「＋」） */
+.page-aside .repo-sidebar-header { position: static; background: transparent; justify-content: flex-start; padding: 14px 2px 12px; }
+.page-aside .repo-sidebar-section { gap: 0; margin-bottom: 0; }
+.add-repo-btn { display: inline-flex; align-items: center; gap: 8px; width: auto; margin: 0; padding: 6px 16px 6px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; transition: border-color .12s, color .12s, background .12s, box-shadow .12s; }
+.add-repo-btn::before { content: '+'; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--code-bg); color: var(--muted); font-size: 15px; line-height: 1; flex: none; transition: background .12s, color .12s; }
+.add-repo-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); box-shadow: 0 1px 6px color-mix(in srgb, var(--accent) 22%, transparent); }
+.add-repo-btn:hover:not(:disabled)::before { background: var(--accent); color: var(--on-accent); }
+.add-repo-btn:disabled { opacity: .55; cursor: default; }
+.add-repo-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
