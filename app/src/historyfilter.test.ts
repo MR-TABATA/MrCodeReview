@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { createHistoryView, filterHooks, filterReviews, hookHaystack, matchesAll, normalize, parseTerms, reviewHaystack, stats } from './historyfilter';
+import { displayRecipeTitle } from './historyview';
 import type { HookRun, ReviewSummary } from './types';
 
 const NOW = new Date(2026, 10, 28, 12, 0, 0); // 2026-11-28 12:00（ローカル）
@@ -213,5 +214,14 @@ describe('使い回し（入力のたびに、全行を作り直さない）', (
     expect(view([...history], runs, '潜在バグ', 'ja', NOW), '履歴が読み直された（別の配列）').not.toBe(v1);
     expect(view(history, runs, '', 'ja', NOW).reviews).toBe(history); // 語が無ければ、そのまま
   });
-});
 
+  it('観点のページの「履歴」ボタンが渡す、画面に出ている観点名（連番なし）で絞ると、その観点の行が残る（英語表示でも）', () => {
+    const rows = [S('a', { recipe_title: 'Latent Bugs', seq: 2 }), S('b', { recipe_title: '潜在バグ', seq: 1 }), S('c', { recipe_title: 'セキュリティ' })];
+    for (const lang of ['ja', 'en'] as const) {
+      for (const r of rows) {
+        const shown = displayRecipeTitle(r.recipe_title, lang);
+        expect(filterReviews(rows, parseTerms(shown), lang, NOW).map((x) => x.id)).toContain(r.id);
+      }
+    }
+  });
+});

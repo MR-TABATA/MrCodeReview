@@ -7,7 +7,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeM
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ confirm: vi.fn(), message: vi.fn(), open: vi.fn(), save: vi.fn() }));
 
-import { loadHook, loadRepoStatus, render, select, state, wantsHook } from './main';
+import { changeRepo, loadHook, loadRepoStatus, render, select, state, wantsHook } from './main';
 import { newHookUi } from './hookview';
 import type { ReviewView } from './types';
 
@@ -746,6 +746,95 @@ describe('上部タブでページを切り替える', () => {
       render();
       expect(document.querySelector('.aspects-empty')).not.toBeNull();
       expect(document.querySelector('.aspect-table')).toBeNull();
+    });
+  });
+
+  describe('ブランチ・フックの読み直し', () => {
+    const calls = (cmd: string) => invokeMock.mock.calls.filter((c) => c[0] === cmd).length;
+
+    it('窓に戻っただけの読み直しは、15 秒以内なら、ブランチ・フックを読み直さない。ページを開いたときの読み込みは、いつも読む', async () => {
+      state.registeredRepos = [{ path: '/r' }, { path: '/s' }] as never;
+      state.page = 'repos';
+      await loadRepoStatus(false);
+      expect([calls('repo_branches'), calls('repo_hooks')]).toEqual([1, 1]);
+      await loadRepoStatus(false, true);
+      expect([calls('repo_branches'), calls('repo_hooks')]).toEqual([1, 1]);
+      expect(calls('repo_status')).toBe(2);
+      await loadRepoStatus(false);
+      expect([calls('repo_branches'), calls('repo_hooks')]).toEqual([2, 2]);
+    });
+
+    const withBase = (over: (cmd: string, args: { paths?: string[] }) => unknown | undefined) => {
+      const base: Record<string, unknown> = { repo_status: [], repo_data: [], repo_branches: {}, repo_hooks: {}, list_reviews: [], list_recipes: { recipes: [], warnings: [] }, list_bases: [] };
+      invokeMock.mockImplementation(async (cmd: string, args: { paths?: string[] }) => {
+        const o = over(cmd, args);
+        if (o instanceof Error) throw o;
+        return o !== undefined ? o : (base[cmd] ?? null);
+      });
+    };
+
+    it('間引いた窓復帰では、前の失敗の理由を消さない（窓に戻っただけで、エラー表示が消えない）', async () => {
+      state.registeredRepos = [{ path: '/r' }] as never;
+      state.page = 'repos';
+      withBase((cmd) => (cmd === 'repo_branches' ? new Error('git が見つかりません') : undefined));
+      await loadRepoStatus(false);
+      expect(state.repoAuxErrors.join('')).toContain('git が見つかりません');
+      await loadRepoStatus(false, true); // 15 秒以内の窓復帰: 読み直さない
+      expect(state.repoAuxErrors.join('')).toContain('git が見つかりません');
+    });
+
+    it('15 秒を過ぎた窓復帰では、ブランチ・フックを読み直す（境界は、ちょうど 15 秒から）', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(2026, 10, 28, 12, 0, 0));
+        state.registeredRepos = [{ path: '/r' }] as never;
+        state.page = 'repos';
+        withBase(() => undefined);
+        await loadRepoStatus(false);
+        expect(calls('repo_branches')).toBe(1);
+        vi.setSystemTime(new Date(2026, 10, 28, 12, 0, 14, 999));
+        await loadRepoStatus(false, true);
+        expect(calls('repo_branches')).toBe(1);
+        vi.setSystemTime(new Date(2026, 10, 28, 12, 0, 15, 0));
+        await loadRepoStatus(false, true);
+        expect(calls('repo_branches')).toBe(2);
+        expect(calls('repo_hooks')).toBe(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('リポジトリを切り替えると、前のリポジトリの履歴を空にする。ブランチを読めなかったときは理由を出す。登録外のパスは読まない', async () => {
+      state.registeredRepos = [{ path: '/r' }, { path: '/s' }] as never;
+      state.history = [{ id: 'old', created_at: 1, repo: '/r', recipe_title: 'バグ', provider_label: 'p', findings: 1, verified: 0, total_tokens: null, failed: false, counts: null }] as never;
+      let reviewsSeen = -1;
+      withBase((cmd) => {
+        if (cmd === 'repo_branches') return new Error('読めません');
+        if (cmd === 'list_reviews') {
+          reviewsSeen = state.history.length; // 履歴を読んでいる最中は、前のリポジトリの履歴が残っていない
+          return [];
+        }
+        return undefined;
+      });
+      await changeRepo('/s');
+      await flush();
+      expect(reviewsSeen).toBe(0);
+      expect(state.history).toEqual([]);
+      expect(state.repoAuxErrors.join('')).toContain('読めません');
+      invokeMock.mockClear();
+      await changeRepo('/not-registered');
+      await flush();
+      expect(calls('repo_branches')).toBe(0);
+    });
+
+    it('リポジトリを切り替えたら、そのリポジトリのブランチ名を、すぐ読む（ページ変更・窓復帰を待たない）', async () => {
+      state.registeredRepos = [{ path: '/r' }, { path: '/s' }] as never;
+      state.page = 'newreview';
+      const base: Record<string, unknown> = { repo_status: [], repo_data: [], repo_hooks: {}, list_reviews: [], list_recipes: { recipes: [], warnings: [] }, list_bases: [] };
+      invokeMock.mockImplementation(async (cmd: string, args: { paths?: string[] }) => (cmd === 'repo_branches' ? { [args.paths![0]]: 'feature/x' } : (base[cmd] ?? null)));
+      await changeRepo('/s');
+      await flush();
+      expect(state.repoBranches['/s']).toBe('feature/x');
     });
   });
 

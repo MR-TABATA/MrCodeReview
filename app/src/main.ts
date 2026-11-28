@@ -1046,6 +1046,9 @@ async function changeRepo(repo: string): Promise<void> {
   state.repo = repo;
   lsSet(REPO_KEY, repo);
   state.picked = new Set(); // 履歴は、リポジトリごと。選んだものは、外す
+  // 前のリポジトリの履歴を、新しいリポジトリの名前で出さない（読み込みに失敗しても、そのまま残らない）
+  state.history = [];
+  void loadBranchOf(repo);
   state.base = HEAD; // 比較元は、リポジトリごとのもの。切り替えたら、未コミットの変更に戻す
   state.bases = [];
   state.baseCustom = false;
@@ -1197,13 +1200,35 @@ async function chooseAndAddFile(): Promise<void> {
 // 枠を空けるのは、「データを削除して枠を空ける」だけ。
 
 /** 登録リポジトリの、いまの状態（見つかるか・git か）と、データの量（履歴など）を読む。 */
-async function loadRepoStatus(icons = true): Promise<void> {
+/** ブランチ・フックの状態を、最後に読んだ時刻（窓に戻るたびの読み直しを、間引くため）。 */
+let auxLoadedAt = 0;
+/** 窓に戻ったときの、ブランチ・フックの読み直しの最短の間隔（登録が多いと、git の起動が、全リポジトリぶん走る）。 */
+const AUX_FOCUS_INTERVAL_MS = 15000;
+
+/** 切り替えたリポジトリ 1 つの、ブランチ名を読む（ページ変更・窓復帰を待たない）。失敗しても、切り替えは止めない。 */
+async function loadBranchOf(repo: string): Promise<void> {
+  if (!state.registeredRepos.some((r) => r.path === repo)) return;
+  try {
+    const b = await invoke<Record<string, string | null>>('repo_branches', { paths: [repo] });
+    state.repoBranches = { ...state.repoBranches, ...b };
+    render();
+  } catch (e) {
+    state.repoAuxErrors = [msg(getAppLang()).mainUi.repoBranchesFailed(String(e))];
+    render();
+  }
+}
+
+async function loadRepoStatus(icons = true, onFocus = false): Promise<void> {
   const all = state.registeredRepos.map((r) => r.path);
+  const now = Date.now();
+  // 窓に戻っただけのときは、ブランチ・フックを、15 秒以内に読んでいれば、読み直さない（状態・データ量は、これまでどおり読む）
+  const skipAux = onFocus && now - auxLoadedAt < AUX_FOCUS_INTERVAL_MS;
+  if (!skipAux) auxLoadedAt = now;
   // ブランチは、ヘッダーに出す、選んだ 1 つ（リポジトリのページでは、全部）。フックの状態は、リポジトリのページだけ（全部）。
   // 窓に戻るたびに、登録した全リポジトリで、git を起動し、フックのファイルを読むことは、しない。
   const onRepos = state.page === 'repos';
-  const branchPaths = onRepos ? all : state.repo && all.includes(state.repo) ? [state.repo] : [];
-  const hookPaths = onRepos ? all : [];
+  const branchPaths = skipAux ? [] : onRepos ? all : state.repo && all.includes(state.repo) ? [state.repo] : [];
+  const hookPaths = skipAux || !onRepos ? [] : all;
   const before = JSON.stringify([state.repoStatus, state.repoData, state.repoBranches, state.repoHooks, state.repoAuxErrors]);
   // 4 つの読み込みを、別々に扱う。補助（ブランチ・フック）の失敗が、主要（状態・データ量）の更新を、止めない。
   const [status, data, branches, hooks] = await Promise.allSettled([
@@ -1223,7 +1248,7 @@ async function loadRepoStatus(icons = true): Promise<void> {
   else aux.push(m.repoBranchesFailed(String(branches.reason)));
   if (hooks.status === 'fulfilled') state.repoHooks = { ...state.repoHooks, ...hooks.value };
   else aux.push(m.repoHooksFailed(String(hooks.reason)));
-  state.repoAuxErrors = aux;
+  if (!skipAux) state.repoAuxErrors = aux; // 読み直しを間引いたときは、前の理由を、消さない
   if (icons) for (const r of state.registeredRepos) void loadRepoIcon(r.path);
   // 窓に戻ったときの読み直しは、変わったときだけ描き直す（「追加」の押せる・押せないが、フォルダの移動に追いつくように）
   if (icons || state.settings || JSON.stringify([state.repoStatus, state.repoData, state.repoBranches, state.repoHooks, state.repoAuxErrors]) !== before) render();
@@ -3576,7 +3601,7 @@ window.addEventListener('focus', () => {
   const now = Date.now();
   if (!state.registeredRepos.length || now - repoStatusAt < 2000) return;
   repoStatusAt = now;
-  void loadRepoStatus(false);
+  void loadRepoStatus(false, true);
 });
 // エージェントが `mrcr handoff report` で保存した申告は、アプリの外で、DB に入る。窓に戻ってきたとき、開いているレビューの申告だけを、読み直す。
 const agentRefreshGate = { at: 0 };
