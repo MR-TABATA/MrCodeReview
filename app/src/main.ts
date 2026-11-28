@@ -465,6 +465,35 @@ async function continueFromPrevious(): Promise<void> {
   runCheckedRecipes();
 }
 
+/** 開いているレビューの、報告だけを読む（レビュー本体を、取り直さない）。 */
+function loadAgentReports(id: string): Promise<(AgentReport | null)[] | null> {
+  const r = state.selected;
+  return invoke<(AgentReport | null)[]>('get_agent_reports', { id, count: r && r.id === id ? r.findings.length : 0 });
+}
+
+/**
+ * 開いているレビューの、エージェントの報告を読み直す。履歴の件数は、同じデータベースの報告から数えるので、
+ * 履歴を読み直したときに、カードも追いつかせる（窓に戻ったときの読み直しだけに頼らない。実行中に飛ばされても、終わったときに追いつく）。
+ * エージェントの取り込み中は、触らない。
+ */
+const openReportsGate = { at: 0 };
+function refreshOpenReviewReports(): Promise<boolean> {
+  return refreshAgentReportsOnFocus({
+    current: () => state.selected,
+    busy: () => state.agentUi.busy,
+    now: () => Date.now(),
+    gate: openReportsGate,
+    minIntervalMs: 0,
+    load: (id) => loadAgentReports(id),
+    apply: (id, next) => {
+      const r = state.selected;
+      if (!r || r.id !== id) return;
+      r.agent_reports = next;
+      void refreshHandoff().then(() => render());
+    },
+  });
+}
+
 async function refreshHistory(): Promise<void> {
   // 選んでいるリポジトリの履歴だけ。選んでいなければ、すべて
   try {
@@ -479,6 +508,7 @@ async function refreshHistory(): Promise<void> {
   state.picked = prunePicks(state.picked, state.history);
   render();
   void refreshRepoCounts(); // 左の一覧の「未」の件数も、履歴と同じ頃に読み直す
+  void refreshOpenReviewReports(); // 履歴の件数と同じ時点のデータにする（件数は新しいのに、開いているカードだけ古い、を防ぐ）
   void loadContinue(true); // 前回は、履歴が変わると変わる（走っている読み込みがあっても、読み直す）
 }
 
@@ -1233,7 +1263,9 @@ async function loadRepoStatus(icons = true, onFocus = false): Promise<void> {
   const all = state.registeredRepos.map((r) => r.path);
   const now = Date.now();
   // 窓に戻っただけのときは、ブランチ・フックを、15 秒以内に読んでいれば、読み直さない（状態・データ量は、これまでどおり読む）
-  const skipAux = onFocus && now - auxLoadedAt < AUX_FOCUS_INTERVAL_MS;
+  // 時計が戻ったとき（差が負）は、間引かない（追いつくまで、ずっと読まなくなるのを防ぐ）
+  const sinceAux = now - auxLoadedAt;
+  const skipAux = onFocus && sinceAux >= 0 && sinceAux < AUX_FOCUS_INTERVAL_MS;
   if (!skipAux) auxLoadedAt = now;
   // ブランチは、ヘッダーに出す、選んだ 1 つ（リポジトリのページでは、全部）。フックの状態は、リポジトリのページだけ（全部）。
   // 窓に戻るたびに、登録した全リポジトリで、git を起動し、フックのファイルを読むことは、しない。
@@ -2015,7 +2047,7 @@ function runCheckedRecipes(): void {
   startCheckedRecipes();
 }
 
-function recipeBarSection(): HTMLElement {
+function recipeBarSection(tool: boolean): HTMLElement {
   const p = state.preview;
   const busy = !!state.running || !!state.batch.run;
   // 実行中は、観点を出したまま（何が走っているか見える）。終わって結果が履歴に載ったら、畳む
@@ -2079,6 +2111,7 @@ function recipeBarSection(): HTMLElement {
       estimatedTimeText: est.timeText,
       runError: state.runError,
       specSlot,
+      footSlot: collapsed ? null : h('div', { class: 'bar-foot' }, recipeInfoSection(), sendBox(tool)),
       // 比較元がすでに前回の続きなら、実行ボタンと同じなので、出さない。前回の指摘が 0 件なら、続ける相手がいないので、出さない
       ...(state.continueInfo && state.continueInfo.findings > 0 && state.continueInfo.recipeId === [...active][0] && state.base !== state.continueInfo.base && !busy
         ? {
@@ -3453,10 +3486,7 @@ function detailView(): HTMLElement {
   const r = currentRecipe();
   const tool = r ? r.kind === 'tool' : false;
   // 実行バーと「送る内容」は、1 枚のカードにまとめる
-  const bar = recipeBarSection();
-  if (!bar.classList.contains('recipe-bar-folded')) {
-    bar.append(h('div', { class: 'bar-foot' }, recipeInfoSection(), sendBox(tool)));
-  }
+  const bar = recipeBarSection(tool);
   // 実行した直後の結果は、実行バーの下に出す（そこへスクロールする）。履歴・ログから開いた結果は、結果のページ
   const below = state.selected && state.backTo === 'newreview' ? h('div', { class: 'result-anchor' }, resultView()) : null;
   return h('main', { class: 'detail page' }, pageHeader(pm.pageTabNewReview), runTargetSection(), bar, below);
@@ -3629,7 +3659,7 @@ window.addEventListener('focus', () => {
     busy: () => state.agentUi.busy || Boolean(state.running),
     now: () => Date.now(),
     gate: agentRefreshGate,
-    load: async (id) => (await invoke<ReviewView | null>('get_review', { id }))?.agent_reports ?? null,
+    load: (id) => loadAgentReports(id),
     apply: (id, next) => {
       const r = state.selected;
       if (!r || r.id !== id) return;
@@ -3681,4 +3711,4 @@ if (import.meta.env?.MODE !== 'test') {
   void boot();
 }
 
-export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, openSettings, changeRepo, select, wantsHook, loadHook, loadRepoStatus };
+export { fixAllBySeverity, handoffBar, state, render, refreshHandoff, refreshHistory, openSettings, changeRepo, select, wantsHook, loadHook, loadRepoStatus };

@@ -223,6 +223,9 @@ export interface Messages {
   // recipebar.ts
   recipeBar: {
     groupDocs: string;
+    sectionAspects: string;
+    sectionSpec: string;
+    sectionSend: string;
     runningLabel: (progress: string) => string;
     selectAngles: string;
     runSingle: (title: string) => string;
@@ -848,6 +851,9 @@ export const MESSAGES: Record<Lang, Messages> = {
 
     recipeBar: {
       groupDocs: '文書',
+      sectionAspects: '観点',
+      sectionSpec: '参照する設計書・仕様書',
+      sectionSend: 'LLM に送る内容',
       runningLabel: (progress) => `実行中…${progress}`,
       selectAngles: '観点を選択してください',
       runSingle: (title) => `「${title}」を実行`,
@@ -1586,6 +1592,9 @@ export const MESSAGES: Record<Lang, Messages> = {
 
     recipeBar: {
       groupDocs: 'Documents',
+      sectionAspects: 'Aspects',
+      sectionSpec: 'Reference design docs / specs',
+      sectionSend: 'What is sent to the LLM',
       runningLabel: (progress) => `Running…${progress}`,
       selectAngles: 'Select review angles',
       runSingle: (title) => `Run "${title}"`,

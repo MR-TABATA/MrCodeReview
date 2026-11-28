@@ -1612,3 +1612,15 @@ button.danger:hover:not(:disabled) { background: var(--bad-bg); }
 .run-target { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; }
 .run-target-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
 .run-target .baseform { border-bottom: 0; background: transparent; }
+
+/* 新規レビューのページ: 区画（観点・設計書・送る内容）と、下の操作バー（step 4 B・C） */
+.run-form { display: flex; flex-direction: column; gap: 10px; }
+.run-sect { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 12px; }
+.run-sect > .run-sect-title { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.run-sect .bar-foot { margin-top: 0; padding-top: 0; border-top: 0; }
+.actbar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between;
+  padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 -6px 12px -8px rgba(0, 0, 0, .18); }
+.actbar-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; font-size: 12px; }
+.actbar-info .err { margin: 0; padding: 2px 6px; }
+.actbar-buttons { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; margin-left: auto; }
+.actbar-buttons button.main-run-btn, .actbar-buttons button.continue-run-btn { width: auto; }

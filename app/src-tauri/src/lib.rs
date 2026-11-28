@@ -120,6 +120,13 @@ struct AgentFetch {
     agent_reports: Vec<Option<agent_report::AgentReport>>,
 }
 
+/// 指摘 `count` 件ぶんの、エージェントの報告だけを読む（レビュー本体〈プロンプト・差分・応答〉を読まない軽い版）。
+/// 開いているカードを、履歴の件数と同じ時点のデータに追いつかせるため。読み取りに失敗したら、エラー（画面は、いまの表示を残す）。
+#[tauri::command]
+fn get_agent_reports(state: tauri::State<'_, AppState>, id: String, count: usize) -> Result<Vec<Option<agent_report::AgentReport>>, String> {
+    agent_report::try_get_all(&state.data_dir, &id, count)
+}
+
 /// 会話の記録（Claude Code のログ）から、このレビューの「対応の報告」を取り込む。
 /// 初めては、`consent` が true のときだけ読む（許可は、1 回、覚える）。読むのは、識別子を含む行だけ。
 #[tauri::command]
@@ -1911,6 +1918,7 @@ pub fn run() {
             list_recipes,
             usage_summary,
             fetch_agent_reports,
+            get_agent_reports,
             agent_log_consent,
             current_diff,
             revoke_agent_log_consent,

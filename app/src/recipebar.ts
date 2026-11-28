@@ -39,6 +39,8 @@ export interface RecipeBarState {
   estimatedTimeText?: string;
   runError?: string;
   specSlot?: HTMLElement | null;
+  /** 「送る内容」の区画の中身（観点の中身・送る内容）。無ければ区画を出さない */
+  footSlot?: HTMLElement | null;
   /** 「前回の続きから」のボタンの文言。観点を 1 つだけ選んでいて、その観点に前回があるときだけ（無ければ出さない） */
   continueLabel?: string;
   continueTitle?: string;
@@ -207,41 +209,42 @@ export function recipeBar(st: RecipeBarState, acts: RecipeBarActions, lang: Lang
     );
   }
 
+  const sect = (title: string, ...children: (Node | null)[]): HTMLElement => h('section', { class: 'run-sect' }, h('h3', { class: 'run-sect-title' }, title), ...children);
+
+  // 区画に分ける: 観点 → 参照する設計書 → 送る内容 → 下の操作バー（見積もり・前回の続き・実行）
   return h(
-    'section',
-    { class: 'recipe-bar-top' },
-    // 観点のチップ一覧（一般観点およびTerraform・文書グループ）
-    ...(plainChips.length || !groups.length
-      ? [h('div', { class: 'recipe-chips' }, ...plainChips)]
-      : []),
-    ...groups.map((g) =>
-      h(
-        'div',
-        { class: 'recipe-group' },
-        h('div', { class: 'recipe-group-label' }, g.label),
-        h('div', { class: 'recipe-chips' }, ...g.chips),
-      ),
-    ),
-    // 参照する設計書・仕様書の指定フォーム（あれば）
-    st.specSlot ?? null,
-    // 実行ボタンは常に右寄せで配置（観点数やフォーム有無によらず右端に揃える）
-    // 右から、実行ボタン（観点 1 つ分）、「前回の続きから」（観点 2 つ分）。高さは、同じ行なので同じ
-    h('div', { class: 'recipe-run-row' }, runGroup, continueBtn),
-    notes.length
-      ? h(
+    'div',
+    { class: 'run-form' },
+    sect(
+      m.sectionAspects,
+      // 観点のチップ一覧（一般観点およびTerraform・文書グループ）
+      ...(plainChips.length || !groups.length ? [h('div', { class: 'recipe-chips' }, ...plainChips)] : []),
+      ...groups.map((g) =>
+        h(
           'div',
-          { class: 'recipe-run-notes', role: 'status' },
-          ...(st.disabledReason ? [h('div', { class: 'disabled-reason' }, st.disabledReason)] : []),
-          ...skippedGroups.map((g) => h('div', { class: 'disabled-reason skip-note' }, m.skipNotice(g.titles, g.reason))),
-          ...(st.baseNote ? [h('div', { class: 'muted hint' }, st.baseNote)] : []),
-        )
-      : null,
+          { class: 'recipe-group' },
+          h('div', { class: 'recipe-group-label' }, g.label),
+          h('div', { class: 'recipe-chips' }, ...g.chips),
+        ),
+      ),
+      h('div', { class: 'recipe-bar-meta' }, h('span', { class: 'recipe-chips-tools' }, selectAllBtn, clearAllBtn, showAllBtn)),
+    ),
+    st.specSlot ? sect(m.sectionSpec, st.specSlot) : null,
+    st.footSlot ? sect(m.sectionSend, st.footSlot) : null,
+    // ページの下に付く操作バー。長いページでも、実行ボタンが、いつも見える
     h(
       'div',
-      { class: 'recipe-bar-meta' },
-      h('span', { class: 'recipe-chips-tools' }, selectAllBtn, clearAllBtn, showAllBtn),
-      hints.length ? h('span', { class: 'muted hint' }, hints.join(ut(lang).misc.hintSep)) : null,
-      st.runError ? h('span', { class: 'err' }, st.runError) : null,
+      { class: 'actbar', role: 'group' },
+      h(
+        'div',
+        { class: 'actbar-info' },
+        hints.length ? h('span', { class: 'muted hint' }, hints.join(ut(lang).misc.hintSep)) : null,
+        st.runError ? h('span', { class: 'err' }, st.runError) : null,
+        ...(st.disabledReason ? [h('span', { class: 'disabled-reason' }, st.disabledReason)] : []),
+        ...skippedGroups.map((g) => h('span', { class: 'disabled-reason skip-note' }, m.skipNotice(g.titles, g.reason))),
+        ...(st.baseNote ? [h('span', { class: 'muted hint' }, st.baseNote)] : []),
+      ),
+      h('div', { class: 'actbar-buttons' }, continueBtn, runGroup),
     ),
   );
 }

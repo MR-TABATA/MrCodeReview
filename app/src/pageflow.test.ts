@@ -7,7 +7,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeM
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ confirm: vi.fn(), message: vi.fn(), open: vi.fn(), save: vi.fn() }));
 
-import { changeRepo, loadHook, loadRepoStatus, render, select, state, wantsHook } from './main';
+import { changeRepo, refreshHistory, loadHook, loadRepoStatus, render, select, state, wantsHook } from './main';
 import { newHookUi } from './hookview';
 import type { ReviewView } from './types';
 
@@ -266,7 +266,7 @@ describe('上部タブでページを切り替える', () => {
     expect(document.querySelector('.page-title')?.textContent).toBe('新規レビュー');
     expect(document.querySelector('.history')).toBeNull();
     expect(document.querySelector('.back-to-log-btn')).toBeNull();
-    expect(document.querySelector('.recipe-bar-top')).not.toBeNull();
+    expect(document.querySelector('.run-form, .recipe-bar-top')).not.toBeNull();
     expect(document.querySelector('.left')).toBeNull();
     expect(document.querySelector('.right')).toBeNull();
   });
@@ -307,7 +307,7 @@ describe('上部タブでページを切り替える', () => {
     state.page = 'newreview';
     render();
     expect(selected()).toEqual(['newreview']);
-    expect(document.querySelector('.recipe-bar-top')).not.toBeNull();
+    expect(document.querySelector('.run-form, .recipe-bar-top')).not.toBeNull();
     expect(document.querySelector('.result-anchor .d-head')).not.toBeNull();
     expect(document.querySelector('.result-anchor nav.tabs')).not.toBeNull(); // 実行直後は、これまでどおり、タブがある
     const close = document.querySelector<HTMLElement>('.back-to-log-btn')!;
@@ -316,7 +316,7 @@ describe('上部タブでページを切り替える', () => {
     expect(state.page).toBe('newreview');
     expect(state.selected).toBeNull();
     expect(document.querySelector('.result-anchor')).toBeNull();
-    expect(document.querySelector('.recipe-bar-top')).not.toBeNull();
+    expect(document.querySelector('.run-form, .recipe-bar-top')).not.toBeNull();
   });
 
   it('履歴から開いた結果は、新規レビューのタブには出ない（実行する場所に、過去の結果を混ぜない）', () => {
@@ -325,7 +325,7 @@ describe('上部タブでページを切り替える', () => {
     state.page = 'newreview';
     render();
     expect(document.querySelector('.result-anchor')).toBeNull();
-    expect(document.querySelector('.recipe-bar-top')).not.toBeNull();
+    expect(document.querySelector('.run-form, .recipe-bar-top')).not.toBeNull();
   });
 
   describe('「履歴・ログ」のページ', () => {
@@ -651,7 +651,7 @@ describe('上部タブでページを切り替える', () => {
       expect(selected()).toEqual(['history']);
       expect(document.querySelectorAll('.pagetabs button').length).toBe(4);
       expect(document.querySelector('.page-title')?.textContent).toBe('履歴・ログ');
-      expect(document.querySelector('.recipe-bar-top')).toBeNull();
+      expect(document.querySelector('.run-form, .recipe-bar-top')).toBeNull();
       expect(document.querySelector('.result-compact')).not.toBeNull();
       expect(document.querySelector('.result nav.tabs')).toBeNull();
       expect(document.querySelector('.result')?.textContent).not.toContain('すべて開く');
@@ -804,6 +804,35 @@ describe('上部タブでページを切り替える', () => {
       }
     });
 
+    it('間引いた窓復帰は、読んだ時刻を進めない（15 秒の起点は、実際に読んだ時刻）。読んだ直後のページ移動では、また読む', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(2026, 10, 28, 14, 0, 0));
+        state.registeredRepos = [{ path: '/r' }] as never;
+        state.page = 'repos';
+        withBase(() => undefined);
+        await loadRepoStatus(false); // 読む（起点 14:00:00）
+        expect(calls('repo_branches')).toBe(1);
+        vi.setSystemTime(new Date(2026, 10, 28, 14, 0, 10));
+        await loadRepoStatus(false, true); // 間引く（起点は、進めない）
+        expect(calls('repo_branches')).toBe(1);
+        vi.setSystemTime(new Date(2026, 10, 28, 14, 0, 11));
+        await loadRepoStatus(false); // 読んだ直後のページ移動（窓復帰ではない）: また読む（起点 14:00:11）
+        expect(calls('repo_branches')).toBe(2);
+        vi.setSystemTime(new Date(2026, 10, 28, 14, 0, 16));
+        await loadRepoStatus(false, true); // 起点 14:00:11 から 5 秒: 間引く
+        expect(calls('repo_branches')).toBe(2);
+        vi.setSystemTime(new Date(2026, 10, 28, 14, 0, 26));
+        await loadRepoStatus(false, true); // 起点から 15 秒: 読む
+        expect(calls('repo_branches')).toBe(3);
+        vi.setSystemTime(new Date(2026, 10, 28, 13, 59, 0));
+        await loadRepoStatus(false, true); // 時計が戻った（差が負）: 間引かず、読む
+        expect(calls('repo_branches')).toBe(4);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('リポジトリを切り替えると、前のリポジトリの履歴を空にする。ブランチを読めなかったときは理由を出す。登録外のパスは読まない', async () => {
       state.registeredRepos = [{ path: '/r' }, { path: '/s' }] as never;
       state.history = [{ id: 'old', created_at: 1, repo: '/r', recipe_title: 'バグ', provider_label: 'p', findings: 1, verified: 0, total_tokens: null, failed: false, counts: null }] as never;
@@ -848,11 +877,44 @@ describe('上部タブでページを切り替える', () => {
       expect(state.repoAuxErrors.join('')).not.toContain('/r の遅い失敗');
     });
 
+    it('観点のページでも、履歴を読めなかった理由が出る。切り替えの失敗のあと、前のリポジトリの履歴は、残らない', async () => {
+      state.registeredRepos = [{ path: '/r' }, { path: '/s' }] as never;
+      state.history = [{ id: 'old', created_at: 1, repo: '/r', recipe_title: 'バグ', provider_label: 'p', findings: 1, verified: 0, total_tokens: null, failed: false, counts: null }] as never;
+      state.page = 'aspects';
+      withBase((cmd) => (cmd === 'list_reviews' ? new Error('DB が開けません') : undefined));
+      await expect(changeRepo('/s')).rejects.toThrow('DB が開けません');
+      await flush();
+      expect(document.querySelector('.history-load-error')?.textContent).toContain('DB が開けません');
+      expect(state.history).toEqual([]);
+      expect(document.querySelector('.aspect-table')).toBeNull(); // 前のリポジトリの集計は、出ない
+    });
+
+    it('履歴のページで読んだ 5 秒後に、リポジトリのページを開いたときの読み込みは、間引かれず、全リポジトリのブランチとフックを読む', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(2026, 10, 28, 13, 0, 0));
+        state.registeredRepos = [{ path: '/r' }, { path: '/s' }] as never;
+        state.page = 'history';
+        withBase(() => undefined);
+        await loadRepoStatus(false, true); // 履歴のページでの窓復帰: 選んだ 1 つのブランチだけ
+        expect([calls('repo_branches'), calls('repo_hooks')]).toEqual([1, 0]);
+        vi.setSystemTime(new Date(2026, 10, 28, 13, 0, 5));
+        state.page = 'repos';
+        await loadRepoStatus(false); // ページを開いたとき（窓復帰ではない）
+        expect([calls('repo_branches'), calls('repo_hooks')]).toEqual([2, 1]);
+        const branchCalls = invokeMock.mock.calls.filter((c) => c[0] === 'repo_branches');
+        const last = branchCalls[branchCalls.length - 1][1] as { paths: string[] };
+        expect(last.paths).toEqual(['/r', '/s']);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('履歴を読めなかったときは、空の履歴と区別できるよう、理由を画面に出す。読めたら消える', async () => {
       state.registeredRepos = [{ path: '/s' }] as never;
       state.page = 'history';
       withBase((cmd) => (cmd === 'list_reviews' ? new Error('DB が開けません') : undefined));
-      await expect(changeRepo('/s')).rejects.toBeTruthy();
+      await expect(changeRepo('/s')).rejects.toThrow('DB が開けません');
       await flush();
       expect(document.querySelector('.history-load-error')?.textContent).toContain('DB が開けません');
       expect(document.querySelector('.history-load-error')?.textContent).toContain('履歴が無い');
@@ -883,7 +945,7 @@ describe('上部タブでページを切り替える', () => {
       expect(document.querySelectorAll('.run-target .combo').length).toBe(1);
       expect(document.querySelectorAll('.topbar .combo').length).toBe(0);
       const first = document.querySelector('.detail.page')!.children;
-      expect([...first].findIndex((el) => el.classList.contains('run-target'))).toBeLessThan([...first].findIndex((el) => el.classList.contains('recipe-bar-top')));
+      expect([...first].findIndex((el) => el.classList.contains('run-target'))).toBeLessThan([...first].findIndex((el) => el.classList.contains('run-form')));
       for (const p of ['repos', 'aspects', 'history'] as const) {
         state.page = p;
         render();
@@ -903,6 +965,44 @@ describe('上部タブでページを切り替える', () => {
       render();
       expect(document.querySelector('.baseform')).toBeNull();
       state.baseCustom = false;
+    });
+  });
+
+  describe('開いているレビューの、エージェントの報告', () => {
+    it('履歴を読み直したとき、開いているカードも、最新の報告に追いつく（件数だけ新しい、にならない）', async () => {
+      const f = (n: number) => ({ file: `a${n}.rs`, line: 1, severity: 'medium', title: `見出し${n}`, detail: '', evidence: '', verified: true });
+      const open = { ...fakeReview('rv'), findings: [f(0), f(1)], triage: ['fix', 'fix'], finding_notes: [null, null], agent_reports: [null, null] } as unknown as ReviewView;
+      const reported = [
+        { verdict: 'did', text: '直した', reported_at: 1, source: 'cli:agent' },
+        { verdict: 'skipped', text: '誤検知です', reported_at: 2, source: 'cli:agent' },
+      ];
+      const base: Record<string, unknown> = { repo_status: [], repo_data: [], repo_branches: {}, repo_hooks: {}, list_reviews: [], list_recipes: { recipes: [], warnings: [] }, list_bases: [] };
+      invokeMock.mockImplementation(async (cmd: string) => (cmd === 'get_agent_reports' ? reported : (base[cmd] ?? null)));
+      state.page = 'history';
+      state.backTo = 'history';
+      state.selected = open;
+      await refreshHistory();
+      await flush();
+      expect(state.selected!.agent_reports).toEqual(reported);
+      // 読むのは、報告だけ（レビュー本体を、取り直さない）。指摘の件数を、渡す
+      expect(invokeMock.mock.calls.some((c) => c[0] === 'get_review')).toBe(false);
+      expect(invokeMock.mock.calls.find((c) => c[0] === 'get_agent_reports')![1]).toEqual({ id: 'rv', count: 2 });
+    });
+
+    it('別のレビューへ移っていたら、読み終わった報告を、いまのレビューに入れない', async () => {
+      const a = { ...fakeReview('a'), agent_reports: [null] } as unknown as ReviewView;
+      const b = { ...fakeReview('b'), agent_reports: [null] } as unknown as ReviewView;
+      let release: (v: unknown) => void = () => {};
+      const base: Record<string, unknown> = { repo_status: [], repo_data: [], list_reviews: [], list_recipes: { recipes: [], warnings: [] }, list_bases: [] };
+      invokeMock.mockImplementation((cmd: string) => (cmd === 'get_agent_reports' ? new Promise((r) => (release = r)) : Promise.resolve(base[cmd] ?? null)));
+      state.selected = a;
+      const done = refreshHistory();
+      await flush();
+      state.selected = b;
+      release([{ verdict: 'did', text: 'x', reported_at: 1, source: 's' }]);
+      await done;
+      await flush();
+      expect(state.selected!.agent_reports).toEqual([null]);
     });
   });
 
