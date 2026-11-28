@@ -2954,13 +2954,14 @@ function runLogRefreshButton(): HTMLElement {
   return h(
     'button',
     {
-      class: 'small',
+      class: 'hbtn',
       disabled: state.hook.busy,
       onclick: () => {
         void loadHook();
         void refreshHistory();
       },
     },
+    h('span', { class: 'hbtn-ic' }, icon('refresh', 12)),
     hm.refresh,
   );
 }

@@ -119,9 +119,11 @@ export function reviewRow(
   o: { cls?: string; lead?: Node | null; onOpen: () => void; extra?: Node | null },
 ): HTMLElement {
   const m = msg(lang).historyView;
+  // 左の色の帯と、文字の濃さに使う状態。失敗＝赤、未が残る＝琥珀、すべて仕分け済み＝薄く（モックの指摘一覧と同じ色味）
+  const st = s.failed ? 'st-failed' : s.findings > 0 && s.counts ? (s.counts.open > 0 ? 'st-open' : 'st-done') : '';
   return h(
     'li',
-    { class: (o.cls ?? '').trim(), onclick: o.onOpen },
+    { class: `${o.cls ?? ''} ${st}`.trim(), onclick: o.onOpen },
     h('span', { class: 'hlead' }, o.lead ?? null),
     // 1 行: 日時 ・ 観点（と失敗） ・ 指摘の件数 ・ 仕分けの件数。行を押すと、開く
     h('span', { class: 'hwhen' }, when(s.created_at, lang)),
@@ -199,7 +201,7 @@ export function historyPanel(
     { class: 'hhead' },
     headTitle,
     !isCollapsed && items.length
-      ? h('button', { class: 'small linkish', onclick: () => act.toggleAll() }, all ? m.deselectAll : m.selectAll)
+      ? h('button', { class: `hselectall${all ? ' on' : ''}`, onclick: () => act.toggleAll() }, all ? m.deselectAll : m.selectAll)
       : null,
   );
 

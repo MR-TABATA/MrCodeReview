@@ -14,6 +14,7 @@ const PATHS = {
   report: ['M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z', 'M14 2v6h6', 'M16 13H8', 'M16 17H8', 'M10 9H8'],
   chevron: ['m6 9 6 6 6-6'],
   check: ['M20 6 9 17l-5-5'],
+  refresh: ['M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8', 'M21 3v5h-5'],
 } as const;
 
 export type IconName = keyof typeof PATHS;

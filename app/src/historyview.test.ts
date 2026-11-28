@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { circleNumber, countsLine, dayKey, displayRecipeTitle, formatWhen, historyPanel, needsAttention, prunePicks, RECENT_KEEP, reviewName, splitHistory } from './historyview';
+import { reviewRow, circleNumber, countsLine, dayKey, displayRecipeTitle, formatWhen, historyPanel, needsAttention, prunePicks, RECENT_KEEP, reviewName, splitHistory } from './historyview';
 import type { ReviewSummary } from './types';
 
 const S = (id: string, over: Partial<ReviewSummary> = {}): ReviewSummary => ({ id, created_at: 1_793_000_000_000, repo: '/Users/me/Git/MrkDown', recipe_title: '潜在バグ', provider_label: 'Claude', findings: 3, verified: 2, total_tokens: 1820, failed: false, counts: { open: 1, done: 1, wait: 0, dismiss: 1 }, ...over });
@@ -87,6 +87,15 @@ describe('historyPanel', () => {
     expect(row.querySelector('.hbody')).toBeNull();
     expect(row.querySelector('.ht')?.textContent).toBe('潜在バグ');
     expect(row.querySelector('.hfind')?.textContent).toBe('指摘 3 件');
+  });
+
+  it('行の色の状態: 失敗＝st-failed、未が残る＝st-open、すべて仕分け済み＝st-done（指摘が無い行は、どれも付かない）', () => {
+    const cls = (s: ReviewSummary) => reviewRow(s, 'ja', { onOpen: () => {} }).className;
+    expect(cls(S('a', { failed: true, counts: null }))).toContain('st-failed');
+    expect(cls(S('b', { counts: { open: 1, done: 1, wait: 0, dismiss: 0 } }))).toContain('st-open');
+    expect(cls(S('c', { counts: { open: 0, done: 2, wait: 0, dismiss: 0 } }))).toContain('st-done');
+    expect(cls(S('d', { findings: 0, counts: { open: 0, done: 0, wait: 0, dismiss: 0 } }))).not.toMatch(/st-/);
+    expect(cls(S('e', { counts: null }))).not.toMatch(/st-/);
   });
 
   it('コミット: レビューしたときの HEAD を、7 文字で出す（全文は title）。記録に無いときは、空', () => {
