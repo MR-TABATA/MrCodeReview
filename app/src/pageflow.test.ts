@@ -60,6 +60,10 @@ describe('上部タブでページを切り替える', () => {
     state.page = 'newreview';
     state.backTo = 'history';
     state.history = [];
+    state.repoBranches = {};
+    state.historyQuery = '';
+    state.picked = new Set();
+    state.historyLimit = 100;
     state.expandedHookRuns.clear();
   });
 
@@ -96,6 +100,18 @@ describe('上部タブでページを切り替える', () => {
   it('タブは 3 つ（リポジトリ・履歴・ログ・新規レビュー）。「ログ」だけのタブは無い', () => {
     render();
     expect([...document.querySelectorAll('.pagetabs button')].map((b) => b.textContent)).toEqual(['リポジトリ', '履歴・ログ', '新規レビュー']);
+  });
+
+  it('ヘッダーのリポジトリの横に、いまのブランチ名が出る。無い（detached HEAD・Git ではない）ときは、出ない', () => {
+    state.repoBranches = { '/r': 'feature/x-y' };
+    render();
+    expect(document.querySelector('.topbar .repo-branch')?.textContent).toBe('⎇ feature/x-y');
+    state.repoBranches = { '/r': null };
+    render();
+    expect(document.querySelector('.topbar .repo-branch')).toBeNull();
+    state.repoBranches = {};
+    render();
+    expect(document.querySelector('.topbar .repo-branch')).toBeNull();
   });
 
   it('新規レビューのページ: 実行する場所だけ。結果も、履歴も、ここには出ない', () => {
@@ -178,7 +194,7 @@ describe('上部タブでページを切り替える', () => {
       expect(hookRow.querySelector('.badge')?.textContent).toBe('フック');
       // 列の並びは同じ。右端の欄だけ、中身が違う（レビューは仕分けの件数、フックは所要時間）
       expect(cols(hookRow).slice(0, -1)).toEqual(cols(reviewRow).slice(0, -1));
-      expect(cols(hookRow).slice(0, -1)).toEqual(['hlead', 'hwhen', 'h1', 'hcommit', 'hfind']);
+      expect(cols(hookRow).slice(0, -1)).toEqual(['hlead', 'hwhen', 'h1', 'hbranch', 'hcommit', 'hfind']);
       expect(reviewRow.lastElementChild?.classList.contains('hcounts')).toBe(true);
       expect(hookRow.lastElementChild?.classList.contains('hdur')).toBe(true);
       expect(hookRow.querySelector('.hcommit')?.textContent).toBe('abc1234');
@@ -318,6 +334,165 @@ describe('上部タブでページを切り替える', () => {
       await flush();
       expect(document.querySelector('.hooklog-load-error')).toBeNull();
       expect(document.querySelector('.hookruns-section')).toBeNull();
+    });
+  });
+
+  describe('「履歴・ログ」の絞り込み（入力欄 1 つ・複数語）', () => {
+    const type = (value: string) => {
+      const input = document.getElementById('history-query') as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const reviewTitles = () => [...document.querySelectorAll('.right ul.history > li .ht')].map((e) => e.textContent);
+    const hookCount = () => document.querySelectorAll('.hookruns-section li.hookrun').length;
+    const seed = () => {
+      state.history = [
+        summary('a', { recipe_title: '潜在バグ', seq: 1 }),
+        summary('b', { recipe_title: 'セキュリティ', seq: 1 }),
+        summary('c', { recipe_title: '潜在バグ', seq: 2, counts: { open: 0, done: 2, wait: 0, dismiss: 0 } }),
+      ] as never;
+      state.hook.status = { recent: [hookRun({ run: 'h1', subject: 'タブの骨格' }), hookRun({ run: 'h2', state: 'failed', subject: '直した' })] } as never;
+      state.historyQuery = '';
+      state.picked = new Set();
+      state.page = 'history';
+      render();
+    };
+
+    it('入力欄は、1 つだけ（ドロップダウンは、置かない）', () => {
+      seed();
+      expect(document.querySelectorAll('.hsearch input, .hsearch select').length).toBe(1);
+      expect(document.querySelectorAll('.page-aside select').length).toBe(0);
+    });
+
+    it('語を入れると、当てはまる行だけが残る。語を増やすと、さらに絞れる（合わせ技）。フックの行にも効く', () => {
+      seed();
+      expect(reviewTitles().length).toBe(3);
+      expect(hookCount()).toBe(2);
+      type('潜在バグ');
+      expect(reviewTitles().length).toBe(2);
+      expect(hookCount(), 'フックの行には、「潜在バグ」は当てはまらない').toBe(0);
+      type('潜在バグ 未対応');
+      expect(reviewTitles().length).toBe(1);
+      type('フック 失敗');
+      expect(reviewTitles().length).toBe(0);
+      expect(hookCount()).toBe(1);
+      expect(document.querySelector('.hsearch-count')?.textContent).toBe('1 件 / 全 5 件');
+    });
+
+    it('解除（✕）で、すべて戻る。当てはまるものが無いときは、その旨', () => {
+      seed();
+      type('存在しない語');
+      expect(document.querySelector('.right')?.textContent).toContain('当てはまるものがありません');
+      document.querySelector<HTMLElement>('.hsearch-clear')!.click();
+      expect(state.historyQuery).toBe('');
+      expect(reviewTitles().length).toBe(3);
+      expect(document.querySelector('.hsearch-clear')).toBeNull();
+    });
+
+    it('日本語入力の変換中は、絞り込まない。確定（compositionend）してから', () => {
+      seed();
+      const input = document.getElementById('history-query') as HTMLInputElement;
+      input.value = 'せきゅ';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }));
+      expect(state.historyQuery, '変換中は、そのまま').toBe('');
+      expect(reviewTitles().length).toBe(3);
+      input.value = 'セキュリティ';
+      input.dispatchEvent(new Event('compositionend', { bubbles: true }));
+      expect(state.historyQuery).toBe('セキュリティ');
+      expect(reviewTitles().length).toBe(1);
+    });
+
+    it('入力中は、描き直したあとも、フォーカスとカーソルの位置が、戻る', () => {
+      seed();
+      const input = document.getElementById('history-query') as HTMLInputElement;
+      input.focus();
+      input.value = '潜在バグ 未';
+      input.setSelectionRange(2, 2);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const again = document.getElementById('history-query') as HTMLInputElement;
+      expect(again).not.toBe(input); // 描き直されて、別の要素になっている
+      expect(document.activeElement).toBe(again);
+      expect(again.value).toBe('潜在バグ 未');
+      expect([again.selectionStart, again.selectionEnd]).toEqual([2, 2]);
+    });
+
+    it('「すべて選ぶ」は、見えている行だけを選ぶ。隠れている行は、選ばない', () => {
+      seed();
+      type('セキュリティ');
+      document.querySelector<HTMLElement>('.hselectall')!.click();
+      expect([...state.picked]).toEqual(['b']);
+      // もう一度で、見えている分を外す
+      document.querySelector<HTMLElement>('.hselectall')!.click();
+      expect(state.picked.size).toBe(0);
+    });
+
+    it('絞り込みを変えて、見えなくなった行の選択は、外れる（見えない行を、レポート・削除に入れない）', () => {
+      seed();
+      document.querySelector<HTMLElement>('.hselectall')!.click();
+      expect(state.picked.size).toBe(3);
+      type('セキュリティ');
+      expect([...state.picked]).toEqual(['b']);
+    });
+
+    it('手で選んだ a と b のうち、b だけに絞ると、a の選択が外れ、✕ で解除しても、a は戻らない（b だけが残る）', () => {
+      seed();
+      document.querySelectorAll<HTMLInputElement>('.right ul.history li .pick').forEach((box, i) => {
+        if (i < 2) box.dispatchEvent(new Event('change'));
+      });
+      expect([...state.picked].sort()).toEqual(['a', 'b']);
+      type('セキュリティ'); // b だけ
+      expect([...state.picked]).toEqual(['b']);
+      document.querySelector<HTMLElement>('.hsearch-clear')!.click();
+      expect([...state.picked], '解除しても、外れた a は、戻らない').toEqual(['b']);
+      expect(reviewTitles().length).toBe(3);
+    });
+
+    it('件数表示: フックの記録が無く、レビューだけのとき、「1 件 / 全 26 件」', () => {
+      state.history = Array.from({ length: 26 }, (_, i) => summary(`r${i}`, { recipe_title: i === 7 ? 'セキュリティ' : '潜在バグ' })) as never;
+      state.hook.status = null;
+      state.historyQuery = '';
+      state.page = 'history';
+      render();
+      type('セキュリティ');
+      expect(document.querySelector('.hsearch-count')?.textContent).toBe('1 件 / 全 26 件');
+    });
+
+    it('当てはまる行が多いときは、最初の 100 件だけ描き、「さらに表示」で増やす。「すべて選ぶ」は、出している行だけ', () => {
+      state.history = Array.from({ length: 250 }, (_, i) => summary(`m${i}`, { recipe_title: '潜在バグ', created_at: 1_795_775_717_000 - i * 1000 })) as never;
+      state.hook.status = null;
+      state.historyQuery = '';
+      state.page = 'history';
+      render();
+      type('潜在バグ');
+      expect(reviewTitles().length).toBe(100);
+      expect(document.querySelector('.hmore')?.textContent).toBe('さらに表示（残り 150 件）');
+      expect(document.querySelector('.hsearch-count')?.textContent, '件数は、当てはまる全部').toBe('250 件 / 全 250 件');
+      document.querySelector<HTMLElement>('.hselectall')!.click();
+      expect(state.picked.size, '出している 100 件だけ').toBe(100);
+      document.querySelector<HTMLElement>('.hmore')!.click();
+      expect(reviewTitles().length).toBe(200);
+      expect(document.querySelector('.hmore')?.textContent).toBe('さらに表示（残り 50 件）');
+      document.querySelector<HTMLElement>('.hmore')!.click();
+      expect(reviewTitles().length).toBe(250);
+      expect(document.querySelector('.hmore')).toBeNull();
+      // 入力を変えると、100 件に戻る
+      type('潜在');
+      expect(reviewTitles().length).toBe(100);
+    });
+
+    it('絞り込んでいるあいだは、古い日付のグループに隠れず、当てはまる行が、平らに並ぶ', () => {
+      const day = 86_400_000;
+      const many = Array.from({ length: 25 }, (_, i) => summary(`n${i}`, { recipe_title: '潜在バグ', created_at: 1_795_775_717_000 - i * 1000 }));
+      const old = summary('old', { recipe_title: 'パフォーマンス', created_at: 1_795_775_717_000 - 90 * day, counts: { open: 0, done: 2, wait: 0, dismiss: 0 } });
+      state.history = [...many, old] as never;
+      state.hook.status = null;
+      state.historyQuery = '';
+      state.page = 'history';
+      render();
+      expect(reviewTitles().some((t) => t?.includes('パフォーマンス')), '絞り込まないときは、古い日付に畳まれている').toBe(false);
+      type('パフォーマンス');
+      expect(reviewTitles().length).toBe(1);
+      expect(document.querySelector('.hday-h')).toBeNull();
     });
   });
 

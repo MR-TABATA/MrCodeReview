@@ -128,6 +128,7 @@ export function hookRunRow(r: HookRun, lang: Lang = getAppLang(), o: { expanded:
       h('span', { class: 'ht hookrun-commit' }, subject),
       h('span', { class: `hookrun-state hookrun-state-${r.state}` }, m.runState(r.state)),
     ),
+    h('span', { class: 'hbranch' }), // フックの実行の記録には、ブランチ名が無い（列の位置を、そろえるための空欄）
     h('span', { class: 'hcommit', title: r.commit ?? '' }, shortCommit(r.commit)),
     h('span', { class: 'hfind' }, r.findings === null ? '' : msg(lang).historyView.findingsCount(r.findings)),
     h('span', { class: 'hcounts-empty hdur' }, r.ms === null ? '' : m.secs(r.ms)),

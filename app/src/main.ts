@@ -22,7 +22,7 @@ import { detailPanel } from './detailview';
 import { findingOrder, isDoneFinding } from './findingorder';
 import { agentBox, agentDone, agentNotice, agentStatus, agentStatusBar, foldedRow, newAgentUi, refreshAgentReportsOnFocus, type AgentActions } from './agentview';
 import { handoffPreview, handoffResult, handoffSendButton, handoffTop, newHandoffUi, type HandoffActions, type HandoffTarget } from './handoffview';
-import type { AgentDef } from './types';
+import type { AgentDef, HookRun } from './types';
 import { displayRecipeTitle, formatWhen, historyPanel, prunePicks, reviewName } from './historyview';
 import { providerLabel, providerNote } from './providertext';
 import { ut } from './uitext';
@@ -65,6 +65,7 @@ import { fixAllBySeverity as runFixAllBySeverity, fixAllSeverityButtons } from '
 import { newReportState, reportFileName, reportOptions, reportPanel, reportRange, htmlNodes, type ReportState } from './reportview';
 import { periodSince, usagePanel, type Period, type UsageState } from './usageview';
 import { DEFAULT_PAGE, pageTabs, type Page } from './pages';
+import { createHistoryView, type HistoryView } from './historyfilter';
 import { runLogDetail } from './runlogdetail';
 import type {
   HookStatus,
@@ -154,6 +155,10 @@ const state = {
   repoIcons: {} as Record<string, string | null>,
   /** 実行ログ内でインライン展開されている指摘の識別子（"reviewId:findingIndex"） */
   expandedFindings: new Set<string>(),
+  /** 「履歴・ログ」の絞り込みの入力（スペース区切りの複数語。保存しない） */
+  historyQuery: '',
+  /** 絞り込み中に、一度に出す行の数（「さらに表示」で増やす。入力を変えたら、戻す） */
+  historyLimit: 100,
   /** 履歴・ログのページで、内訳を開いているフックの実行の ID */
   expandedHookRuns: new Set<string>(),
   /** 実行ログのインライン展開用のキャッシュ（レビュー詳細） */
@@ -208,6 +213,8 @@ const state = {
   byokConfirmDelete: false,
   /** 設定の「リポジトリ」タブ: 各リポジトリの状態（パス → 状態）・確認中の解除・通知 */
   repoStatus: {} as Record<string, RepoStatus>,
+  /** 登録リポジトリごとの、いまのブランチ名（detached HEAD・Git ではないときは null）。窓に戻ったときも、読み直す */
+  repoBranches: {} as Record<string, string | null>,
   /** 「データを削除して枠を空ける」の確認中のリポジトリ（パス） */
   repoConfirmDelete: '',
   /** 各リポジトリのデータの量（履歴など）。解除の可否と、削除の確認に使う */
@@ -1186,17 +1193,22 @@ async function chooseAndAddFile(): Promise<void> {
 /** 登録リポジトリの、いまの状態（見つかるか・git か）と、データの量（履歴など）を読む。 */
 async function loadRepoStatus(icons = true): Promise<void> {
   const paths = state.registeredRepos.map((r) => r.path);
-  const before = JSON.stringify([state.repoStatus, state.repoData]);
+  const before = JSON.stringify([state.repoStatus, state.repoData, state.repoBranches]);
   try {
-    const [list, data] = await Promise.all([invoke<RepoStatus[]>('repo_status', { paths }), invoke<RepoDataRow[]>('repo_data', { paths })]);
+    const [list, data, branches] = await Promise.all([
+      invoke<RepoStatus[]>('repo_status', { paths }),
+      invoke<RepoDataRow[]>('repo_data', { paths }),
+      invoke<Record<string, string | null>>('repo_branches', { paths }),
+    ]);
     state.repoStatus = Object.fromEntries(list.map((x) => [x.path, x]));
     state.repoData = Object.fromEntries(data.map((x) => [x.path, x]));
+    state.repoBranches = branches;
   } catch (e) {
     state.repoMsg = { text: ut().app.repoStatusFailed(String(e)), kind: 'err' };
   }
   if (icons) for (const r of state.registeredRepos) void loadRepoIcon(r.path);
   // 窓に戻ったときの読み直しは、変わったときだけ描き直す（「追加」の押せる・押せないが、フォルダの移動に追いつくように）
-  if (icons || state.settings || JSON.stringify([state.repoStatus, state.repoData]) !== before) render();
+  if (icons || state.settings || JSON.stringify([state.repoStatus, state.repoData, state.repoBranches]) !== before) render();
 }
 
 /** Rust が返した登録の一覧を、画面の写しに入れる。 */
@@ -1619,8 +1631,42 @@ function togglePick(id: string): void {
   render();
 }
 
+const HISTORY_LIMIT = 100;
+const NO_RUNS: HookRun[] = [];
+const historyViewOf = createHistoryView();
+
+/** 「履歴・ログ」の絞り込みの結果。1 回の描き直しで、何度呼んでも、絞り込みは 1 回だけ（同じ入力なら、同じものを返す）。 */
+function historyView(): HistoryView {
+  return historyViewOf(state.history, state.hook.status?.recent ?? NO_RUNS, state.historyQuery, getAppLang());
+}
+
+/** 「履歴・ログ」の絞り込みの語（空なら、絞り込まない）。 */
+const historyTerms = (): string[] => historyView().terms;
+
+/** いま画面に出しているレビューの行。絞り込んでいなければ、全部。絞り込み中は、当てはまる行の、最初の historyLimit 件まで（数千行を、一度に描かない）。 */
+function displayedHistory(): ReviewSummary[] {
+  const v = historyView();
+  return v.terms.length ? v.reviews.slice(0, state.historyLimit) : state.history;
+}
+
+/** 「すべて選ぶ」: **いま画面に出している行だけ**が対象（隠れている行・まだ出していない行を、選ばない・消さない）。出している行が、全部選ばれていれば、その分を外す。 */
 function togglePickAll(): void {
-  state.picked = state.history.length > 0 && state.history.every((s) => state.picked.has(s.id)) ? new Set() : new Set(state.history.map((s) => s.id));
+  const shown = displayedHistory();
+  const allPicked = shown.length > 0 && shown.every((s) => state.picked.has(s.id));
+  const next = new Set(state.picked);
+  for (const s of shown) {
+    if (allPicked) next.delete(s.id);
+    else next.add(s.id);
+  }
+  state.picked = next;
+  render();
+}
+
+/** 絞り込みを変えたとき。見えなくなった行の選択は、外す（見えない行を、レポートや削除に入れない）。 */
+function setHistoryQuery(q: string): void {
+  state.historyQuery = q;
+  state.historyLimit = HISTORY_LIMIT;
+  state.picked = prunePicks(state.picked, displayedHistory());
   render();
 }
 
@@ -1767,6 +1813,10 @@ function headerView(): HTMLElement {
       state.repo
         ? h('span', { class: 'repo-name-badge' }, renderAppIcon(activeName, state.repoIcons[state.repo], isDocPath(state.repo)), activeName)
         : h('span', { class: 'muted' }, ut().app.selectRepoLeft),
+      // いまのブランチ名（detached HEAD・Git ではないときは、出さない）
+      state.repo && state.repoBranches[state.repo]
+        ? h('span', { class: 'repo-branch', title: msg(getAppLang()).mainUi.branchTitle }, `⎇ ${state.repoBranches[state.repo]}`)
+        : null,
     ),
   );
 
@@ -2124,7 +2174,7 @@ function leftPanel(): HTMLElement {
   return h(
     'aside',
     { class: 'left' },
-    repoListPanel(visibleRepos(state.registeredRepos), state.repo, acts, state.repoIcons, addBlockedNow(), lang, Object.fromEntries(Object.entries(state.repoData).map(([path, d]) => [path, d.open]))),
+    repoListPanel(visibleRepos(state.registeredRepos), state.repo, acts, state.repoIcons, addBlockedNow(), lang, Object.fromEntries(Object.entries(state.repoData).map(([path, d]) => [path, d.open])), state.repoBranches),
   );
 }
 
@@ -2185,12 +2235,13 @@ function rightPanel(): HTMLElement {
   const lang = getAppLang();
   const m = msg(lang).mainUi;
   const scope = state.repo ? shortRepo(state.preview?.repo ?? state.repo) : m.rightPanelAllRepos;
-  const emptyText = state.repo ? m.rightPanelEmptyRepo : m.rightPanelEmptyAll;
+  const filtering = historyTerms().length > 0;
+  const emptyText = filtering ? m.historySearchNoMatch : state.repo ? m.rightPanelEmptyRepo : m.rightPanelEmptyAll;
   return h(
     'aside',
     { class: 'right' },
     historyPanel(
-      state.history,
+      displayedHistory(),
       state.selected?.id ?? null,
       state.picked,
       scope,
@@ -2215,6 +2266,16 @@ function rightPanel(): HTMLElement {
         render();
       },
       lang,
+      filtering,
+      filtering && historyView().reviews.length > state.historyLimit
+        ? {
+            count: historyView().reviews.length - state.historyLimit,
+            onMore: () => {
+              state.historyLimit += HISTORY_LIMIT;
+              render();
+            },
+          }
+        : undefined,
     ),
   );
 }
@@ -2967,6 +3028,47 @@ function runLogRefreshButton(): HTMLElement {
 }
 
 /**
+ * 「履歴・ログ」の絞り込みの入力欄（1 つ）。スペース区切りの複数語を、すべて満たす行だけを残す。
+ * 日本語入力の変換中は、絞り込まない（確定してから）。再描画で、欄の中身・カーソルが飛ばないよう、render() が、フォーカスを戻す。
+ */
+function historySearchBox(): HTMLElement {
+  const lang = getAppLang();
+  const m = msg(lang).mainUi;
+  const view = historyView();
+  const terms = view.terms;
+  const total = state.history.length + (state.hook.status?.recent?.length ?? 0);
+  const shown = view.reviews.length + view.hooks.length;
+  const input = h('input', {
+    id: 'history-query',
+    class: 'hsearch-input',
+    type: 'text',
+    value: state.historyQuery,
+    placeholder: m.historySearchPlaceholder,
+    'aria-label': m.historySearchLabel,
+    autocomplete: 'off',
+    spellcheck: 'false',
+    oninput: (e: Event) => {
+      if ((e as InputEvent).isComposing) return;
+      setHistoryQuery((e.target as HTMLInputElement).value);
+    },
+    oncompositionend: (e: Event) => setHistoryQuery((e.target as HTMLInputElement).value),
+  }) as HTMLInputElement;
+  return h(
+    'div',
+    { class: 'hsearch' },
+    h(
+      'div',
+      { class: 'hsearch-box' },
+      input,
+      state.historyQuery
+        ? h('button', { class: 'hsearch-clear', type: 'button', title: m.historySearchClear, 'aria-label': m.historySearchClear, onclick: () => setHistoryQuery('') }, '✕')
+        : null,
+    ),
+    terms.length ? h('span', { class: 'hsearch-count muted' }, m.historySearchCount(shown, total)) : null,
+  );
+}
+
+/**
  * 「履歴・ログ」のページの上に出す、フックの実行（新しい順）。レビューの履歴と、同じ書式の行。
  * 押すと、観点ごとの内訳と終わりのメッセージが、行の下に開く。フックの実行も、読めない行の知らせも無ければ、出さない。
  */
@@ -2974,7 +3076,7 @@ function hookRunsSection(): HTMLElement | null {
   const lang = getAppLang();
   const m = msg(lang).mainUi;
   const hm = msg(lang).hookUi;
-  const runs = state.hook.status?.recent ?? [];
+  const runs = historyView().hooks;
   const unreadable = state.hook.status?.log_unreadable ?? 0;
   // 読み取りに失敗したとき（記録の読み取りエラーなど）。「実行なし」と見分けがつくように、欄を出して、理由を見せる
   const loadError = state.hook.loadError;
@@ -3229,6 +3331,7 @@ function detailView(): HTMLElement {
       'main',
       { class: 'detail page page-aside' },
       pageHeader(n ? `${pm.pageTabHistory} (${n})` : pm.pageTabHistory, { actions: runLogRefreshButton() }),
+      historySearchBox(),
       hookRunsSection(),
       rightPanel(),
     );
@@ -3264,6 +3367,9 @@ function render(): void {
   const m = msg(getAppLang()).mainUi;
   // 設定・レポート・使用量を開いているあいだは、どのタブも「いま」にしない
   const inMode = !!(state.settings || state.report || state.usage);
+  // 絞り込みの入力欄に、入力中なら、描き直したあとも、フォーカスとカーソルを戻す
+  const ae = document.activeElement as HTMLInputElement | null;
+  const keepSearch = ae && ae.id === 'history-query' ? { start: ae.selectionStart, end: ae.selectionEnd } : null;
   root.replaceChildren(
     h(
       'div',
@@ -3284,6 +3390,13 @@ function render(): void {
   );
   const detailEl = root.querySelector('.detail');
   if (detailEl) detailEl.scrollTop = keepTop;
+  if (keepSearch) {
+    const el = document.getElementById('history-query') as HTMLInputElement | null;
+    if (el) {
+      el.focus();
+      el.setSelectionRange(keepSearch.start ?? el.value.length, keepSearch.end ?? el.value.length);
+    }
+  }
   if (scrollToResultNext) {
     scrollToResultNext = false;
     root.querySelector('.result-anchor')?.scrollIntoView({ block: 'start' });

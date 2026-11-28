@@ -200,6 +200,7 @@ export interface Messages {
     setNameTitle: string;
     unlinkTitle: string;
     openCountTitle: (n: number) => string;
+    branchTitle: string;
     heading: string;
     addTitle: string;
     addBtn: string;
@@ -277,6 +278,7 @@ export interface Messages {
     detailTitle: string;
     detailBtn: string;
     findingsCount: (n: number) => string;
+    showMore: (n: number) => string;
     groupCount: (n: number) => string;
     expandHistory: string;
     collapseHistory: string;
@@ -397,6 +399,12 @@ export interface Messages {
     pageTabRepos: string;
     pageTabHistory: string;
     hookRunsHeading: string;
+    branchTitle: string;
+    historySearchPlaceholder: string;
+    historySearchLabel: string;
+    historySearchCount: (shown: number, total: number) => string;
+    historySearchClear: string;
+    historySearchNoMatch: string;
     runRecordSummary: string;
     pageTabNewReview: string;
     usageTitle: string;
@@ -518,6 +526,7 @@ export interface Messages {
       tokensValue: (input: number | null, output: number | null) => string;
       cost: string;
       failure: string;
+      branch: string;
       base: string;
       baseWorking: string;
       baseCommit: (spec: string, subject: string) => string;
@@ -778,6 +787,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       setNameTitle: '表示名をつける',
       unlinkTitle: '登録を解除',
       openCountTitle: (n) => `未対応の指摘 ${n} 件（未仕分けと、対応中。待ち・無視・済みは含みません）`,
+      branchTitle: 'いま、チェックアウトしているブランチ',
       heading: 'リポジトリ',
       addTitle: 'リポジトリを追加',
       addBtn: '+ 追加',
@@ -848,6 +858,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       detailTitle: 'このレビューの詳細（所要時間・トークン・見る範囲など）を開く',
       detailBtn: '詳細',
       findingsCount: (n) => `指摘 ${n} 件`,
+      showMore: (n) => `さらに表示（残り ${n} 件）`,
       groupCount: (n) => `（${n} 件）`,
       expandHistory: '履歴を展開する',
       collapseHistory: '履歴を折り畳む',
@@ -974,6 +985,12 @@ export const MESSAGES: Record<Lang, Messages> = {
       pageTabRepos: 'リポジトリ',
       pageTabHistory: '履歴・ログ',
       hookRunsHeading: 'フックの実行',
+      branchTitle: 'いま、チェックアウトしているブランチ',
+      historySearchPlaceholder: '絞り込み（スペースで区切ると、すべてを満たすもの。例: 潜在バグ 昨日 未対応）',
+      historySearchLabel: '履歴・ログを絞り込む',
+      historySearchCount: (shown, total) => `${shown} 件 / 全 ${total} 件`,
+      historySearchClear: '絞り込みを解除',
+      historySearchNoMatch: '当てはまるものがありません。語を減らすか、解除してください。',
       runRecordSummary: '実行の記録（モデル・トークン・所要時間・入力・差分）',
       pageTabNewReview: '新規レビュー',
       usageTitle: 'トークン使用量',
@@ -1104,6 +1121,7 @@ export const MESSAGES: Record<Lang, Messages> = {
         tokensValue: (i, o) => `入力 ${i === null ? '報告なし' : i.toLocaleString()} / 出力 ${o === null ? '報告なし' : o.toLocaleString()}`,
         cost: '費用（提供元の報告）',
         failure: '失敗の理由',
+        branch: 'ブランチ',
         base: '比較元',
         baseWorking: '未コミットの変更（HEAD との差）',
         baseCommit: (spec, subject) => (subject ? `${spec}（${subject}）から、いまの状態まで` : `${spec} から、いまの状態まで`),
@@ -1468,6 +1486,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       setNameTitle: 'Set display name',
       unlinkTitle: 'Unlink registration',
       openCountTitle: (n) => `${n} open finding(s) (untriaged or in progress; not counting Wait, Ignore or Done)`,
+      branchTitle: 'The branch checked out now',
       heading: 'Repositories',
       addTitle: 'Add repository',
       addBtn: '+ Add',
@@ -1597,6 +1616,7 @@ export const MESSAGES: Record<Lang, Messages> = {
       detailTitle: 'Open review details (duration, tokens, diff range, etc.)',
       detailBtn: 'Details',
       findingsCount: (n) => `${n} finding(s)`,
+      showMore: (n) => `Show more (${n} left)`,
       groupCount: (n) => ` (${n})`,
       expandHistory: 'Expand history',
       collapseHistory: 'Collapse history',
@@ -1724,6 +1744,12 @@ export const MESSAGES: Record<Lang, Messages> = {
       pageTabRepos: 'Repositories',
       pageTabHistory: 'History & log',
       hookRunsHeading: 'Hook runs',
+      branchTitle: 'The branch checked out now',
+      historySearchPlaceholder: 'Filter (space-separated words must all match. e.g. bugs yesterday open)',
+      historySearchLabel: 'Filter history and log',
+      historySearchCount: (shown, total) => `${shown} of ${total}`,
+      historySearchClear: 'Clear the filter',
+      historySearchNoMatch: 'Nothing matches. Remove a word or clear the filter.',
       runRecordSummary: 'Run record (model, tokens, duration, input, diff)',
       pageTabNewReview: 'New review',
       usageTitle: 'Token usage',
@@ -1855,6 +1881,7 @@ export const MESSAGES: Record<Lang, Messages> = {
         tokensValue: (i, o) => `in ${i === null ? 'not reported' : i.toLocaleString()} / out ${o === null ? 'not reported' : o.toLocaleString()}`,
         cost: 'Cost (as reported)',
         failure: 'Why it failed',
+        branch: 'Branch',
         base: 'Compared from',
         baseWorking: 'Uncommitted changes (against HEAD)',
         baseCommit: (spec, subject) => (subject ? `${spec} (${subject}) to the current state` : `${spec} to the current state`),

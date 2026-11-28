@@ -16,6 +16,10 @@ use std::path::Path;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotRecord {
     pub head: String,
+    /// レビューしたときのブランチ名。古い記録・detached HEAD・文書レビューには無い。
+    /// 古い版のアプリは、この項目を知らなくても、読み捨てて、記録を読める（`deny_unknown_fields` は付けていない）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
     /// 比較元。古い記録には無い（そのときは、`HEAD` との比較）。
     #[serde(default)]
     pub base: crate::snapshot::Base,
@@ -36,6 +40,7 @@ impl From<&Snapshot> for SnapshotRecord {
     fn from(s: &Snapshot) -> Self {
         SnapshotRecord {
             head: s.head.clone(),
+            branch: s.branch.clone(),
             base: s.base.clone(),
             diff_hash: s.diff_hash.clone(),
             diff_bytes: s.diff_bytes,
@@ -164,6 +169,8 @@ pub struct ReviewSummary {
     pub counts: Option<TriageCounts>,
     /// レビューしたときの HEAD のコミット（全文）。記録に無い・読めないときは None
     pub head: Option<String>,
+    /// レビューしたときのブランチ名。古い記録・detached HEAD・文書レビューは None
+    pub branch: Option<String>,
 }
 
 fn total_tokens(input: Option<u64>, output: Option<u64>) -> Option<u64> {
@@ -188,6 +195,7 @@ impl From<&ReviewRecord> for ReviewSummary {
             seq: r.seq,
             counts: None,
             head: Some(r.snapshot.head.clone()).filter(|h| !h.is_empty()),
+            branch: r.snapshot.branch.clone().filter(|b| !b.is_empty()),
         }
     }
 }
@@ -491,18 +499,21 @@ pub fn summaries(dir: &Path, limit: usize) -> Vec<ReviewSummary> {
     summaries_in(dir, None, limit)
 }
 
-/// 一覧に出す、レビューしたときの HEAD のコミット（記録の `snapshot.head`）。
+/// 一覧に出す、レビューしたときの HEAD のコミットと、ブランチ名（記録の `snapshot.head`・`snapshot.branch`）。
 /// 記録の本文（プロンプトや差分を含む大きな JSON）を、一覧のたびに読むと遅い（1000 件・合計 140MB で、約 0.28 秒）ので、
-/// 派生の表 `review_head` に、初めて見たときに 1 回だけ取り出して、控える。記録は書き換わらないので、控えは古くならない。
+/// 派生の表 `review_meta` に、初めて見たときに 1 回だけ取り出して、控える。記録は書き換わらないので、控えは古くならない。
 /// 控えは、派生物で、版は上げない（古い版のアプリは、この表を知らないだけ。足りない分は、次に一覧を作るときに、取り出し直す）。
-/// 記録の全文が壊れている・コミットが無い・空のときは None（一覧は、そのまま出る）。控えを作れなくても、取り出した値は返す。
-fn heads_for(conn: &Connection, ids: &[&str]) -> std::collections::HashMap<String, Option<String>> {
-    let mut out: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
-    let _ = conn.execute("CREATE TABLE IF NOT EXISTS review_head (id TEXT PRIMARY KEY, head TEXT NOT NULL)", []);
-    if let Ok(mut stmt) = conn.prepare("SELECT id, head FROM review_head") {
-        if let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
-            for (id, head) in rows.flatten() {
-                out.insert(id, Some(head).filter(|h| !h.is_empty()));
+/// 記録の全文が壊れている・項目が無い・空のときは None（一覧は、そのまま出る）。控えを作れなくても、取り出した値は返す。
+type Meta = (Option<String>, Option<String>);
+
+fn meta_for(conn: &Connection, ids: &[&str]) -> std::collections::HashMap<String, Meta> {
+    let non_empty = |s: String| Some(s).filter(|v| !v.is_empty());
+    let mut out: std::collections::HashMap<String, Meta> = std::collections::HashMap::new();
+    let _ = conn.execute("CREATE TABLE IF NOT EXISTS review_meta (id TEXT PRIMARY KEY, head TEXT NOT NULL, branch TEXT NOT NULL)", []);
+    if let Ok(mut stmt) = conn.prepare("SELECT id, head, branch FROM review_meta") {
+        if let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))) {
+            for (id, head, branch) in rows.flatten() {
+                out.insert(id, (non_empty(head), non_empty(branch)));
             }
         }
     }
@@ -510,26 +521,35 @@ fn heads_for(conn: &Connection, ids: &[&str]) -> std::collections::HashMap<Strin
     if missing.is_empty() {
         return out;
     }
-    let mut found: Vec<(&str, String)> = Vec::new();
-    for id in &missing {
-        let head: Option<String> = conn
-            .query_row(
-                "SELECT CASE WHEN json_valid(record) THEN json_extract(record, '$.snapshot.head') END FROM reviews WHERE id = ?1",
-                [id],
-                |r| r.get::<_, Option<String>>(0),
-            )
-            .ok()
-            .flatten();
-        found.push((id, head.unwrap_or_default()));
+    // 控えの無い記録は、まとめて（400 件ずつ）取り出す。1 件ずつ検索を出さない。
+    // 記録が壊れている・項目が無いときは、「無い」として控える。**読み取りに失敗したとき（データベースの混雑など）は、控えない**
+    // （空で控えると、あとで読めるようになっても、直らない）。その行は、今回は空で出して、次の一覧で、やり直す。
+    let mut found: Vec<(String, String, String)> = Vec::new();
+    for chunk in missing.chunks(400) {
+        let marks = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT id, CASE WHEN json_valid(record) THEN json_extract(record, '$.snapshot.head') END, \
+                    CASE WHEN json_valid(record) THEN json_extract(record, '$.snapshot.branch') END \
+             FROM reviews WHERE id IN ({marks})"
+        );
+        let Ok(mut stmt) = conn.prepare(&sql) else { continue };
+        let Ok(rows) = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?))
+        }) else {
+            continue;
+        };
+        for (id, head, branch) in rows.flatten() {
+            found.push((id, head.unwrap_or_default(), branch.unwrap_or_default()));
+        }
     }
     if let Ok(tx) = conn.unchecked_transaction() {
-        for (id, head) in &found {
-            let _ = tx.execute("INSERT OR IGNORE INTO review_head (id, head) VALUES (?1, ?2)", rusqlite::params![id, head]);
+        for (id, head, branch) in &found {
+            let _ = tx.execute("INSERT OR IGNORE INTO review_meta (id, head, branch) VALUES (?1, ?2, ?3)", rusqlite::params![id, head, branch]);
         }
         let _ = tx.commit();
     }
-    for (id, head) in found {
-        out.insert(id.to_string(), Some(head).filter(|h| !h.is_empty()));
+    for (id, head, branch) in found {
+        out.insert(id, (non_empty(head), non_empty(branch)));
     }
     out
 }
@@ -561,14 +581,18 @@ pub fn summaries_in(dir: &Path, repo: Option<&str>, limit: usize) -> Vec<ReviewS
             seq: r.get::<_, Option<i64>>(10)?.and_then(|n| u32::try_from(n).ok()),
             counts: None,
             head: None, // 下で、控えから入れる
+            branch: None,
         })
     }) else {
         return Vec::new();
     };
     let mut out: Vec<ReviewSummary> = rows.flatten().collect();
-    let mut heads = heads_for(&conn, &out.iter().map(|s| s.id.as_str()).collect::<Vec<_>>());
+    let mut metas = meta_for(&conn, &out.iter().map(|s| s.id.as_str()).collect::<Vec<_>>());
     for s in &mut out {
-        s.head = heads.remove(&s.id).flatten();
+        if let Some((head, branch)) = metas.remove(&s.id) {
+            s.head = head;
+            s.branch = branch;
+        }
     }
     // 仕分けの件数。読み取りに失敗したら、None のまま（0 件に見せない）
     if let Ok(by_review) = triage_counts(&conn, repo) {
@@ -636,7 +660,7 @@ pub fn sample_record(id: &str, at: u64) -> ReviewRecord {
         repo: "/r".into(),
         recipe: Recipe { id: "security".into(), title: "セキュリティ".into(), source: "builtin".into(), prompt: "p".into(), kind: crate::recipe::Kind::Llm, needs_related: false, needs_spec: false },
         provider: ProviderInfo { id: "mock".into(), label: "m".into(), note: "n".into() },
-        snapshot: SnapshotRecord { head: "h".into(), base: Default::default(), diff_hash: "d".into(), diff_bytes: 1, files: vec![], excluded: vec![] },
+        snapshot: SnapshotRecord { head: "h".into(), branch: None, base: Default::default(), diff_hash: "d".into(), diff_bytes: 1, files: vec![], excluded: vec![] },
         prompt: "p".into(),
         model: "mock".into(),
         response_text: "".into(),
@@ -1093,6 +1117,86 @@ mod tests {
         db::open(&dir).unwrap().execute("UPDATE reviews SET record = '{broken' WHERE id = 'b'", []).unwrap();
         assert_eq!(summaries(&dir, 10).iter().find(|x| x.id == "b").unwrap().head.as_deref(), Some("bbbb222"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_branch_is_in_the_record_and_the_summary_and_old_records_without_it_still_load() {
+        let dir = scratch("summ-branch");
+        let mut a = rec("a", 1);
+        a.snapshot.branch = Some("feature/x".into());
+        let mut empty = rec("empty", 2);
+        empty.snapshot.branch = Some(String::new());
+        append(&dir, &a).unwrap();
+        append(&dir, &empty).unwrap();
+        append(&dir, &rec("none", 3)).unwrap();
+        let s = summaries(&dir, 10);
+        let by = |id: &str| s.iter().find(|x| x.id == id).unwrap().branch.clone();
+        assert_eq!(by("a").as_deref(), Some("feature/x"));
+        assert_eq!(by("empty"), None, "空文字は、「あり」にしない");
+        assert_eq!(by("none"), None);
+        assert_eq!(ReviewSummary::from(&a).branch.as_deref(), Some("feature/x"), "記録から作った要約と、同じ値");
+        // ブランチが無いときは、JSON にも、書かない（古い版のアプリが読む形と、同じ）。あるときは、書く
+        assert!(!serde_json::to_string(&rec("none", 3)).unwrap().contains("\"branch\""));
+        assert!(serde_json::to_string(&a).unwrap().contains("\"branch\":\"feature/x\""));
+        // 古い記録（branch の項目が無い JSON）も、読める
+        let mut v: serde_json::Value = serde_json::to_value(&a).unwrap();
+        v["snapshot"].as_object_mut().unwrap().remove("branch");
+        let old: ReviewRecord = serde_json::from_value(v).unwrap();
+        assert_eq!(old.snapshot.branch, None);
+        // 控えから出る（本文を壊しても、同じ値）
+        db::open(&dir).unwrap().execute("UPDATE reviews SET record = '{broken' WHERE id = 'a'", []).unwrap();
+        assert_eq!(summaries(&dir, 10).iter().find(|x| x.id == "a").unwrap().branch.as_deref(), Some("feature/x"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_read_failure_is_not_cached_as_empty_and_the_next_listing_retries() {
+        // `record` 列が読めない状態（読み取りの失敗）を、列の無い表で作る
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("CREATE TABLE reviews (id TEXT PRIMARY KEY)", []).unwrap();
+        conn.execute("INSERT INTO reviews (id) VALUES ('a')", []).unwrap();
+        let first = meta_for(&conn, &["a"]);
+        assert!(!first.contains_key("a"), "読めなかった行は、値を返さない（空として扱う）");
+        let cached: i64 = conn.query_row("SELECT COUNT(*) FROM review_meta", [], |r| r.get(0)).unwrap();
+        assert_eq!(cached, 0, "読み取りの失敗を、「無い」として控えない");
+        // 読めるようになったら、次の一覧で、取り出して、控える
+        conn.execute("ALTER TABLE reviews ADD COLUMN record TEXT", []).unwrap();
+        conn.execute("UPDATE reviews SET record = '{\"snapshot\":{\"head\":\"abc1234\",\"branch\":\"main\"}}' WHERE id = 'a'", []).unwrap();
+        let second = meta_for(&conn, &["a"]);
+        assert_eq!(second["a"], (Some("abc1234".into()), Some("main".into())));
+        let cached: i64 = conn.query_row("SELECT COUNT(*) FROM review_meta", [], |r| r.get(0)).unwrap();
+        assert_eq!(cached, 1);
+    }
+
+    #[test]
+    fn a_broken_or_empty_record_is_cached_as_having_none_so_it_is_not_read_again() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("CREATE TABLE reviews (id TEXT PRIMARY KEY, record TEXT)", []).unwrap();
+        conn.execute("INSERT INTO reviews VALUES ('broken', '{broken'), ('nohead', '{\"snapshot\":{}}')", []).unwrap();
+        let got = meta_for(&conn, &["broken", "nohead"]);
+        assert_eq!(got["broken"], (None, None));
+        assert_eq!(got["nohead"], (None, None));
+        let cached: i64 = conn.query_row("SELECT COUNT(*) FROM review_meta", [], |r| r.get(0)).unwrap();
+        assert_eq!(cached, 2, "本当に無い記録は、控える（毎回、読み直さない）");
+    }
+
+    #[test]
+    fn many_missing_records_are_fetched_in_chunks_not_one_query_each() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("CREATE TABLE reviews (id TEXT PRIMARY KEY, record TEXT)", []).unwrap();
+        let tx = conn.unchecked_transaction().unwrap();
+        for i in 0..1000 {
+            tx.execute("INSERT INTO reviews VALUES (?1, ?2)", rusqlite::params![format!("r{i}"), format!("{{\"snapshot\":{{\"head\":\"h{i}\",\"branch\":\"b{i}\"}}}}")]).unwrap();
+        }
+        tx.commit().unwrap();
+        let ids: Vec<String> = (0..1000).map(|i| format!("r{i}")).collect();
+        let refs: Vec<&str> = ids.iter().map(String::as_str).collect();
+        let got = meta_for(&conn, &refs);
+        assert_eq!(got.len(), 1000);
+        assert_eq!(got["r0"], (Some("h0".into()), Some("b0".into())));
+        assert_eq!(got["r999"], (Some("h999".into()), Some("b999".into())));
+        let cached: i64 = conn.query_row("SELECT COUNT(*) FROM review_meta", [], |r| r.get(0)).unwrap();
+        assert_eq!(cached, 1000);
     }
 
     #[test]

@@ -225,6 +225,8 @@ export interface ReviewRecord {
   provider: ProviderInfo;
   snapshot: {
     head: string;
+    /** レビューしたときのブランチ名。古い記録・detached HEAD・文書レビューには、無い */
+    branch?: string | null;
     /** 古い記録には無い（そのときは、HEAD との比較） */
     base?: Base;
     diff_hash: string;
@@ -359,6 +361,8 @@ export interface ReviewSummary {
   counts: TriageCounts | null;
   /** レビューしたときの HEAD のコミット（全文）。古い記録・読めない記録は、無い */
   head?: string | null;
+  /** レビューしたときのブランチ名。古い記録・detached HEAD・文書レビューは、無い */
+  branch?: string | null;
 }
 
 /** 設定項目 1 つぶんの説明（`settings.rs` の `meta()`）。 */

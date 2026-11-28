@@ -366,7 +366,7 @@ describe('hookRunRow（ログの、フックの行）', () => {
     let toggled = 0;
     const el = hookRunRow(run(), 'ja', { expanded: false, onToggle: () => toggled++ });
     expect(el.querySelector('.hookstep')).toBeNull();
-    expect([...el.children].map((c) => c.className.split(' ')[0])).toEqual(['hlead', 'hwhen', 'h1', 'hcommit', 'hfind', 'hcounts-empty']);
+    expect([...el.children].map((c) => c.className.split(' ')[0])).toEqual(['hlead', 'hwhen', 'h1', 'hbranch', 'hcommit', 'hfind', 'hcounts-empty']);
     expect(el.querySelector('.h1 .badge')?.textContent).toBe('フック');
     expect(el.querySelector('.hfind')?.textContent).toBe('指摘 3 件');
     expect(el.querySelector('.hdur')?.textContent).toBe('11.6 秒');

@@ -110,7 +110,7 @@ export const shortCommit = (commit: string | null | undefined): string => (commi
 
 /**
  * レビュー 1 回ぶんの 1 行。履歴と、ログで、同じ書式にする。
- * 左から: 先頭の欄（チェック。フックの行は空。幅は同じ）・日時・観点（と失敗）・コミット・指摘の件数・仕分けの件数。
+ * 左から: 先頭の欄（チェック。フックの行は空。幅は同じ）・日時・観点（と失敗）・ブランチ・コミット・指摘の件数・仕分けの件数。
  * フックの実行の行（hookview.ts の hookRunRow）も、同じ列にそろえる。
  */
 export function reviewRow(
@@ -133,6 +133,7 @@ export function reviewRow(
       h('span', { class: 'ht' }, reviewName(s.recipe_title, s.seq, lang)),
       s.failed ? h('span', { class: 'badge bad' }, m.failedBadge) : null,
     ),
+    h('span', { class: 'hbranch', title: s.branch ?? '' }, s.branch ?? ''),
     h('span', { class: 'hcommit', title: s.head ?? '' }, shortCommit(s.head)),
     h('span', { class: 'hfind' }, m.findingsCount(s.findings)),
     // 指摘のあるレビューだけ（0 件・失敗には、出さない）。読み取りに失敗したとき（null）も、出さない（0 件に見せない）
@@ -153,6 +154,10 @@ export function historyPanel(
   isCollapsed: boolean = false,
   onToggleCollapse?: () => void,
   lang: Lang = getAppLang(),
+  /** 絞り込み中は、日付の折りたたみを使わず、当てはまる行を、平らに並べる（古い日付に、隠れないように） */
+  flat = false,
+  /** 絞り込み中に、まだ出していない行が残っているとき（件数と、押したときの動き）。「さらに表示」のボタンを出す */
+  more?: { count: number; onMore: () => void },
 ): HTMLElement {
   const m = msg(lang).historyView;
   const all = items.length > 0 && items.every((s) => picked.has(s.id));
@@ -170,7 +175,7 @@ export function historyPanel(
         onchange: () => act.toggle(s.id),
       }),
     });
-  const { shown, groups } = splitHistory(items, lang);
+  const { shown, groups } = flat ? { shown: items, groups: [] } : splitHistory(items, lang);
   // 日付のグループ: 閉じておく。結果を開いているレビューが入っているグループは、開く（行が、見えなくならないように）
   const groupEls = groups.map((g) => {
     const open = openDays.has(g.key) || g.items.some((s) => s.id === openId);
@@ -224,6 +229,7 @@ export function historyPanel(
         )
       : null,
     items.length ? h('ul', { class: 'history' }, ...shown.map(row)) : h('p', { class: 'muted' }, emptyText),
+    more ? h('button', { class: 'hmore', type: 'button', onclick: more.onMore }, m.showMore(more.count)) : null,
     ...groupEls,
   );
 }

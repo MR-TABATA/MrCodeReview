@@ -66,6 +66,21 @@ describe('repoListPanel', () => {
     expect(repoListPanel(repos, '', a).querySelectorAll('.repo-open-badge')).toHaveLength(0);
   });
 
+  it('いまのブランチ名を、パスの下に出す。無い（detached HEAD・Git ではない）・渡さないときは、出さない', () => {
+    const a = acts();
+    const repos = [
+      { id: '1', path: '/r/a' },
+      { id: '2', path: '/r/b' },
+      { id: '3', path: '/r/c' },
+    ];
+    const el = repoListPanel(repos, '', a, {}, null, undefined, {}, { '/r/a': 'feature/x', '/r/b': null });
+    const items = [...el.querySelectorAll('.repo-item')];
+    expect(items[0].querySelector('.repo-item-branch')?.textContent).toBe('⎇ feature/x');
+    expect(items[1].querySelector('.repo-item-branch')).toBeNull();
+    expect(items[2].querySelector('.repo-item-branch')).toBeNull();
+    expect(repoListPanel(repos, '', a).querySelectorAll('.repo-item-branch')).toHaveLength(0);
+  });
+
   it('件数のバッジは、20 件以上のときだけ strong（塗りつぶし）。19 件までは、数字だけ', () => {
     expect(OPEN_STRONG_FROM).toBe(20);
     const repos = [{ id: '1', path: '/r/a' }, { id: '2', path: '/r/b' }, { id: '3', path: '/r/c' }];

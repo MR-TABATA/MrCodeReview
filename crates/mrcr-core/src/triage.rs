@@ -291,7 +291,7 @@ mod tests {
             repo: "/r".into(),
             recipe: Recipe { id: "security".into(), title: "セキュリティ".into(), source: "builtin".into(), prompt: "".into(), kind: crate::recipe::Kind::Llm, needs_related: false, needs_spec: false },
             provider: ProviderInfo { id: "mock".into(), label: "m".into(), note: "".into() },
-            snapshot: SnapshotRecord { head: "216b161ddb5c".into(), base: Default::default(), diff_hash: "ce494d6b09234".into(), diff_bytes: 1, files: vec![], excluded: vec![] },
+            snapshot: SnapshotRecord { head: "216b161ddb5c".into(), branch: None, base: Default::default(), diff_hash: "ce494d6b09234".into(), diff_bytes: 1, files: vec![], excluded: vec![] },
             prompt: "".into(),
             model: "".into(),
             response_text: "".into(),

@@ -187,7 +187,7 @@ mod tests {
             repo: repo.into(),
             recipe: Recipe { id: recipe.into(), title: recipe.into(), source: "builtin".into(), prompt: "p".into(), kind: Kind::Llm, needs_related: false, needs_spec: false },
             provider: ProviderInfo { id: provider.into(), label: format!("L-{provider}"), note: "n".into() },
-            snapshot: SnapshotRecord { head: "h".into(), base: Default::default(), diff_hash: "d".into(), diff_bytes: 1, files: vec![], excluded: vec![] },
+            snapshot: SnapshotRecord { head: "h".into(), branch: None, base: Default::default(), diff_hash: "d".into(), diff_bytes: 1, files: vec![], excluded: vec![] },
             prompt: "p".into(),
             model: model.into(),
             response_text: String::new(),

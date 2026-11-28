@@ -500,6 +500,21 @@ fn byok_save_config(state: tauri::State<'_, AppState>, model: String, max_tokens
     byok::save(&state.data_dir, &byok::Config { model: model.trim().to_string(), max_tokens })
 }
 
+/// 登録済みのリポジトリごとの、いまのブランチ名（画面のヘッダーとリポジトリの一覧に出す）。
+/// detached HEAD・Git のリポジトリではない・登録されていないものは None。登録されていない場所は、読まない。
+#[tauri::command]
+async fn repo_branches(state: tauri::State<'_, AppState>, paths: Vec<String>) -> Result<std::collections::HashMap<String, Option<String>>, String> {
+    let data_dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || repo_branches_checked(&data_dir, &paths)).await.map_err(|e| e.to_string())
+}
+
+fn repo_branches_checked(data_dir: &Path, paths: &[String]) -> std::collections::HashMap<String, Option<String>> {
+    paths
+        .iter()
+        .map(|p| (p.clone(), if repos::require_registered(data_dir, p).is_ok() { snapshot::current_branch(p) } else { None }))
+        .collect()
+}
+
 /// 画面の「比較元」に出す選択肢（未コミットの変更・直近のコミット・ブランチの分岐点・最近のコミット）。
 #[tauri::command]
 async fn list_bases(state: tauri::State<'_, AppState>, repo: String) -> Result<Vec<snapshot::BaseOption>, String> {
@@ -1882,6 +1897,7 @@ pub fn run() {
             report_save,
             print_page,
             list_bases,
+        repo_branches,
             continue_info,
             list_spec_files,
             list_spec_sections,
@@ -2108,6 +2124,22 @@ mod tests {
         assert!(continue_info_checked(&data, repo_s, "tests").unwrap().is_none(), "失敗した実行は、前回にならない");
 
         let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn repo_branches_returns_the_current_branch_only_for_registered_repos() {
+        let repo = demo_repo("branches");
+        let repo_s = repo.to_str().unwrap();
+        let data = std::env::temp_dir().join(format!("mrcr-branches-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        repos::add(&data, repo_s, None).unwrap();
+        let other = demo_repo("branches-unregistered");
+        let other_s = other.to_str().unwrap().to_string();
+        let out = repo_branches_checked(&data, &[repo_s.to_string(), other_s.clone(), "/nonexistent-mrcr-dir/x".to_string()]);
+        assert!(out[repo_s].is_some(), "登録済みは、いまのブランチ名が出る");
+        assert_eq!(out[&other_s], None, "登録されていない場所は、読まない");
+        assert_eq!(out["/nonexistent-mrcr-dir/x"], None);
         let _ = std::fs::remove_dir_all(&data);
     }
 

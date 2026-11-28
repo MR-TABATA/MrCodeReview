@@ -82,7 +82,7 @@ describe('historyPanel', () => {
   it('1 行: 日時・観点・指摘の件数・仕分けの件数が、1 つの行に並ぶ。「詳細」のボタンは無い（行を押すと開く）', () => {
     const { el } = render([]);
     const row = el.querySelector('li') as HTMLElement;
-    expect([...row.children].map((c) => c.className.split(' ').pop())).toEqual(['hlead', 'hwhen', 'h1', 'hcommit', 'hfind', 'hcounts']);
+    expect([...row.children].map((c) => c.className.split(' ').pop())).toEqual(['hlead', 'hwhen', 'h1', 'hbranch', 'hcommit', 'hfind', 'hcounts']);
     expect(row.querySelector('.hdetail')).toBeNull();
     expect(row.querySelector('.hbody')).toBeNull();
     expect(row.querySelector('.ht')?.textContent).toBe('潜在バグ');
@@ -96,6 +96,14 @@ describe('historyPanel', () => {
     expect(cls(S('c', { counts: { open: 0, done: 2, wait: 0, dismiss: 0 } }))).toContain('st-done');
     expect(cls(S('d', { findings: 0, counts: { open: 0, done: 0, wait: 0, dismiss: 0 } }))).not.toMatch(/st-/);
     expect(cls(S('e', { counts: null }))).not.toMatch(/st-/);
+  });
+
+  it('ブランチ: レビューしたときのブランチ名を、コミットの前の列に出す（全文は title）。無いときは、空', () => {
+    const items = [S('a', { branch: 'feature/long-branch-name' }), S('b'), S('c', { branch: null })];
+    const { el } = render([], acts(), null, items);
+    const cells = [...el.querySelectorAll('li .hbranch')] as HTMLElement[];
+    expect(cells.map((c) => c.textContent)).toEqual(['feature/long-branch-name', '', '']);
+    expect(cells[0].title).toBe('feature/long-branch-name');
   });
 
   it('コミット: レビューしたときの HEAD を、7 文字で出す（全文は title）。記録に無いときは、空', () => {

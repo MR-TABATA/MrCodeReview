@@ -40,6 +40,12 @@ describe('実行の記録（結果のページの下）', () => {
     expect(has(el, 'プロンプト', '5 文字')).toBe(true);
   });
 
+  it('ブランチ: 記録にあれば、その名前。無ければ「なし」', () => {
+    const withBranch = review({ snapshot: { head: 'abc', branch: 'feature/x', diff_hash: 'x', diff_bytes: 1, files: [], excluded: [] } as never });
+    expect(has(runLogDetail(withBranch, 'ja'), 'ブランチ', 'feature/x')).toBe(true);
+    expect(has(runLogDetail(review(), 'ja'), 'ブランチ', 'なし')).toBe(true);
+  });
+
   it('比較元がコミットなら、そのコミットと件名。設計書があれば、名前を並べる。関連コードがあれば、件数', () => {
     const el = runLogDetail(
       review({

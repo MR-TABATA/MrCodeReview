@@ -43,6 +43,7 @@ export function runLogDetail(
       'div',
       { class: 'rld-group' },
       h('h4', {}, t.groupInput),
+      row(t.branch, r.snapshot.branch ?? t.none),
       row(t.base, baseText),
       row(t.diff, t.diffValue(r.snapshot.files.length, r.snapshot.diff_bytes)),
       row(t.specs, specs.length ? specs.map((s) => s.display_name).join('、') : t.none),

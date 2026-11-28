@@ -157,6 +157,8 @@ export function repoListPanel(
   lang: Lang = getAppLang(),
   /** リポジトリのパス → 「未」の指摘の数。0 や未取得は、出さない */
   openCounts: Record<string, number> = {},
+  /** リポジトリのパス → いまのブランチ名。無い（detached HEAD・Git ではない）ものは、出さない */
+  branches: Record<string, string | null> = {},
 ): HTMLElement {
   const m = msg(lang).repoView;
   const listEl = h('div', { class: 'repo-list' });
@@ -193,6 +195,7 @@ export function repoListPanel(
             { class: 'repo-item-text' },
             h('div', { class: 'repo-item-name' }, title),
             h('div', { class: 'repo-item-path', title: r.path }, shownPath),
+            branches[r.path] ? h('div', { class: 'repo-item-branch', title: m.branchTitle }, `⎇ ${branches[r.path]}`) : null,
           ),
         ),
         h(

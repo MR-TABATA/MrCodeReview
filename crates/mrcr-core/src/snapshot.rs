@@ -42,6 +42,8 @@ pub struct Base {
 pub struct Snapshot {
     pub repo: String,
     pub head: String,
+    /// レビューしたときのブランチ名。detached HEAD・文書レビュー（ファイル指定）・読めないときは None。
+    pub branch: Option<String>,
     /// 比較元。選ばなければ `HEAD`（未コミットの変更だけ）。
     pub base: Base,
     /// 送る差分全体の FNV-1a 64（hex）。結果をこの状態に紐づけるためのもの。
@@ -407,6 +409,7 @@ pub fn take_file(path: &Path) -> Result<Snapshot, String> {
     Ok(Snapshot {
         repo: file_full_path,
         head: String::new(),
+        branch: None,
         base: Base {
             spec: "FILE".to_string(),
             hash: String::new(),
@@ -495,9 +498,11 @@ fn take_inner(repo: &str, limits: &Limits, base_spec: &str, committed_to: Option
     let (files, mut excluded) = select_with(chunks, limits);
     excluded.append(&mut untracked_excluded);
     let diff_text: String = files.iter().map(|f| f.text.as_str()).collect();
+    let branch = current_branch(&top);
     Ok(Snapshot {
         repo: top,
         head,
+        branch,
         base,
         diff_hash: fnv1a64(diff_text.as_bytes()),
         diff_bytes: diff_text.len(),
@@ -505,6 +510,11 @@ fn take_inner(repo: &str, limits: &Limits, base_spec: &str, committed_to: Option
         excluded,
         diff_text,
     })
+}
+
+/// いま、チェックアウトしているブランチ名。detached HEAD・Git のリポジトリではない・読めないときは None。
+pub fn current_branch(repo: &str) -> Option<String> {
+    git(Path::new(repo), &["branch", "--show-current"]).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 /// 比較元の選択肢 1 つ。
@@ -770,6 +780,27 @@ mod tests {
         for short in ["", "diff --git a/x b/x\n", "diff --git a/x b/x\nnew file mode 100644\n"] {
             assert_eq!(without_new_file_index_line(short), short, "短い塊も、壊さない: {short:?}");
         }
+    }
+
+    #[test]
+    fn the_snapshot_records_the_branch_it_was_taken_on_and_none_when_detached() {
+        let dir = base_repo("branch");
+        let d = dir.to_str().unwrap();
+        let lim = Limits::default();
+        let on = run_git(&dir, &["branch", "--show-current"]);
+        assert!(!on.is_empty(), "前提: ブランチの上にいる");
+        assert_eq!(take_with(d, &lim).unwrap().branch.as_deref(), Some(on.as_str()));
+        assert_eq!(current_branch(d).as_deref(), Some(on.as_str()));
+        // 別のブランチへ移ると、その名前（スラッシュを含む名前も、そのまま）
+        run_git(&dir, &["switch", "-c", "feature/x-y"]);
+        assert_eq!(take_with(d, &lim).unwrap().branch.as_deref(), Some("feature/x-y"));
+        // detached HEAD は、ブランチ名が無い
+        run_git(&dir, &["checkout", "--detach"]);
+        assert_eq!(take_with(d, &lim).unwrap().branch, None);
+        assert_eq!(current_branch(d), None);
+        // Git のリポジトリではない所は、None（落ちない）
+        assert_eq!(current_branch("/nonexistent-mrcr-dir/x"), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
